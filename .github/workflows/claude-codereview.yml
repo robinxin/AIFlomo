@@ -6,30 +6,27 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
-    types: [created, edited]
 
 jobs:
-  claude-codereview:
-    # 2. 指定运行器：使用你刚才配置的自托管运行器
+  # PR 代码审查
+  claude-codereview-pr:
+    if: github.event_name == 'pull_request'
     runs-on: [self-hosted, ai-runner]
-    # 3. 权限设置：只授予必要的权限，确保安全性
     permissions:
       contents: read
       pull-requests: write
     steps:
-      # 第一步：检出代码（必须）
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      # 第二步：运行 Claude 代码审查工具
-      - uses: anthropics/claude-code-action@v1
+      - name: Claude Code Review for PR
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
           model: claude-sonnet-4-5-20250929
-          # 核心修改：根据事件类型（pr/push）区分提示词
           prompt: |
-            ${{ if eq(github.event_name, 'pull_request') }}
             # Pull Request 代码审查
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -48,8 +45,28 @@ jobs:
             注意：PR分支已检出到当前工作目录。
             使用 `gh pr comment` 提交整体反馈，使用 `mcp__github_inline_comment__create_inline_comment` 标注具体代码问题。
             仅提交GitHub评论，不要将审查文本作为消息发送。
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
 
-            ${{ else if eq(github.event_name, 'push') }}
+  # Push 代码审查
+  claude-codereview-push:
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Claude Code Review for Push
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-5-20250929
+          prompt: |
             # Push 代码审查
             REPO: ${{ github.repository }}
             PUSHER: ${{ github.actor }}
@@ -66,7 +83,5 @@ jobs:
 
             注意：当前分支代码已检出到工作目录。
             仅提交必要的反馈评论，聚焦于Push代码的核心问题。
-
-            ${{ endif }}
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
