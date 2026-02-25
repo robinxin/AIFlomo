@@ -31,30 +31,31 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="card" style={{ maxWidth: 480 }}>
-      <h1>注册</h1>
-      <p className="note-meta">开始积累你的想法。</p>
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="邮箱"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="密码（至少 6 位）"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        {error && <div className="note-meta" style={{ color: '#b1332b' }}>{error}</div>}
-        <button type="submit" disabled={loading}>{loading ? '注册中...' : '创建账号'}</button>
-      </form>
-      <p className="note-meta" style={{ marginTop: 16 }}>
-        已有账号？ <Link href="/login">登录</Link>
-      </p>
+    <div className="auth-page">
+      <div className="auth-card">
+        <h1>注册 flomo-印象</h1>
+        <form className="form-stack" onSubmit={handleSubmit}>
+          <input
+            type="email"
+            placeholder="邮箱"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="密码（至少 6 位）"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          {error && <div className="auth-error">{error}</div>}
+          <button type="submit" disabled={loading}>{loading ? '注册中...' : '创建账号'}</button>
+        </form>
+        <p className="auth-link">
+          已有账号？ <Link href="/login">登录</Link>
+        </p>
+      </div>
     </div>
   );
 }

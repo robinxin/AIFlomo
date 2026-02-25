@@ -140,4 +140,4 @@ public/
 apps/*/node_modules/
 apps/*/.next/
 apps/*/.env
-apps/*/*.db
+apps/*/*/*.db

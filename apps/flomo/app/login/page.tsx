@@ -31,30 +31,31 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="card" style={{ maxWidth: 480 }}>
-      <h1>登录</h1>
-      <p className="note-meta">欢迎回来，记录灵感。</p>
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="邮箱"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="密码"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        {error && <div className="note-meta" style={{ color: '#b1332b' }}>{error}</div>}
-        <button type="submit" disabled={loading}>{loading ? '登录中...' : '登录'}</button>
-      </form>
-      <p className="note-meta" style={{ marginTop: 16 }}>
-        还没有账号？ <Link href="/register">注册</Link>
-      </p>
+    <div className="auth-page">
+      <div className="auth-card">
+        <h1>登录 flomo-印象</h1>
+        <form className="form-stack" onSubmit={handleSubmit}>
+          <input
+            type="email"
+            placeholder="邮箱"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="密码"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          {error && <div className="auth-error">{error}</div>}
+          <button type="submit" disabled={loading}>{loading ? '登录中...' : '登录'}</button>
+        </form>
+        <p className="auth-link">
+          还没有账号？ <Link href="/register">注册</Link>
+        </p>
+      </div>
     </div>
   );
 }
