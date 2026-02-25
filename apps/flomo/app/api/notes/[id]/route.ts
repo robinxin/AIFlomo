@@ -58,9 +58,18 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     return NextResponse.json({ error: '未授权' }, { status: 401 });
   }
 
-  await prisma.note.deleteMany({
-    where: { id: params.id, userId: user.id },
-  });
+  const permanent = req.nextUrl.searchParams.get('permanent') === 'true';
+
+  if (permanent) {
+    await prisma.note.deleteMany({
+      where: { id: params.id, userId: user.id, deletedAt: { not: null } },
+    });
+  } else {
+    await prisma.note.updateMany({
+      where: { id: params.id, userId: user.id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

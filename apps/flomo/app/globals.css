@@ -34,8 +34,10 @@ a {
 /* ========== Full-page layout ========== */
 .app-shell {
   display: flex;
+  justify-content: center;
   height: 100vh;
   overflow: hidden;
+  background: var(--bg);
 }
 
 .app-header {
@@ -43,9 +45,10 @@ a {
 }
 
 .app-main {
-  flex: 1;
   display: flex;
   overflow: hidden;
+  width: 100%;
+  max-width: 1200px;
 }
 
 /* ========== Left Sidebar ========== */

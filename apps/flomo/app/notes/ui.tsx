@@ -34,6 +34,8 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [navFilter, setNavFilter] = useState<string>('all');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashNotes, setTrashNotes] = useState<Note[]>([]);
 
   const filteredNotes = useMemo(() => {
     let filtered = notes;
@@ -173,11 +175,30 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
     }
   };
 
+  const loadTrash = async () => {
+    const res = await fetch('/api/notes/trash');
+    if (!res.ok) return;
+    const data = await res.json();
+    setTrashNotes(data.notes ?? []);
+  };
+
   const handleDelete = async (id: string) => {
     setMenuOpenId(null);
     await fetch(`/api/notes/${id}`, { method: 'DELETE' });
     await loadNotes();
     await loadTags();
+  };
+
+  const handleRestore = async (id: string) => {
+    await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
+    await loadTrash();
+    await loadNotes();
+    await loadTags();
+  };
+
+  const handlePermanentDelete = async (id: string) => {
+    await fetch(`/api/notes/${id}?permanent=true`, { method: 'DELETE' });
+    await loadTrash();
   };
 
   const handleLogout = async () => {
@@ -238,9 +259,9 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
         <nav className="sidebar-nav">
           <button
             className={`nav-item nav-parent${navFilter === 'all' && !selectedTag ? ' active' : ''}`}
-            onClick={() => { setNavExpanded(!navExpanded); setNavFilter('all'); setSelectedTag(''); }}
+            onClick={() => { setNavFilter('all'); setSelectedTag(''); setShowTrash(false); }}
           >
-            <span className={`nav-arrow${navExpanded ? ' expanded' : ''}`}>&#9654;</span>
+            <span className={`nav-arrow${navExpanded ? ' expanded' : ''}`} onClick={(e) => { e.stopPropagation(); setNavExpanded(!navExpanded); }}>&#9654;</span>
             全部笔记
           </button>
           {navExpanded && (
@@ -295,9 +316,13 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
           ))}
 
           <div className="nav-divider" />
-          <button className="nav-item">
+          <button
+            className={`nav-item${showTrash ? ' active' : ''}`}
+            onClick={() => { setShowTrash(true); setNavFilter(''); setSelectedTag(''); loadTrash(); }}
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
             回收站
+            {trashNotes.length > 0 && <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: '0.75rem' }}>{trashNotes.length}</span>}
           </button>
         </nav>
       </aside>
