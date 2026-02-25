@@ -8,7 +8,7 @@ on:
 
 jobs:
   codex-plan:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ai-runner]
     environment: codex
     permissions:
       contents: read
