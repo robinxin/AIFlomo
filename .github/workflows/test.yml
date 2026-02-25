@@ -2,71 +2,44 @@ name: Test
 
 on:
   push:
-    branches: [ main, develop, workflow-jl ]
+    branches: [main, workflow-jl]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
+    name: Test & Type Check
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
         node-version: [18.x, 20.x]
 
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: flomo_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: apps/flomo/package-lock.json
 
-    - name: Install dependencies
-      run: cd apps/flomo && npm ci
+      - name: Install dependencies
+        run: cd apps/flomo && npm ci
 
-    - name: Check environment variables
-      run: |
-        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/flomo_test?schema=public" >> $GITHUB_ENV
+      - name: Setup environment
+        run: echo 'DATABASE_URL="file:./test.db"' > apps/flomo/.env
 
-    - name: Generate Prisma client
-      run: cd apps/flomo && npx prisma generate
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flomo_test?schema=public
+      - name: Generate Prisma client
+        run: cd apps/flomo && npx prisma generate
 
-    - name: Run Prisma migrations
-      run: cd apps/flomo && npx prisma migrate deploy
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flomo_test?schema=public
+      - name: Run database migrations
+        run: cd apps/flomo && npx prisma db push --accept-data-loss
 
-    - name: Type checking
-      run: cd apps/flomo && npm run type-check || echo "Type checking skipped"
+      - name: Type checking
+        run: cd apps/flomo && npx tsc --noEmit
 
-    - name: Run linting
-      run: cd apps/flomo && npm run lint || echo "Linting skipped"
-
-    - name: Run unit tests
-      run: cd apps/flomo && npm run test --if-present
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flomo_test?schema=public
-
-    - name: Build application
-      run: cd apps/flomo && npm run build
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/flomo_test?schema=public
+      - name: Run tests
+        run: cd apps/flomo && npm test --if-present

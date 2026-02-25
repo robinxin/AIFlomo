@@ -1,0 +1,98 @@
+name: Deploy Preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  preview:
+    name: Build & Preview Info
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Install dependencies
+        run: cd apps/flomo && npm ci
+
+      - name: Setup environment
+        run: echo 'DATABASE_URL="file:./preview.db"' > apps/flomo/.env
+
+      - name: Generate Prisma client
+        run: cd apps/flomo && npx prisma generate
+
+      - name: Initialize database
+        run: cd apps/flomo && npx prisma db push
+
+      - name: Build application
+        run: cd apps/flomo && npm run build
+
+      - name: Collect build stats
+        id: stats
+        run: |
+          BUILD_SIZE=$(du -sh apps/flomo/.next | cut -f1)
+          PAGE_COUNT=$(find apps/flomo/.next/server/app -name '*.html' 2>/dev/null | wc -l | tr -d ' ')
+          ROUTE_COUNT=$(find apps/flomo/app/api -name 'route.ts' 2>/dev/null | wc -l | tr -d ' ')
+          echo "build_size=$BUILD_SIZE" >> $GITHUB_OUTPUT
+          echo "page_count=$PAGE_COUNT" >> $GITHUB_OUTPUT
+          echo "route_count=$ROUTE_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with preview info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const buildSize = '${{ steps.stats.outputs.build_size }}';
+            const pageCount = '${{ steps.stats.outputs.page_count }}';
+            const routeCount = '${{ steps.stats.outputs.route_count }}';
+
+            const body = `## Preview Build Report
+
+            | Metric | Value |
+            |--------|-------|
+            | Build Size | ${buildSize} |
+            | Pages | ${pageCount} |
+            | API Routes | ${routeCount} |
+            | Node.js | 20.x |
+            | Status | ✅ Build Successful |
+
+            > Build triggered by commit \`${context.sha.substring(0, 7)}\`
+            `;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Preview Build Report')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

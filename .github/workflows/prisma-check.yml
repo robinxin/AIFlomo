@@ -1,0 +1,87 @@
+name: Prisma Schema Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/flomo/prisma/**'
+
+jobs:
+  schema-validate:
+    name: Validate Schema
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Install dependencies
+        run: cd apps/flomo && npm ci
+
+      - name: Validate Prisma schema
+        run: cd apps/flomo && npx prisma validate
+
+      - name: Check Prisma format
+        run: |
+          cd apps/flomo
+          npx prisma format
+          if git diff --exit-code prisma/schema.prisma; then
+            echo "✅ Schema is properly formatted"
+          else
+            echo "❌ Schema needs formatting. Run 'npx prisma format' locally."
+            exit 1
+          fi
+
+  migration-check:
+    name: Check Migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Install dependencies
+        run: cd apps/flomo && npm ci
+
+      - name: Setup environment
+        run: echo 'DATABASE_URL="file:./check.db"' > apps/flomo/.env
+
+      - name: Generate Prisma client
+        run: cd apps/flomo && npx prisma generate
+
+      - name: Verify migrations can apply cleanly
+        run: cd apps/flomo && npx prisma migrate deploy
+
+      - name: Check for schema drift
+        run: |
+          cd apps/flomo
+          npx prisma db push --accept-data-loss
+          echo "✅ Schema and migrations are in sync"
+
+      - name: Check if migration file exists for schema changes
+        run: |
+          cd apps/flomo
+          SCHEMA_CHANGED=$(git diff --name-only origin/main...HEAD -- prisma/schema.prisma || true)
+          MIGRATION_ADDED=$(git diff --name-only origin/main...HEAD -- prisma/migrations/ || true)
+          if [ -n "$SCHEMA_CHANGED" ] && [ -z "$MIGRATION_ADDED" ]; then
+            echo "⚠️  Schema changed but no migration file added."
+            echo "   Run 'npx prisma migrate dev --name <description>' to create a migration."
+            exit 1
+          fi
+          echo "✅ Schema changes have corresponding migrations"

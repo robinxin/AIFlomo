@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Install dependencies
+        run: cd apps/flomo && npm ci
+
+      - name: Setup environment
+        run: echo 'DATABASE_URL="file:./build.db"' > apps/flomo/.env
+
+      - name: Generate Prisma client
+        run: cd apps/flomo && npx prisma generate
+
+      - name: Initialize database
+        run: cd apps/flomo && npx prisma db push
+
+      - name: Build Next.js application
+        run: cd apps/flomo && npm run build
+
+      - name: Verify build output
+        run: |
+          if [ -d "apps/flomo/.next" ]; then
+            echo "✅ Build output exists"
+            du -sh apps/flomo/.next
+          else
+            echo "❌ Build output missing"
+            exit 1
+          fi
