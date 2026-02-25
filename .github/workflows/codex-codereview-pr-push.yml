@@ -44,47 +44,42 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin "${{ github.base_ref }}" --depth=1
             DIFF=$(git diff --no-color "origin/${{ github.base_ref }}"...HEAD)
-            CONTEXT=$(cat <<EOT
-PR Review Context
-- Repo: ${{ github.repository }}
-- PR: #${{ github.event.pull_request.number }}
-- Base: ${{ github.base_ref }}
-- Head: ${{ github.head_ref }}
-EOT
-)
+            CONTEXT=$(printf '%s\n' \
+              "PR Review Context" \
+              "- Repo: ${{ github.repository }}" \
+              "- PR: #${{ github.event.pull_request.number }}" \
+              "- Base: ${{ github.base_ref }}" \
+              "- Head: ${{ github.head_ref }}")
           else
             DIFF=$(git diff --no-color "${{ github.event.before }}" "${{ github.sha }}")
-            CONTEXT=$(cat <<EOT
-Push Review Context
-- Repo: ${{ github.repository }}
-- Branch: ${{ github.ref_name }}
-- Commit: ${{ github.sha }}
-- Message: ${{ github.event.head_commit.message }}
-EOT
-)
+            CONTEXT=$(printf '%s\n' \
+              "Push Review Context" \
+              "- Repo: ${{ github.repository }}" \
+              "- Branch: ${{ github.ref_name }}" \
+              "- Commit: ${{ github.sha }}" \
+              "- Message: ${{ github.event.head_commit.message }}")
           fi
 
-          cat > .github/codex/prompts/generated/codereview.md <<EOT
-You are Codex. Review the following code changes and produce a concise report.
-
-$CONTEXT
-
-Focus on:
-- Bugs / regressions
-- Security concerns
-- Performance pitfalls
-- API/contract breaks
-- Missing tests or validation
-
-Output format (Markdown):
-1. Summary (2-4 bullets)
-2. Issues (list; include severity: High/Medium/Low)
-3. Suggestions (actionable fixes)
-4. Tests (what to add or update)
-
-DIFF:
-$DIFF
-EOT
+          {
+            printf '%s\n' "You are Codex. Review the following code changes and produce a concise report."
+            printf '\n'
+            printf '%s\n' "$CONTEXT"
+            printf '\n'
+            printf '%s\n' "Focus on:" \
+              "- Bugs / regressions" \
+              "- Security concerns" \
+              "- Performance pitfalls" \
+              "- API/contract breaks" \
+              "- Missing tests or validation"
+            printf '\n'
+            printf '%s\n' "Output format (Markdown):" \
+              "1. Summary (2-4 bullets)" \
+              "2. Issues (list; include severity: High/Medium/Low)" \
+              "3. Suggestions (actionable fixes)" \
+              "4. Tests (what to add or update)"
+            printf '\n'
+            printf '%s\n' "DIFF:" "$DIFF"
+          } > .github/codex/prompts/generated/codereview.md
 
       - name: Run Codex review
         id: codex_review
