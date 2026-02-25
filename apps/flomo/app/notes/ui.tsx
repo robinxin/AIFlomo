@@ -60,6 +60,9 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
     });
   }, [notes, query, selectedTag, navFilter]);
 
+  // 根据是否显示回收站来选择要渲染的笔记列表
+  const displayedNotes = showTrash ? trashNotes : filteredNotes;
+
   const noteCount = notes.length;
   const tagCount = tags.length;
   const dayCount = useMemo(() => {
@@ -412,10 +415,14 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
 
           {/* Note list */}
           <div className="note-list">
-            {filteredNotes.length === 0 && (
-              <div className="empty-state">还没有记录，快写下第一条吧。</div>
+            {displayedNotes.length === 0 && (
+              <div className="empty-state">
+                {showTrash 
+                  ? '回收站中还没有笔记，快去删除一些笔记吧。' 
+                  : '还没有记录，快写下第一条吧。'}
+              </div>
             )}
-            {filteredNotes.map((note) => (
+            {displayedNotes.map((note) => (
               <div key={note.id} className="note-card">
                 {editingId === note.id ? (
                   <div className="edit-form">
@@ -456,8 +463,17 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
                         </button>
                         {menuOpenId === note.id && (
                           <div className="note-actions">
-                            <button onClick={() => startEdit(note)}>编辑</button>
-                            <button onClick={() => handleDelete(note.id)}>删除</button>
+                            {!showTrash && (
+                              <button onClick={() => startEdit(note)}>编辑</button>
+                            )}
+                            {showTrash ? (
+                              <>
+                                <button onClick={() => handleRestore(note.id)}>恢复</button>
+                                <button onClick={() => handlePermanentDelete(note.id)}>永久删除</button>
+                              </>
+                            ) : (
+                              <button onClick={() => handleDelete(note.id)}>删除</button>
+                            )}
                           </div>
                         )}
                       </div>
