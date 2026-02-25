@@ -10,6 +10,7 @@ const SESSION_DAYS = Number(process.env.SESSION_DAYS ?? 14);
 export type SessionUser = {
   id: string;
   email: string;
+  nickname: string;
 };
 
 export function getSessionTokenFromCookies(): string | null {
@@ -32,7 +33,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     return null;
   }
 
-  return { id: session.user.id, email: session.user.email };
+  return { id: session.user.id, email: session.user.email, nickname: session.user.nickname };
 }
 
 export async function getSessionUserFromRequest(req: NextRequest): Promise<SessionUser | null> {
@@ -50,7 +51,7 @@ export async function getSessionUserFromRequest(req: NextRequest): Promise<Sessi
     return null;
   }
 
-  return { id: session.user.id, email: session.user.email };
+  return { id: session.user.id, email: session.user.email, nickname: session.user.nickname };
 }
 
 export async function createSession(userId: string) {

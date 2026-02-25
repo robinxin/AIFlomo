@@ -4,7 +4,7 @@ import { createSession, hashPassword, setSessionCookie } from '../../../../lib/a
 import { validateEmail, validatePassword } from '../../../../lib/validators';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null) as { email?: string; password?: string } | null;
+  const body = await req.json().catch(() => null) as { email?: string; password?: string; nickname?: string } | null;
 
   if (!body?.email || !body?.password) {
     return NextResponse.json({ error: '缺少参数' }, { status: 400 });
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.create({
     data: {
       email: body.email,
+      nickname: body.nickname ?? '',
       passwordHash: await hashPassword(body.password),
     },
   });

@@ -8,5 +8,5 @@ export default async function NotesPage() {
     redirect('/login');
   }
 
-  return <NotesApp userEmail={user.email} />;
+  return <NotesApp userEmail={user.email} userNickname={user.nickname} />;
 }

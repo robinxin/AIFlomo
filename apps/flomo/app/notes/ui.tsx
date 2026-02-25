@@ -15,9 +15,10 @@ type TagSummary = { id: string; name: string; count: number };
 
 type Props = {
   userEmail: string;
+  userNickname: string;
 };
 
-export default function NotesApp({ userEmail }: Props) {
+export default function NotesApp({ userEmail, userNickname }: Props) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [tags, setTags] = useState<TagSummary[]>([]);
   const [query, setQuery] = useState('');
@@ -197,7 +198,7 @@ export default function NotesApp({ userEmail }: Props) {
         <div className="sidebar-header">
           {/* User row */}
           <div className="user-row">
-            <span className="user-name">{userEmail.split('@')[0]}</span>
+            <span className="user-name">{userNickname || userEmail.split('@')[0]}</span>
             <span className="user-badge">PRO</span>
             <button className="logout-btn" onClick={handleLogout} title="退出登录">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
