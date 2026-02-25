@@ -1,0 +1,28 @@
+# Node
+node_modules/
+
+# Next.js
+.next/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store
+
+# Prisma
+*.db
+*.db-journal
+
+# Build
+out/
+dist/
+
+# Coverage
+coverage/

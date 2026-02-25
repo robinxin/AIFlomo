@@ -1,0 +1,5 @@
+[model_provider.openai_proxy]
+base_url = "https://claude.hatch.yinxiang.com/openai"
+
+[models.codex]
+provider = "openai_proxy"

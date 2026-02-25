@@ -1,0 +1,121 @@
+name: Codex Codereview
+
+on:
+  pull_request:
+    branches: [feat/lss]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [feat/lss]
+    types: [created, edited]
+
+jobs:
+  codex-codereview:
+    runs-on: ubuntu-latest
+    environment: codex
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Codex secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
+            echo "Missing secret: OPENAI_API_KEY"
+            missing=1
+          fi
+          if [ -z "${{ secrets.OPENAI_BASE_URL }}" ]; then
+            echo "Missing secret: OPENAI_BASE_URL"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Codex workflow requires OPENAI_API_KEY and OPENAI_BASE_URL secrets."
+            exit 1
+          fi
+
+      - name: Build review prompt
+        run: |
+          mkdir -p .github/codex/prompts/generated
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            DIFF=$(git diff --no-color "origin/${{ github.base_ref }}"...HEAD)
+            CONTEXT=$(cat <<EOT
+PR Review Context
+- Repo: ${{ github.repository }}
+- PR: #${{ github.event.pull_request.number }}
+- Base: ${{ github.base_ref }}
+- Head: ${{ github.head_ref }}
+EOT
+)
+          else
+            DIFF=$(git diff --no-color "${{ github.event.before }}" "${{ github.sha }}")
+            CONTEXT=$(cat <<EOT
+Push Review Context
+- Repo: ${{ github.repository }}
+- Branch: ${{ github.ref_name }}
+- Commit: ${{ github.sha }}
+- Message: ${{ github.event.head_commit.message }}
+EOT
+)
+          fi
+
+          cat > .github/codex/prompts/generated/codereview.md <<EOT
+You are Codex. Review the following code changes and produce a concise report.
+
+$CONTEXT
+
+Focus on:
+- Bugs / regressions
+- Security concerns
+- Performance pitfalls
+- API/contract breaks
+- Missing tests or validation
+
+Output format (Markdown):
+1. Summary (2-4 bullets)
+2. Issues (list; include severity: High/Medium/Low)
+3. Suggestions (actionable fixes)
+4. Tests (what to add or update)
+
+DIFF:
+$DIFF
+EOT
+
+      - name: Run Codex review
+        id: codex_review
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/generated/codereview.md
+          output-file: codex-review.md
+          safety-strategy: drop-sudo
+          sandbox: workspace-read
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -s codex-review.md ]; then
+            echo "No review output generated." > codex-review.md
+          fi
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file codex-review.md
+
+      - name: Create Review Issue for Push
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ ! -s codex-review.md ]; then
+            echo "No review output generated." > codex-review.md
+          fi
+          gh issue create \
+            --title "Codex Review: Push to $PUSH_BRANCH ($PUSH_SHA)" \
+            --body-file codex-review.md

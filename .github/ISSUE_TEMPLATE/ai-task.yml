@@ -1,0 +1,30 @@
+name: AI Task
+description: 创建一个可由 AI 自动执行的开发任务
+title: "feat: <功能名称>"
+labels: ["ai-task", "feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请填写清晰的任务描述，并指向对应的 Spec 文件。
+  - type: input
+    id: spec_path
+    attributes:
+      label: Spec 文件路径
+      description: 例如 specs/active/2026-02-10-quick-memo.md
+      placeholder: specs/active/xxxx.md
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: 任务描述
+      description: 说明要做什么、包含/不包含、验收标准
+      placeholder: |
+        请严格按照 Spec 实现，包括：
+        1. API
+        2. 数据模型
+        3. 前端
+        4. 测试
+    validations:
+      required: true
