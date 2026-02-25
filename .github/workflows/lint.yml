@@ -1,0 +1,251 @@
+name: Lint & Standards
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  commit-message:
+    name: Commit Message Convention
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        run: |
+          echo "Checking commit messages follow conventional format..."
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          COMMITS=$(git log --format="%s" "$MERGE_BASE"..HEAD)
+          PATTERN="^(feat|fix|docs|style|refactor|test|chore)(\(.+\))?: .{1,72}$"
+          FAILED=0
+          while IFS= read -r msg; do
+            if [ -z "$msg" ]; then
+              continue
+            fi
+            if ! echo "$msg" | grep -Eq "$PATTERN"; then
+              echo "❌ Invalid: $msg"
+              echo "   Expected: <type>(<scope>): <subject> (max 72 chars)"
+              FAILED=1
+            else
+              echo "✅ Valid: $msg"
+            fi
+          done <<< "$COMMITS"
+          if [ "$FAILED" -eq 1 ]; then
+            echo ""
+            echo "Allowed types: feat, fix, docs, style, refactor, test, chore"
+            exit 1
+          fi
+
+  branch-naming:
+    name: Branch Naming Convention
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "Branch: $BRANCH"
+          PATTERN="^(feat|fix|hotfix|refactor)/.+$|^workflow-.+$|^(main|develop)$"
+          if echo "$BRANCH" | grep -Eq "$PATTERN"; then
+            echo "✅ Branch name '$BRANCH' follows convention"
+          else
+            echo "❌ Branch name '$BRANCH' does not follow convention"
+            echo "   Expected: feat/<desc>, fix/<desc>, hotfix/<desc>, refactor/<desc>, or workflow-<desc>"
+            exit 1
+          fi
+
+  typecheck:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Install dependencies
+        run: cd apps/flomo && npm ci
+
+      - name: Run type check
+        run: cd apps/flomo && npx tsc --noEmit
+
+  code-standards:
+    name: Code Standards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for var usage
+        run: |
+          echo "Checking for 'var' declarations (should use const/let)..."
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          CHANGED_TS=$(git diff --name-only --diff-filter=ACMR "$MERGE_BASE"..HEAD -- '*.ts' '*.tsx' || true)
+          if [ -z "$CHANGED_TS" ]; then
+            echo "No TypeScript files changed, skipping."
+            exit 0
+          fi
+          FAILED=0
+          for file in $CHANGED_TS; do
+            if [ ! -f "$file" ]; then continue; fi
+            MATCHES=$(grep -nE '^\s*var\s+' "$file" || true)
+            if [ -n "$MATCHES" ]; then
+              echo "❌ Found 'var' in $file:"
+              echo "$MATCHES"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then
+            echo "Use 'const' or 'let' instead of 'var'."
+            exit 1
+          fi
+          echo "✅ No 'var' usage found"
+
+      - name: Check for console.log in production code
+        run: |
+          echo "Checking for console.log in changed files..."
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          CHANGED_TS=$(git diff --name-only --diff-filter=ACMR "$MERGE_BASE"..HEAD -- '*.ts' '*.tsx' | grep -v '\.test\.' | grep -v '\.spec\.' || true)
+          if [ -z "$CHANGED_TS" ]; then
+            echo "No TypeScript files changed, skipping."
+            exit 0
+          fi
+          FAILED=0
+          for file in $CHANGED_TS; do
+            if [ ! -f "$file" ]; then continue; fi
+            MATCHES=$(grep -nE 'console\.(log|debug|info)\(' "$file" || true)
+            if [ -n "$MATCHES" ]; then
+              echo "⚠️  Found console output in $file:"
+              echo "$MATCHES"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then
+            echo "Remove debug console statements before merging."
+            exit 1
+          fi
+          echo "✅ No console.log found"
+
+      - name: Check for 'any' type usage
+        run: |
+          echo "Checking for 'any' type in changed files..."
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          CHANGED_TS=$(git diff --name-only --diff-filter=ACMR "$MERGE_BASE"..HEAD -- '*.ts' '*.tsx' || true)
+          if [ -z "$CHANGED_TS" ]; then
+            echo "No TypeScript files changed, skipping."
+            exit 0
+          fi
+          FOUND=0
+          for file in $CHANGED_TS; do
+            if [ ! -f "$file" ]; then continue; fi
+            MATCHES=$(grep -nE ':\s*any\b|<any>|as any' "$file" || true)
+            if [ -n "$MATCHES" ]; then
+              echo "⚠️  Found 'any' type in $file:"
+              echo "$MATCHES"
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "Prefer using specific types or 'unknown' instead of 'any'."
+            exit 1
+          fi
+          echo "✅ No 'any' type usage found"
+
+      - name: Check for commented-out code
+        run: |
+          echo "Checking for commented-out code in changed files..."
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          CHANGED_TS=$(git diff --name-only --diff-filter=ACMR "$MERGE_BASE"..HEAD -- '*.ts' '*.tsx' || true)
+          if [ -z "$CHANGED_TS" ]; then
+            echo "No TypeScript files changed, skipping."
+            exit 0
+          fi
+          FOUND=0
+          for file in $CHANGED_TS; do
+            if [ ! -f "$file" ]; then continue; fi
+            MATCHES=$(grep -nE '^\s*//' "$file" | grep -E '(const |let |function |import |return |if |for |while |class )' || true)
+            if [ -n "$MATCHES" ]; then
+              echo "⚠️  Possible commented-out code in $file:"
+              echo "$MATCHES"
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "Remove commented-out code before merging."
+            exit 1
+          fi
+          echo "✅ No commented-out code found"
+
+  security:
+    name: Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for sensitive files
+        run: |
+          echo "Checking for sensitive files in the repo..."
+          FAILED=0
+          for pattern in ".env" "*.pem" "*.key" "credentials.json" "secrets.json"; do
+            FOUND=$(find . -name "$pattern" -not -path './node_modules/*' -not -path './.git/*' 2>/dev/null || true)
+            if [ -n "$FOUND" ]; then
+              echo "❌ Sensitive file found: $FOUND"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then
+            echo "Do not commit sensitive files. Add them to .gitignore."
+            exit 1
+          fi
+          echo "✅ No sensitive files found"
+
+      - name: Check for hardcoded secrets in changed files
+        run: |
+          echo "Checking for hardcoded secrets..."
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          CHANGED=$(git diff --name-only --diff-filter=ACMR "$MERGE_BASE"..HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No source files changed, skipping."
+            exit 0
+          fi
+          FAILED=0
+          for file in $CHANGED; do
+            if [ ! -f "$file" ]; then continue; fi
+            MATCHES=$(grep -inE '(password|secret|api_key|apikey|token)\s*[:=]\s*["\x27][^"\x27]{8,}' "$file" | grep -v 'process\.env' | grep -v 'example' || true)
+            if [ -n "$MATCHES" ]; then
+              echo "❌ Possible hardcoded secret in $file:"
+              echo "$MATCHES"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then
+            echo "Use environment variables for sensitive values."
+            exit 1
+          fi
+          echo "✅ No hardcoded secrets found"
+
+  pr-description:
+    name: PR Description Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR has description
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+          if [ -z "$BODY" ] || [ ${#BODY} -lt 20 ]; then
+            echo "❌ PR description is missing or too short."
+            echo "   Please add a meaningful description following the PR template."
+            exit 1
+          fi
+          echo "✅ PR has a description"
