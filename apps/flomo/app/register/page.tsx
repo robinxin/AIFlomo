@@ -33,7 +33,7 @@ export default function RegisterPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>注册 flomo-印象</h1>
+        <h1>注册 Flomo-印象笔记</h1>
         <form className="form-stack" onSubmit={handleSubmit}>
           <input
             type="email"

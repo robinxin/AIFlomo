@@ -305,7 +305,7 @@ export default function NotesApp({ userEmail }: Props) {
       <div className="main-area">
         {/* Top bar */}
         <div className="main-topbar">
-          <span className="topbar-brand">flomo-印象</span>
+          <span className="topbar-brand">Flomo-印象笔记</span>
           <div className="topbar-search">
             <svg className="topbar-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input
