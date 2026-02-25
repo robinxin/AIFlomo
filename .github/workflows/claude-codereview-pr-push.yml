@@ -12,10 +12,11 @@ jobs:
   claude-codereview:
     # 2. 指定运行器：使用你刚才配置的自托管运行器
     runs-on: [self-hosted, ai-runner]
-    # 3. 权限设置：只授予必要的权限，确保安全性
+    # 3. 权限设置：补充 issues:write 权限（创建 Issue 需）
     permissions:
       contents: read
       pull-requests: write
+      issues: write  # 新增：创建 Issue 必须的权限
     # 核心修复：先定义差异化的 prompt 变量
     env:
       # PR 场景的提示词
@@ -56,13 +57,44 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # 第二步：运行 Claude 代码审查工具
+      # 新增：自托管 Runner 安装 gh 客户端（按需）
+      - name: Install GitHub CLI (gh)
+        if: github.event_name == 'push'
+        run: |
+          # 适配 Ubuntu 自托管 Runner，其他系统需调整
+          if ! command -v gh &> /dev/null; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update && sudo apt install -y gh
+          fi
+
+      # 第二步：运行 Claude 代码审查工具（修正：id 移到这一步）
       - uses: anthropics/claude-code-action@v1
+        id: claude-review  # 关键：id 必须加在这个步骤上
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
           model: claude-sonnet-4-5-20250929
           # 修复：用条件表达式选择对应的 prompt 变量
           prompt: ${{ github.event_name == 'pull_request' && env.PR_PROMPT || env.PUSH_PROMPT }}
-          claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+          # 优化：精简 claude_args，区分 PR/Push 事件的工具
+          claude_args: ${{ github.event_name == 'pull_request' && '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"' || '--allowedTools ""' }}
+      
+      # 第三步：push事件类型创建对应的 GitHub Issue
+      - name: Create Review Issue for Push
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_BRANCH: ${{ github.ref_name }}
+          REVIEW_RESULT: ${{ steps.claude-review.outputs.review-result }}
+        run: |
+          # 兜底：若 REVIEW_RESULT 为空，填充默认提示
+          if [ -z "$REVIEW_RESULT" ]; then
+            REVIEW_RESULT="No review result returned from Claude. Please check workflow logs for details."
+          fi
+          # 创建 Issue，标题包含提交 SHA 和分支，内容为审查结果
+          gh issue create \
+            --title "Code Review Result: Push to $PUSH_BRANCH ($PUSH_SHA)" \
+            --body "### Code Review for Push Commit\n\n$REVIEW_RESULT" \
+            --label "code-review,push-event"
