@@ -1,0 +1,72 @@
+name: Claude Codereview
+# 1. 触发器：监听 pr 事件和 push 事件
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+    types: [created, edited]
+
+jobs:
+  claude-codereview:
+    # 2. 指定运行器：使用你刚才配置的自托管运行器
+    runs-on: [self-hosted, ai-runner]
+    # 3. 权限设置：只授予必要的权限，确保安全性
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # 第一步：检出代码（必须）
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # 第二步：运行 Claude 代码审查工具
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
+          model: claude-sonnet-4-5-20250929
+          # 核心修改：根据事件类型（pr/push）区分提示词
+          prompt: |
+            ${{ if eq(github.event_name, 'pull_request') }}
+            # Pull Request 代码审查
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            PUSHER: ${{ github.event.pull_request.user.login }}
+            COMMIT MESSAGE: ${{ github.event.pull_request.title }}
+            COMMIT DESCRIPTION: ${{ github.event.pull_request.body }}
+
+            请针对本次PR进行全面代码审查，重点关注：
+            - 代码质量和行业最佳实践
+            - 潜在的bug或逻辑问题
+            - 安全风险点
+            - 性能优化空间
+            - 代码风格和可读性
+            - 与现有代码的兼容性
+
+            注意：PR分支已检出到当前工作目录。
+            使用 `gh pr comment` 提交整体反馈，使用 `mcp__github_inline_comment__create_inline_comment` 标注具体代码问题。
+            仅提交GitHub评论，不要将审查文本作为消息发送。
+
+            ${{ else if eq(github.event_name, 'push') }}
+            # Push 代码审查
+            REPO: ${{ github.repository }}
+            PUSHER: ${{ github.actor }}
+            COMMIT SHA: ${{ github.sha }}
+            COMMIT MESSAGE: ${{ github.event.head_commit.message }}
+            PUSH BRANCH: ${{ github.ref_name }}
+
+            请针对本次Push的代码变更进行审查，重点关注：
+            - 提交代码的完整性和正确性
+            - 是否引入新的语法错误或运行时问题
+            - 提交内容是否符合分支开发规范
+            - 临时调试代码或敏感信息是否遗漏
+            - 代码提交粒度是否合理
+
+            注意：当前分支代码已检出到工作目录。
+            仅提交必要的反馈评论，聚焦于Push代码的核心问题。
+
+            ${{ endif }}
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
