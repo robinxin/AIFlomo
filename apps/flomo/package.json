@@ -9,7 +9,8 @@
     "start": "next start",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "test": "jest"
+    "test": "jest",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@prisma/client": "^5.10.2",
