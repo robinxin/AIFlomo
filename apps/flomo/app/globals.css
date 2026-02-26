@@ -217,6 +217,19 @@ a {
   opacity: 0.6;
 }
 
+.pro-badge-sm {
+  margin-left: 6px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #999;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
 .nav-divider {
   height: 1px;
   background: var(--line);
