@@ -115,7 +115,7 @@ jobs:
 
   sdd:
     needs: detect
-    if: needs.detect.outputs.spec_changed == 'true' && (github.event_name != 'push' || !contains(github.event.head_commit.message, 'SDD: Auto-generate')) && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1')
+    if: ${{ needs.detect.outputs.spec_changed == 'true' && (github.event_name != 'push' || !contains(github.event.head_commit.message, 'SDD: Auto-generate')) && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -408,7 +408,7 @@ jobs:
 
   quality:
     needs: sdd
-    if: needs.sdd.result != 'failure' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1')
+    if: ${{ needs.sdd.result != 'failure' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
     runs-on: [self-hosted, ai-runner]
     steps:
       - name: Checkout
@@ -443,7 +443,7 @@ jobs:
 
   release-pr:
     needs: quality
-    if: needs.quality.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_release_pr == '1')
+    if: ${{ needs.quality.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_release_pr == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
