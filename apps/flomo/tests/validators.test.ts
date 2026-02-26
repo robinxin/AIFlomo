@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import { normalizeTags, validateEmail, validatePassword } from '../lib/validators';
 
 describe('validators', () => {
