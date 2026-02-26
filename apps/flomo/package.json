@@ -9,8 +9,8 @@
     "start": "next start",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
+    "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage"
   },
   "dependencies": {
     "@prisma/client": "^5.10.2",
