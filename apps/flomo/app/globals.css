@@ -533,6 +533,16 @@ a {
   object-fit: contain;
 }
 
+.note-link {
+  color: #5b9bd5;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.note-link:hover {
+  color: #7bb8e8;
+}
+
 .note-tags {
   display: flex;
   gap: 8px;

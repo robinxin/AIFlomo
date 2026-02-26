@@ -40,6 +40,13 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleInsertLink = () => {
+    const url = prompt('请输入链接地址', 'https://');
+    if (url && url !== 'https://') {
+      setContent((prev) => prev + (prev ? '\n' : '') + url);
+    }
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -103,6 +110,7 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
   const noteCount = notes.length;
   const noTagCount = noTagNotes.length;
   const imageCount = useMemo(() => notes.filter((n) => /!\[.*?\]\(.*?\)/.test(n.content)).length, [notes]);
+  const linkCount = useMemo(() => notes.filter((n) => /https?:\/\//.test(n.content) || /https?:\/\//.test(n.title ?? '')).length, [notes]);
   const tagCount = tags.length;
   const dayCount = useMemo(() => {
     const days = new Set(notes.map((n) => n.createdAt.slice(0, 10)));
@@ -327,9 +335,10 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
                 有图片
                 {imageCount > 0 && <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: '0.75rem' }}>{imageCount}</span>}
               </button>
-              <button className={`nav-item${navFilter === 'has-link' ? ' active' : ''}`} onClick={() => { setNavFilter('has-link'); setSelectedTag(''); }}>
+              <button className={`nav-item${navFilter === 'has-link' ? ' active' : ''}`} onClick={() => { setNavFilter('has-link'); setSelectedTag(''); setShowTrash(false); }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
                 有链接
+                {linkCount > 0 && <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: '0.75rem' }}>{linkCount}</span>}
               </button>
               <button className={`nav-item${navFilter === 'has-voice' ? ' active' : ''}`} onClick={() => { setNavFilter('has-voice'); setSelectedTag(''); }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -437,6 +446,9 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+                <button className="toolbar-btn" title="链接" onClick={handleInsertLink}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                </button>
                 <div className="toolbar-divider" />
                 <button className="toolbar-btn" title="文字大小">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
@@ -542,9 +554,11 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
                     </div>
                     {note.title && <div className="note-title">{note.title}</div>}
                     <div className="note-content">
-                      {note.content.split(/(\!\[.*?\]\(.*?\))/).map((part, i) => {
-                        const m = part.match(/^\!\[.*?\]\((.*?)\)$/);
-                        if (m) return <img key={i} src={m[1]} alt="" className="note-image" />;
+                      {note.content.split(/(!\[.*?\]\(.*?\)|https?:\/\/[^\s]+)/).map((part, i) => {
+                        const imgMatch = part.match(/^!\[.*?\]\((.*?)\)$/);
+                        if (imgMatch) return <img key={i} src={imgMatch[1]} alt="" className="note-image" />;
+                        const linkMatch = part.match(/^(https?:\/\/[^\s]+)$/);
+                        if (linkMatch) return <a key={i} href={linkMatch[1]} target="_blank" rel="noopener noreferrer" className="note-link">{linkMatch[1]}</a>;
                         return part ? <span key={i}>{part}</span> : null;
                       })}
                     </div>
