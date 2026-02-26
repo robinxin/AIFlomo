@@ -1,9 +1,6 @@
 name: Auto Create Release PR
 
 on:
-  push:
-    branches:
-      - 'feat/lss'
   workflow_dispatch:
     inputs:
       base:

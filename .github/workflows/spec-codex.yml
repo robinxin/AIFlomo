@@ -1,9 +1,6 @@
 name: Spec AI Plan (Codex)
 
 on:
-  push:
-    paths:
-      - 'specs/active/**'
   workflow_dispatch:
 
 jobs:

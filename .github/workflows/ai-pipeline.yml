@@ -1,60 +1,162 @@
-name: SDD - Claude Full Lifecycle (Spec Review + Code Gen + Test Gen)
+name: AI Pipeline (Spec -> SDD -> Quality -> Release PR)
+
 on:
+  push:
+    branches: [feat/lss]
+    paths:
+      - 'specs/active/**/*'
+      - 'apps/flomo/app/**/*'
+      - 'apps/flomo/lib/**/*'
+      - 'apps/flomo/tests/**/*'
   workflow_dispatch:
+    inputs:
+      run_sdd:
+        description: 'Run SDD (1=yes, 0=no)'
+        default: '1'
+        required: true
+      run_quality:
+        description: 'Run quality gate (1=yes, 0=no)'
+        default: '1'
+        required: true
+      run_release_pr:
+        description: 'Create release PR (1=yes, 0=no)'
+        default: '1'
+        required: true
 
 jobs:
-  sdd-full-lifecycle:
+  detect:
+    runs-on: [self-hosted, ai-runner]
+    outputs:
+      spec_changed: ${{ steps.detect.outputs.spec_changed }}
+      spec_files_list: ${{ steps.detect.outputs.spec_files_list }}
+      changed_specs: ${{ steps.detect.outputs.changed_specs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed spec files
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ || true)
+          else
+            files=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' || true)
+          fi
+
+          if [ -n "$files" ]; then
+            echo "spec_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "spec_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          printf "changed_specs<<EOF\n%s\nEOF\n" "$files" >> "$GITHUB_OUTPUT"
+          echo "spec_files_list=$(echo "$files" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+
+  spec-plan:
+    needs: detect
+    if: needs.detect.outputs.spec_changed == 'true'
+    runs-on: [self-hosted, ai-runner]
+    environment: codex
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      final_message: ${{ steps.run_codex.outputs.final-message }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Codex secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
+            echo "Missing secret: OPENAI_API_KEY"
+            missing=1
+          fi
+          if [ -z "${{ secrets.OPENAI_BASE_URL }}" ]; then
+            echo "Missing secret: OPENAI_BASE_URL"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Codex workflow requires OPENAI_API_KEY and OPENAI_BASE_URL secrets."
+            exit 1
+          fi
+
+      - name: Run Codex
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/spec-to-plan.md
+          output-file: codex-spec-plan.md
+          safety-strategy: drop-sudo
+          sandbox: workspace-read
+
+      - name: Create issue with plan
+        if: steps.run_codex.outputs.final-message != ''
+        uses: actions/github-script@v7
+        env:
+          CODEX_FINAL_MESSAGE: ${{ steps.run_codex.outputs.final-message }}
+          CHANGED_SPECS: ${{ needs.detect.outputs.changed_specs }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const bodyParts = [];
+            if (process.env.CHANGED_SPECS && process.env.CHANGED_SPECS.trim().length > 0) {
+              bodyParts.push('**Changed specs:**\n' + process.env.CHANGED_SPECS.trim());
+            }
+            bodyParts.push(process.env.CODEX_FINAL_MESSAGE);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Spec AI Plan (${context.ref.replace('refs/heads/', '')})`,
+              body: bodyParts.join('\n\n'),
+            });
+
+  sdd:
+    needs: detect
+    if: needs.detect.outputs.spec_changed == 'true' && (github.event_name != 'push' || !contains(github.event.head_commit.message, 'SDD: Auto-generate')) && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1')
     runs-on: [self-hosted, ai-runner]
     permissions:
-      contents: write  # 允许写入生成的代码/测试用例/Spec建议文件
+      contents: write
       pull-requests: write
       issues: write
     env:
-      CODE_GEN_DIR: 'apps/flomo/app/'    # 自动生成代码的目录
-      TEST_GEN_DIR: 'apps/flomo/tests/'  # 自动生成测试用例的目录
+      CODE_GEN_DIR: 'apps/flomo/app/'
+      TEST_GEN_DIR: 'apps/flomo/tests/'
     steps:
-      # 步骤1：检出代码（包含 Spec、源码、测试目录）
       - name: Checkout code & spec
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # 确保能提交代码
+          fetch-depth: 0
 
       - name: Install GitHub CLI (gh)
         run: |
-          # 适配 Ubuntu 自托管 Runner，其他系统需调整
           if ! command -v gh &> /dev/null; then
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
             sudo apt update && sudo apt install -y gh
           fi
 
-      # -------------------------- 核心：动态识别变更的 Spec 文件（无兜底，不存在则中断） --------------------------
       - name: Detect Changed Spec Files
         id: detect-spec-files
         run: |
-          # 初始化变量
           CHANGED_SPEC_FILES=""
           SPEC_CONTENT=""
 
-          # 区分 Push/PR 事件，提取变更的 Spec 文件
           if [ "${{ github.event_name }}" = "push" ]; then
-            # Push 事件：通过 git diff 获取本次提交变更的文件
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            # PR 事件：通过 GitHub API 获取变更文件
-            CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
+            CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
+          else
+            CHANGED_FILES=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' | grep -E '\.(md|yaml|yml|json)$' || true)
           fi
 
-          # 去重并过滤有效 Spec 文件（仅保留 md/yaml/yml/json）
           CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^specs/active/.*\.(md|yaml|yml|json)$')
 
-          # 关键：无变更的 Spec 文件则直接中断流程
           if [ -z "$CHANGED_SPEC_FILES" ]; then
             echo "❌ No changed spec files found in specs/active/**/*, aborting workflow!"
             exit 1
           fi
 
-          # 验证所有变更的 Spec 文件是否存在（不存在则中断）
           for FILE in $CHANGED_SPEC_FILES; do
             if [ ! -f "$FILE" ]; then
               echo "❌ Spec file $FILE not found, aborting workflow!"
@@ -62,25 +164,18 @@ jobs:
             fi
           done
 
-          # 读取所有变更 Spec 文件的内容并合并
           for FILE in $CHANGED_SPEC_FILES; do
             echo "📄 Reading spec file: $FILE"
-            # 转义特殊字符，添加文件标识（方便 Claude 区分不同文件）
             FILE_CONTENT=$(cat "$FILE" | awk '{gsub(/"/, "\\\""); print}' | tr '\n' '\\n')
             SPEC_CONTENT+="### Spec File: $FILE\n$FILE_CONTENT\n\n"
           done
 
-          # 输出到 step 变量（供后续步骤使用）
           echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
           echo "spec_content=$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
-          # 输出文件列表（逗号分隔，供结果展示）
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
-      # -------------------------- 场景1：审查 Spec 合理性（出错则中断） --------------------------
       - name: Step 1 - Review Spec Rationality
         id: review-spec
-        # 移除 continue-on-error，出错直接终止
-        if: steps.detect-spec-files.outputs.changed_spec_files != ''
         uses: anthropics/claude-code-action-official@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -105,50 +200,41 @@ jobs:
             - Prioritize critical issues (e.g., missing core function definitions)
             - Clearly link all issues to the corresponding spec file name
             - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
-          claude-args: "--allowedTools ''"  # 无需代码工具，仅分析文本
+          claude-args: "--allowedTools ''"
 
-      # -------------------------- 生成 Spec 修复建议文件（出错则中断） --------------------------
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
-        # 移除 continue-on-error，出错直接终止
         if: steps.review-spec.outcome == 'success'
         env:
           SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
-          # 验证审查结果非空（为空则中断）
           if [ -z "$SPEC_REVIEW_RESULT" ]; then
             echo "❌ Empty Spec review result, aborting workflow!"
             exit 1
           fi
 
-          # 为每个变更的 Spec 文件生成对应的修复建议文件
           for FILE in $CHANGED_SPEC_FILES; do
-            # 适配不同文件格式的修复建议文件名
             case "$FILE" in
               *.md) FIX_FILE="${FILE%.md}.fix.md" ;;
               *.yaml|*.yml) FIX_FILE="${FILE%.*}.fix.yml" ;;
               *.json) FIX_FILE="${FILE%.json}.fix.json" ;;
               *) FIX_FILE="$FILE.fix" ;;
             esac
-            
-            # 写入修复建议
+
             echo "# Spec Fix Suggestion: $FILE" > "$FIX_FILE"
             echo "## Generated at: $(date)" >> "$FIX_FILE"
             echo "## Review Result for $FILE" >> "$FIX_FILE"
             echo -e "\n$SPEC_REVIEW_RESULT" >> "$FIX_FILE"
-            
+
             echo "✅ Fix suggestion file created: $FIX_FILE"
           done
 
-          # 输出建议文件列表供后续使用
           FIX_FILES=$(ls specs/active/*.fix.* 2>/dev/null | tr '\n' ',' | sed 's/,$//')
           echo "spec_fix_files=$FIX_FILES" >> "$GITHUB_OUTPUT"
 
-      # -------------------------- 场景2：根据 Spec 生成代码（出错则中断） --------------------------
       - name: Step 2 - Generate Code from Spec
         id: gen-code
-        # 移除 continue-on-error，出错直接终止
         if: steps.review-spec.outcome == 'success'
         uses: anthropics/claude-code-action-official@v1
         with:
@@ -174,12 +260,10 @@ jobs:
             ### OUTPUT REQUIREMENT
             First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
           claude-args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"  # 允许创建目录/读取现有代码/检测文件类型
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
 
-      # -------------------------- 场景3：生成 Spec 对应的测试用例（出错则中断） --------------------------
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
-        # 移除 continue-on-error，出错直接终止
         if: steps.gen-code.outcome == 'success'
         uses: anthropics/claude-code-action-official@v1
         with:
@@ -208,42 +292,34 @@ jobs:
             ### OUTPUT REQUIREMENT
             First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
           claude-args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"  # 允许创建目录/读取现有测试/检测文件类型
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
 
-      # -------------------------- 将生成的代码/测试用例写入文件（出错则中断） --------------------------
       - name: Write Generated Code & Tests to Files
         id: write-files
-        # 移除 continue-on-error，出错直接终止
         env:
           CODE_GEN_RESULT: ${{ steps.gen-code.outputs.review-output }}
           TEST_GEN_RESULT: ${{ steps.gen-test.outputs.review-output }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
         run: |
-          # 验证代码生成结果非空
           if [ -z "$CODE_GEN_RESULT" ]; then
             echo "❌ Empty code generation result, aborting workflow!"
             exit 1
           fi
 
-          # 验证测试生成结果非空
           if [ -z "$TEST_GEN_RESULT" ]; then
             echo "❌ Empty test generation result, aborting workflow!"
             exit 1
           fi
 
-          # 创建生成目录
           mkdir -p "$CODE_GEN_DIR" "$TEST_GEN_DIR"
 
-          # 处理代码生成结果（提取代码内容并写入文件）
           echo "🔧 Extracting generated code..."
           echo "$CODE_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=CODE_GEN_DIR "/" $0; print "Creating code file: " file} else {print >> file}}'
 
-          # 处理测试用例生成结果
           echo "🔧 Extracting generated test cases..."
           echo "$TEST_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=TEST_GEN_DIR "/" $0; print "Creating test file: " file} else {print >> file}}'
 
-          # 验证生成的文件存在
           CODE_FILE_COUNT=$(ls -l "$CODE_GEN_DIR" | grep -v '^total' | wc -l)
           TEST_FILE_COUNT=$(ls -l "$TEST_GEN_DIR" | grep -v '^total' | wc -l)
 
@@ -257,7 +333,6 @@ jobs:
             exit 1
           fi
 
-          # 输出文件统计信息
           echo "✅ Generated $CODE_FILE_COUNT code files in $CODE_GEN_DIR"
           echo "✅ Generated $TEST_FILE_COUNT test files in $TEST_GEN_DIR"
           echo "code_files=$(ls $CODE_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
@@ -265,37 +340,28 @@ jobs:
           echo "code_file_count=$CODE_FILE_COUNT" >> "$GITHUB_OUTPUT"
           echo "test_file_count=$TEST_FILE_COUNT" >> "$GITHUB_OUTPUT"
 
-      # -------------------------- 提交生成的文件到仓库（仅Push事件，出错则中断） --------------------------
       - name: Commit Generated Files
-        if: github.event_name == 'push'  # 仅 Push 事件提交，PR 事件避免冲突
-        # 移除 continue-on-error，出错直接终止
+        if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
-          # 配置 Git 身份
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-          # 添加生成的文件（代码+测试+Spec修复建议文件）
           git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" specs/active/*.fix.*
 
-          # 验证有变更需要提交
           if git diff --cached --quiet; then
             echo "ℹ️ No generated files to commit, skipping commit step."
           else
-            # 提交变更
             git commit -m "SDD: Auto-generate code/tests/spec-fix from changed spec files (${{ github.sha }})"
-            # 推送提交（出错则中断）
             git push origin ${{ github.ref_name }}
             echo "✅ Generated files committed to ${{ github.ref_name }}"
           fi
 
-      # -------------------------- 发布所有结果到 PR/Issue（出错则中断） --------------------------
       - name: Publish All SDD Results
-        # 移除 continue-on-error，出错直接终止
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
@@ -306,10 +372,8 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           SPEC_FILES_LIST: ${{ steps.detect-spec-files.outputs.spec_files_list }}
         run: |
-          # 兜底处理空结果（仅为展示，前面步骤已验证非空）
           SPEC_REVIEW_RESULT=${SPEC_REVIEW_RESULT:-"⚠️ No Spec review result returned."}
-          
-          # 格式化最终结果
+
           FINAL_RESULT="## 📋 SDD Full Lifecycle Result
           - Commit SHA: $COMMIT_SHA
           - Changed Spec Files: $SPEC_FILES_LIST
@@ -326,16 +390,14 @@ jobs:
           ### 3. Test Case Generation Summary
           $TEST_GEN_SUMMARY
 
-          > Notes: 
+          > Notes:
           > - Generated files are committed to the repository (Push event only).
           > - Spec fix suggestions are saved to specs/active/*.fix.* files (original spec files are NOT modified).
           > - Workflow aborts immediately on any step failure (strict mode)."
 
-          # PR 事件：评论到 PR
           if [ "$PR_NUMBER" != "none" ]; then
             gh pr comment "$PR_NUMBER" --body "$FINAL_RESULT"
             echo "✅ SDD results published to PR #$PR_NUMBER comments"
-          # Push 事件：创建专属 Issue
           else
             gh issue create \
               --title "SDD Full Lifecycle: $COMMIT_SHA (Spec: $SPEC_FILES_LIST)" \
@@ -343,3 +405,76 @@ jobs:
               --label "sdd-full-lifecycle,claude-official,auto-gen,strict-mode"
             echo "✅ SDD results published to new Issue"
           fi
+
+  quality:
+    needs: sdd
+    if: needs.sdd.result != 'failure' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1')
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/flomo
+        run: npm install
+
+      - name: Prisma generate
+        working-directory: apps/flomo
+        run: npm run db:generate
+
+      - name: npm audit (critical only)
+        working-directory: apps/flomo
+        run: npm audit --audit-level=critical
+
+      - name: Build
+        working-directory: apps/flomo
+        run: npm run build
+
+      - name: Test (coverage gate)
+        working-directory: apps/flomo
+        run: npm run test:coverage
+
+  release-pr:
+    needs: quality
+    if: needs.quality.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_release_pr == '1')
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install GitHub CLI (gh)
+        run: |
+          if ! command -v gh &> /dev/null; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update && sudo apt install -y gh
+          fi
+
+      - name: Create PR if missing
+        env:
+          BASE: main-new
+          HEAD: feat/lss
+        run: |
+          EXISTING=$(gh pr list --head "$HEAD" --base "$BASE" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "PR already exists: #$EXISTING"
+            exit 0
+          fi
+
+          gh pr create \
+            --base "$BASE" \
+            --head "$HEAD" \
+            --title "${HEAD} -> ${BASE}" \
+            --body "Auto-created release PR from ${HEAD}."

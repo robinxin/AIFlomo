@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [feat/lss, main-new]
   push:
-    branches: [feat/lss, main-new]
+    branches: [main-new]
 
 jobs:
   quality-gate:
