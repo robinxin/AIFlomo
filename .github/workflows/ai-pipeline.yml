@@ -33,11 +33,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Detect changed spec files
         id: detect
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
             files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ || true)
           else
             files=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' || true)
