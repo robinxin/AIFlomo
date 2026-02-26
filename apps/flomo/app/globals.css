@@ -409,6 +409,26 @@ a {
   cursor: not-allowed;
 }
 
+.composer-images {
+  display: flex;
+  gap: 8px;
+  padding: 4px 16px 8px;
+  flex-wrap: wrap;
+}
+
+.composer-image-preview {
+  max-width: 120px;
+  max-height: 90px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.composer-uploading {
+  padding: 4px 16px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .composer-error {
   padding: 4px 16px 8px;
   color: #e57373;
@@ -502,6 +522,15 @@ a {
   color: #ccc;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.note-image {
+  display: block;
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  margin: 8px 0;
+  object-fit: contain;
 }
 
 .note-tags {

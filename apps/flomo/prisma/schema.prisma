@@ -10,8 +10,8 @@ datasource db {
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
-  nickname     String    @default("")
   passwordHash String
+  nickname     String?
   createdAt    DateTime  @default(now())
   notes        Note[]
   sessions     Session[]

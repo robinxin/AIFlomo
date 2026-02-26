@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Note = {
   id: string;
@@ -36,12 +36,49 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
   const [trashNotes, setTrashNotes] = useState<Note[]>([]);
+  const [noTagNotes, setNoTagNotes] = useState<Note[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (res.ok && data.url) {
+      setContent((prev) => prev + (prev ? '\n' : '') + `![](${data.url})`);
+    } else {
+      setError(data.error ?? '图片上传失败');
+    }
+
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const filteredNotes = useMemo(() => {
     let filtered = notes;
 
     if (navFilter === 'no-tag') {
-      filtered = filtered.filter((n) => n.tags.length === 0);
+      return noTagNotes.filter((note) => {
+        const matchesTag = selectedTag
+          ? note.tags.some((tag) => tag.name === selectedTag)
+          : true;
+        const matchesQuery = query
+          ? note.content.toLowerCase().includes(query.toLowerCase()) ||
+            (note.title ?? '').toLowerCase().includes(query.toLowerCase())
+          : true;
+        return matchesTag && matchesQuery;
+      });
+    } else if (navFilter === 'has-image') {
+      filtered = filtered.filter((n) =>
+        /!\[.*?\]\(.*?\)/.test(n.content)
+      );
     } else if (navFilter === 'has-link') {
       filtered = filtered.filter((n) =>
         /https?:\/\//.test(n.content) || /https?:\/\//.test(n.title ?? '')
@@ -64,6 +101,8 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
   const displayedNotes = showTrash ? trashNotes : filteredNotes;
 
   const noteCount = notes.length;
+  const noTagCount = noTagNotes.length;
+  const imageCount = useMemo(() => notes.filter((n) => /!\[.*?\]\(.*?\)/.test(n.content)).length, [notes]);
   const tagCount = tags.length;
   const dayCount = useMemo(() => {
     const days = new Set(notes.map((n) => n.createdAt.slice(0, 10)));
@@ -96,6 +135,13 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
     setNotes(data.notes ?? []);
   };
 
+  const loadNoTagNotes = async () => {
+    const res = await fetch('/api/notes?type=notag');
+    if (!res.ok) return;
+    const data = await res.json();
+    setNoTagNotes(data.notes ?? []);
+  };
+
   const loadTags = async () => {
     const res = await fetch('/api/tags');
     if (!res.ok) return;
@@ -106,6 +152,8 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
   useEffect(() => {
     loadNotes();
     loadTags();
+    loadTrash();
+    loadNoTagNotes();
   }, []);
 
   const handleCreate = async () => {
@@ -269,13 +317,15 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
           </button>
           {navExpanded && (
             <div className="nav-children">
-              <button className={`nav-item${navFilter === 'no-tag' ? ' active' : ''}`} onClick={() => { setNavFilter('no-tag'); setSelectedTag(''); }}>
+              <button className={`nav-item${navFilter === 'no-tag' ? ' active' : ''}`} onClick={() => { setNavFilter('no-tag'); setSelectedTag(''); setShowTrash(false); loadNoTagNotes(); }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/><line x1="2" y1="22" x2="22" y2="2" strokeDasharray="4 3"/></svg>
                 无标签
+                {noTagCount > 0 && <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: '0.75rem' }}>{noTagCount}</span>}
               </button>
-              <button className={`nav-item${navFilter === 'has-image' ? ' active' : ''}`} onClick={() => { setNavFilter('has-image'); setSelectedTag(''); }}>
+              <button className={`nav-item${navFilter === 'has-image' ? ' active' : ''}`} onClick={() => { setNavFilter('has-image'); setSelectedTag(''); setShowTrash(false); }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                 有图片
+                {imageCount > 0 && <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: '0.75rem' }}>{imageCount}</span>}
               </button>
               <button className={`nav-item${navFilter === 'has-link' ? ' active' : ''}`} onClick={() => { setNavFilter('has-link'); setSelectedTag(''); }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
@@ -358,6 +408,17 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
                 onKeyDown={handleKeyDown}
               />
             </div>
+            {(() => {
+              const imgs = [...content.matchAll(/!\[.*?\]\((.*?)\)/g)].map((m) => m[1]);
+              return imgs.length > 0 ? (
+                <div className="composer-images">
+                  {imgs.map((url, i) => (
+                    <img key={i} src={url} alt="" className="composer-image-preview" />
+                  ))}
+                </div>
+              ) : null;
+            })()}
+            {uploading && <div className="composer-uploading">图片上传中...</div>}
             <div className="composer-tags">
               <input
                 type="text"
@@ -372,9 +433,10 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
                 <button className="toolbar-btn" title="标签">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
                 </button>
-                <button className="toolbar-btn" title="图片">
+                <button className="toolbar-btn" title="图片" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                 </button>
+                <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
                 <div className="toolbar-divider" />
                 <button className="toolbar-btn" title="文字大小">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
@@ -479,7 +541,13 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
                       </div>
                     </div>
                     {note.title && <div className="note-title">{note.title}</div>}
-                    <div className="note-content">{note.content}</div>
+                    <div className="note-content">
+                      {note.content.split(/(\!\[.*?\]\(.*?\))/).map((part, i) => {
+                        const m = part.match(/^\!\[.*?\]\((.*?)\)$/);
+                        if (m) return <img key={i} src={m[1]} alt="" className="note-image" />;
+                        return part ? <span key={i}>{part}</span> : null;
+                      })}
+                    </div>
                     {note.tags.length > 0 && (
                       <div className="note-tags">
                         {note.tags.map((tag) => (

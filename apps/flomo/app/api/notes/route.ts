@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { getSessionUserFromRequest } from '../../../lib/auth';
 import { normalizeTags } from '../../../lib/validators';
@@ -9,8 +10,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '未授权' }, { status: 401 });
   }
 
+  const type = req.nextUrl.searchParams.get('type');
+
+  const where: Prisma.NoteWhereInput = { userId: user.id, deletedAt: null };
+  if (type === 'notag') {
+    where.tags = { none: {} };
+  }
+
   const notes = await prisma.note.findMany({
-    where: { userId: user.id, deletedAt: null },
+    where,
     orderBy: { createdAt: 'desc' },
     include: {
       tags: { include: { tag: true } },
