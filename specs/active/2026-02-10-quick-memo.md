@@ -255,5 +255,6 @@ GET /api/v1/memos?limit=20&cursor=2026-02-10T14:30:12.000Z
 - [ ] API 符合 Spec
 - [ ] 构建成功
 - [ ] 基础用例通过（空输入、超长、标签解析、分页）
+<!-- pipeline-trigger: 2026-02-26 -->
 
 <!-- pipeline-check: trigger CI workflows (v3) -->
