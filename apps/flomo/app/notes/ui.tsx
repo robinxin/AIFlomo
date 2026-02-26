@@ -38,6 +38,7 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
   const [trashNotes, setTrashNotes] = useState<Note[]>([]);
   const [noTagNotes, setNoTagNotes] = useState<Note[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [showProModal, setShowProModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleInsertLink = () => {
@@ -349,15 +350,19 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
 
           <div className="nav-divider" />
 
-          <button className="nav-item">
+          <button className="nav-item" onClick={() => setShowProModal(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            微信输入
+          </button>
+          <button className="nav-item" onClick={() => setShowProModal(true)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
             每日回顾
           </button>
-          <button className="nav-item">
+          <button className="nav-item" onClick={() => setShowProModal(true)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             AI 洞察
           </button>
-          <button className="nav-item">
+          <button className="nav-item" onClick={() => setShowProModal(true)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
             随机漫步
           </button>
@@ -578,6 +583,39 @@ export default function NotesApp({ userEmail, userNickname }: Props) {
           </div>
         </div>
       </div>
+
+      {/* PRO Modal */}
+      {showProModal && (
+        <div className="pro-modal-overlay" onClick={() => setShowProModal(false)}>
+          <div className="pro-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pro-modal-header">
+              <button className="pro-modal-close" onClick={() => setShowProModal(false)}>&times;</button>
+            </div>
+            <div className="pro-modal-body">
+              <h2 className="pro-modal-heading">让过往的记录，重新焕发价值</h2>
+              <p className="pro-modal-desc">手机/平板/电脑全平台同步 · 桌面小组件随时回顾 · 提醒推送培养回顾习惯</p>
+              <div className="pro-modal-devices">
+                <svg width="200" height="140" viewBox="0 0 200 140" fill="none">
+                  <rect x="10" y="10" width="120" height="80" rx="6" stroke="#555" strokeWidth="1.5" fill="#1a1a1a"/>
+                  <rect x="15" y="15" width="110" height="65" rx="2" fill="#2c2c2c"/>
+                  <rect x="50" y="90" width="40" height="5" rx="2" fill="#555"/>
+                  <rect x="130" y="30" width="50" height="80" rx="6" stroke="#555" strokeWidth="1.5" fill="#1a1a1a"/>
+                  <rect x="134" y="38" width="42" height="64" rx="2" fill="#2c2c2c"/>
+                  <rect x="20" y="20" width="50" height="6" rx="1" fill="var(--accent)"/>
+                  <rect x="20" y="30" width="100" height="3" rx="1" fill="#444"/>
+                  <rect x="20" y="36" width="80" height="3" rx="1" fill="#444"/>
+                  <rect x="20" y="42" width="90" height="3" rx="1" fill="#444"/>
+                  <rect x="139" y="43" width="32" height="3" rx="1" fill="var(--accent)"/>
+                  <rect x="139" y="50" width="32" height="2" rx="1" fill="#444"/>
+                  <rect x="139" y="55" width="28" height="2" rx="1" fill="#444"/>
+                </svg>
+              </div>
+              <button className="pro-modal-btn">开通 PRO 会员解锁</button>
+              <a className="pro-modal-invite" href="#">邀请好友，免费获得 PRO 会员</a>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
