@@ -3,15 +3,17 @@ on:
   push:
     branches: [develop]
     paths:
-      - 'spec/**/*'  # 仅监听规格文档变更
-      - 'src/**/*'   # 监听代码目录
-      - 'tests/**/*' # 监听测试用例目录
+      - 'specs/active/**/*'      # 仅监听规格文档变更
+      - 'apps/flomo/app/**/*'    # 监听代码目录
+      - 'apps/flomo/lib/**/*'    # 监听代码目录
+      - 'apps/flomo/tests/**/*'  # 监听测试用例目录
   pull_request:
     branches: [develop]
     paths:
-      - 'spec/**/*'
-      - 'src/**/*'
-      - 'tests/**/*'
+      - 'specs/active/**/*'
+      - 'apps/flomo/app/**/*'
+      - 'apps/flomo/lib/**/*'
+      - 'apps/flomo/tests/**/*'
 
 jobs:
   sdd-full-lifecycle:
@@ -21,8 +23,8 @@ jobs:
       pull-requests: write
       issues: write
     env:
-      CODE_GEN_DIR: 'src/'        # 自动生成代码的目录
-      TEST_GEN_DIR: 'tests/'      # 自动生成测试用例的目录
+      CODE_GEN_DIR: 'apps/flomo/app/'    # 自动生成代码的目录
+      TEST_GEN_DIR: 'apps/flomo/tests/'  # 自动生成测试用例的目录
     steps:
       # 步骤1：检出代码（包含 Spec、源码、测试目录）
       - name: Checkout code & spec
@@ -41,18 +43,18 @@ jobs:
           # 区分 Push/PR 事件，提取变更的 Spec 文件
           if [ "${{ github.event_name }}" = "push" ]; then
             # Push 事件：通过 git diff 获取本次提交变更的文件
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '^spec/.*\.\(md\|yaml\|yml\|json\)$')
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             # PR 事件：通过 GitHub API 获取变更文件
-            CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep '^spec/.*\.\(md\|yaml\|yml\|json\)$')
+            CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           fi
 
           # 去重并过滤有效 Spec 文件（仅保留 md/yaml/yml/json）
-          CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^spec/.*\.(md|yaml|yml|json)$')
+          CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^specs/active/.*\.(md|yaml|yml|json)$')
 
           # 关键：无变更的 Spec 文件则直接中断流程
           if [ -z "$CHANGED_SPEC_FILES" ]; then
-            echo "❌ No changed spec files found in spec/**/*, aborting workflow!"
+            echo "❌ No changed spec files found in specs/active/**/*, aborting workflow!"
             exit 1
           fi
 
@@ -82,7 +84,7 @@ jobs:
       - name: Step 1 - Review Spec Rationality
         id: review-spec
         # 移除 continue-on-error，出错直接终止
-        if: contains(github.event.paths, 'spec/**/*')
+        if: steps.detect-spec-files.outputs.changed_spec_files != ''
         uses: anthropics/claude-code-action-official@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -113,7 +115,7 @@ jobs:
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
         # 移除 continue-on-error，出错直接终止
-        if: steps.review-spec.outcome == 'success' && contains(github.event.paths, 'spec/**/*')
+        if: steps.review-spec.outcome == 'success'
         env:
           SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
@@ -144,14 +146,14 @@ jobs:
           done
 
           # 输出建议文件列表供后续使用
-          FIX_FILES=$(ls spec/*.fix.* 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+          FIX_FILES=$(ls specs/active/*.fix.* 2>/dev/null | tr '\n' ',' | sed 's/,$//')
           echo "spec_fix_files=$FIX_FILES" >> "$GITHUB_OUTPUT"
 
       # -------------------------- 场景2：根据 Spec 生成代码（出错则中断） --------------------------
       - name: Step 2 - Generate Code from Spec
         id: gen-code
         # 移除 continue-on-error，出错直接终止
-        if: steps.review-spec.outcome == 'success' && contains(github.event.paths, 'spec/**/*')
+        if: steps.review-spec.outcome == 'success'
         uses: anthropics/claude-code-action-official@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -282,7 +284,7 @@ jobs:
           git config --global user.email "actions@github.com"
 
           # 添加生成的文件（代码+测试+Spec修复建议文件）
-          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" spec/*.fix.*
+          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" specs/active/*.fix.*
 
           # 验证有变更需要提交
           if git diff --cached --quiet; then
@@ -330,7 +332,7 @@ jobs:
 
           > Notes: 
           > - Generated files are committed to the repository (Push event only).
-          > - Spec fix suggestions are saved to spec/*.fix.* files (original spec files are NOT modified).
+          > - Spec fix suggestions are saved to specs/active/*.fix.* files (original spec files are NOT modified).
           > - Workflow aborts immediately on any step failure (strict mode)."
 
           # PR 事件：评论到 PR
