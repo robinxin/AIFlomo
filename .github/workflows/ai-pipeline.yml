@@ -115,7 +115,10 @@ jobs:
 
   sdd:
     needs: detect
-    if: ${{ needs.detect.outputs.spec_changed == 'true' && (github.event_name != 'push' || (contains(github.event.head_commit.message, 'SDD: Auto-generate') == false)) && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
+    if: >-
+      ${{ needs.detect.outputs.spec_changed == 'true'
+          && (github.event_name != 'push' || (contains(github.event.head_commit.message, 'SDD: Auto-generate') == false))
+          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
