@@ -2,7 +2,7 @@ name: Quality & Security Gate
 
 on:
   pull_request:
-    branches: [feat/lss, main-new, workflow-jl]
+    branches: [workflow-jl, main-new]
   push:
     branches: [main-new, workflow-jl]
 
