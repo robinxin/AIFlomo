@@ -1,60 +1,61 @@
 name: SDD - Claude Full Lifecycle (Spec Review + Code Gen + Test Gen)
 on:
+  push:
+    branches: [workflow-jl, main]
+    paths:
+      - 'specs/active/**'
   workflow_dispatch:
 
 jobs:
   sdd-full-lifecycle:
     runs-on: [self-hosted, ai-runner]
     permissions:
-      contents: write  # 允许写入生成的代码/测试用例/Spec建议文件
+      contents: write
       pull-requests: write
       issues: write
     env:
-      CODE_GEN_DIR: 'apps/flomo/app/'    # 自动生成代码的目录
-      TEST_GEN_DIR: 'apps/flomo/tests/'  # 自动生成测试用例的目录
+      CODE_GEN_DIR: 'apps/flomo/app/'
+      TEST_GEN_DIR: 'apps/flomo/tests/'
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
     steps:
-      # 步骤1：检出代码（包含 Spec、源码、测试目录）
       - name: Checkout code & spec
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # 确保能提交代码
+          fetch-depth: 0
 
       - name: Install GitHub CLI (gh)
         run: |
-          # 适配 Ubuntu 自托管 Runner，其他系统需调整
           if ! command -v gh &> /dev/null; then
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
             sudo apt update && sudo apt install -y gh
           fi
 
-      # -------------------------- 核心：动态识别变更的 Spec 文件（无兜底，不存在则中断） --------------------------
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # -------------------------- 核心：动态识别变更的 Spec 文件 --------------------------
       - name: Detect Changed Spec Files
         id: detect-spec-files
         run: |
-          # 初始化变量
           CHANGED_SPEC_FILES=""
           SPEC_CONTENT=""
 
-          # 区分 Push/PR 事件，提取变更的 Spec 文件
           if [ "${{ github.event_name }}" = "push" ]; then
-            # Push 事件：通过 git diff 获取本次提交变更的文件
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            # PR 事件：通过 GitHub API 获取变更文件
-            CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$' || true)
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # workflow_dispatch: 使用所有 specs/active 下的文件
+            CHANGED_FILES=$(find specs/active -type f \( -name '*.md' -o -name '*.yaml' -o -name '*.yml' -o -name '*.json' \) | grep -v '\.fix\.' || true)
           fi
 
-          # 去重并过滤有效 Spec 文件（仅保留 md/yaml/yml/json）
-          CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^specs/active/.*\.(md|yaml|yml|json)$')
+          CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^specs/active/.*\.(md|yaml|yml|json)$' || true)
 
-          # 关键：无变更的 Spec 文件则直接中断流程
           if [ -z "$CHANGED_SPEC_FILES" ]; then
             echo "❌ No changed spec files found in specs/active/**/*, aborting workflow!"
             exit 1
           fi
 
-          # 验证所有变更的 Spec 文件是否存在（不存在则中断）
           for FILE in $CHANGED_SPEC_FILES; do
             if [ ! -f "$FILE" ]; then
               echo "❌ Spec file $FILE not found, aborting workflow!"
@@ -62,254 +63,161 @@ jobs:
             fi
           done
 
-          # 读取所有变更 Spec 文件的内容并合并
           for FILE in $CHANGED_SPEC_FILES; do
             echo "📄 Reading spec file: $FILE"
-            # 转义特殊字符，添加文件标识（方便 Claude 区分不同文件）
-            FILE_CONTENT=$(cat "$FILE" | awk '{gsub(/"/, "\\\""); print}' | tr '\n' '\\n')
-            SPEC_CONTENT+="### Spec File: $FILE\n$FILE_CONTENT\n\n"
           done
 
-          # 输出到 step 变量（供后续步骤使用）
-          echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
-          echo "spec_content=$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
-          # 输出文件列表（逗号分隔，供结果展示）
+          echo "changed_spec_files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
-      # -------------------------- 场景1：审查 Spec 合理性（出错则中断） --------------------------
+      # -------------------------- 场景1：审查 Spec 合理性 --------------------------
       - name: Step 1 - Review Spec Rationality
         id: review-spec
-        # 移除 continue-on-error，出错直接终止
         if: steps.detect-spec-files.outputs.changed_spec_files != ''
-        uses: anthropics/claude-code-action-official@v1
-        with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
-          model: claude-sonnet-4-5-20250929
-          prompt: |
-            ### CHANGED SPEC FILES
-            ${{ steps.detect-spec-files.outputs.spec_files_list }}
+        run: |
+          # 构建 prompt，将 spec 文件内容嵌入
+          SPEC_CONTENT=""
+          for FILE in ${{ steps.detect-spec-files.outputs.spec_files_list }}; do
+            FILE_PATH=$(echo "$FILE" | tr ',' ' ')
+          done
 
-            ### SPECIFICATION CONTENT (Combined)
-            ${{ steps.detect-spec-files.outputs.spec_content }}
+          PROMPT="### CHANGED SPEC FILES
+          ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
-            ### TASK: Spec Rationality Review
-            Analyze the above changed spec files for SDD (Specification-Driven Development) and output:
-            1. **Completeness**: List missing parts for EACH changed file (e.g., "api_spec.md: no input/output definition for User API")
-            2. **Ambiguity**: Highlight vague descriptions for EACH changed file (e.g., "db_spec.yml: 'fast query' without response time metrics")
-            3. **Logical Conflicts**: Point out contradictory rules BETWEEN changed files (if multiple)
-            4. **Improvement Suggestions**: Specific, actionable changes to make each spec clear/complete
+          ### TASK: Spec Rationality Review
+          Read the spec files listed above from the repository, then analyze them for SDD and output:
+          1. **Completeness**: List missing parts for EACH file
+          2. **Ambiguity**: Highlight vague descriptions for EACH file
+          3. **Logical Conflicts**: Point out contradictory rules BETWEEN files
+          4. **Improvement Suggestions**: Specific, actionable changes
 
-            ### RULES
-            - Be objective and specific (avoid vague comments)
-            - Prioritize critical issues (e.g., missing core function definitions)
-            - Clearly link all issues to the corresponding spec file name
-            - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
-          claude-args: "--allowedTools ''"  # 无需代码工具，仅分析文本
+          ### RULES
+          - Be objective and specific
+          - Prioritize critical issues
+          - Clearly link all issues to the corresponding spec file name
+          - If spec has fatal flaws, explicitly mark as CRITICAL"
 
-      # -------------------------- 生成 Spec 修复建议文件（出错则中断） --------------------------
+          RESULT=$(claude --print --model claude-sonnet-4-5-20250929 --allowedTools "Read" "$PROMPT")
+
+          echo "review_result<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESULT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      # -------------------------- 生成 Spec 修复建议文件 --------------------------
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
-        # 移除 continue-on-error，出错直接终止
         if: steps.review-spec.outcome == 'success'
         env:
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
+          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review_result }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
-          # 验证审查结果非空（为空则中断）
           if [ -z "$SPEC_REVIEW_RESULT" ]; then
             echo "❌ Empty Spec review result, aborting workflow!"
             exit 1
           fi
 
-          # 为每个变更的 Spec 文件生成对应的修复建议文件
           for FILE in $CHANGED_SPEC_FILES; do
-            # 适配不同文件格式的修复建议文件名
             case "$FILE" in
               *.md) FIX_FILE="${FILE%.md}.fix.md" ;;
               *.yaml|*.yml) FIX_FILE="${FILE%.*}.fix.yml" ;;
               *.json) FIX_FILE="${FILE%.json}.fix.json" ;;
               *) FIX_FILE="$FILE.fix" ;;
             esac
-            
-            # 写入修复建议
+
             echo "# Spec Fix Suggestion: $FILE" > "$FIX_FILE"
             echo "## Generated at: $(date)" >> "$FIX_FILE"
             echo "## Review Result for $FILE" >> "$FIX_FILE"
             echo -e "\n$SPEC_REVIEW_RESULT" >> "$FIX_FILE"
-            
+
             echo "✅ Fix suggestion file created: $FIX_FILE"
           done
 
-          # 输出建议文件列表供后续使用
           FIX_FILES=$(ls specs/active/*.fix.* 2>/dev/null | tr '\n' ',' | sed 's/,$//')
           echo "spec_fix_files=$FIX_FILES" >> "$GITHUB_OUTPUT"
 
-      # -------------------------- 场景2：根据 Spec 生成代码（出错则中断） --------------------------
+      # -------------------------- 场景2：根据 Spec 生成代码 --------------------------
       - name: Step 2 - Generate Code from Spec
         id: gen-code
-        # 移除 continue-on-error，出错直接终止
         if: steps.review-spec.outcome == 'success'
-        uses: anthropics/claude-code-action-official@v1
-        with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
-          model: claude-sonnet-4-5-20250929
-          prompt: |
-            ### CHANGED SPEC FILES
-            ${{ steps.detect-spec-files.outputs.spec_files_list }}
+        run: |
+          PROMPT="### CHANGED SPEC FILES
+          ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
-            ### COMBINED SPEC CONTENT
-            ${{ steps.detect-spec-files.outputs.spec_content }}
+          ### TASK: Generate Code from Spec (SDD)
+          Read the spec files listed above from the repository, then generate production-ready code:
+          1. Save code to directory: ${{ env.CODE_GEN_DIR }} (create subdirectories if needed)
+          2. Use the same programming language as existing code in apps/flomo/app/
+          3. Follow the spec's interface/parameter/return value rules strictly
+          4. Add clear comments linking code to specific spec files/sections
+          5. Generate only the code defined in the spec
+          6. Ensure consistency across code generated from multiple spec files"
 
-            ### TASK: Generate Code from Spec (SDD)
-            Generate production-ready code based on ALL changed spec files, following these strict rules:
-            1. Save code to directory: ${{ env.CODE_GEN_DIR }} (create subdirectories if needed to map to spec files)
-            2. Use the same programming language as existing code in apps/flomo/app/ (detect automatically from file extensions)
-            3. Follow the spec's interface/parameter/return value rules strictly (no deviations)
-            4. Add clear comments linking code to specific spec files/sections (e.g., "# From api_spec.md: User API Endpoint - Input Validation")
-            5. Generate only the code defined in the spec (no extra functionality or debug code)
-            6. Ensure consistency across code generated from multiple spec files
+          RESULT=$(claude --print --model claude-sonnet-4-5-20250929 \
+            --allowedTools "Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)" \
+            "$PROMPT")
 
-            ### OUTPUT REQUIREMENT
-            First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude-args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"  # 允许创建目录/读取现有代码/检测文件类型
+          echo "code_result<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESULT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-      # -------------------------- 场景3：生成 Spec 对应的测试用例（出错则中断） --------------------------
+      # -------------------------- 场景3：生成测试用例 --------------------------
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
-        # 移除 continue-on-error，出错直接终止
         if: steps.gen-code.outcome == 'success'
-        uses: anthropics/claude-code-action-official@v1
-        with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
-          model: claude-sonnet-4-5-20250929
-          prompt: |
-            ### CHANGED SPEC FILES
-            ${{ steps.detect-spec-files.outputs.spec_files_list }}
-
-            ### COMBINED SPEC CONTENT
-            ${{ steps.detect-spec-files.outputs.spec_content }}
-
-            ### GENERATED CODE SUMMARY
-            ${{ steps.gen-code.outputs.review-output }}
-
-            ### TASK: Generate Test Cases from Spec (SDD)
-            Generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
-            1. Save test cases to directory: ${{ env.TEST_GEN_DIR }} (mirror the directory structure of generated code)
-            2. Align test framework with existing tests in apps/flomo/tests/ (detect automatically from file extensions)
-            3. Cover ALL functions/rules defined in the spec (include positive, negative, and edge cases)
-            4. Link each test case to the corresponding spec file/section (e.g., "# Test for db_spec.yml: User Table - Unique Constraint")
-            5. Ensure test cases are fully runnable (valid syntax, correct imports, no missing dependencies)
-            6. Include assertions that validate compliance with spec requirements (not just code functionality)
-
-            ### OUTPUT REQUIREMENT
-            First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude-args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"  # 允许创建目录/读取现有测试/检测文件类型
-
-      # -------------------------- 将生成的代码/测试用例写入文件（出错则中断） --------------------------
-      - name: Write Generated Code & Tests to Files
-        id: write-files
-        # 移除 continue-on-error，出错直接终止
-        env:
-          CODE_GEN_RESULT: ${{ steps.gen-code.outputs.review-output }}
-          TEST_GEN_RESULT: ${{ steps.gen-test.outputs.review-output }}
-          CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
-          TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
         run: |
-          # 验证代码生成结果非空
-          if [ -z "$CODE_GEN_RESULT" ]; then
-            echo "❌ Empty code generation result, aborting workflow!"
-            exit 1
-          fi
+          PROMPT="### CHANGED SPEC FILES
+          ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
-          # 验证测试生成结果非空
-          if [ -z "$TEST_GEN_RESULT" ]; then
-            echo "❌ Empty test generation result, aborting workflow!"
-            exit 1
-          fi
+          ### TASK: Generate Test Cases from Spec (SDD)
+          Read the spec files listed above and the generated code in ${{ env.CODE_GEN_DIR }}, then generate test cases:
+          1. Save test cases to directory: ${{ env.TEST_GEN_DIR }}
+          2. Align test framework with existing tests in apps/flomo/tests/
+          3. Cover ALL functions/rules defined in the spec (positive, negative, edge cases)
+          4. Link each test case to the corresponding spec file/section
+          5. Ensure test cases are fully runnable
+          6. Include assertions that validate compliance with spec requirements"
 
-          # 创建生成目录
-          mkdir -p "$CODE_GEN_DIR" "$TEST_GEN_DIR"
+          RESULT=$(claude --print --model claude-sonnet-4-5-20250929 \
+            --allowedTools "Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)" \
+            "$PROMPT")
 
-          # 处理代码生成结果（提取代码内容并写入文件）
-          echo "🔧 Extracting generated code..."
-          echo "$CODE_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=CODE_GEN_DIR "/" $0; print "Creating code file: " file} else {print >> file}}'
+          echo "test_result<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESULT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-          # 处理测试用例生成结果
-          echo "🔧 Extracting generated test cases..."
-          echo "$TEST_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=TEST_GEN_DIR "/" $0; print "Creating test file: " file} else {print >> file}}'
-
-          # 验证生成的文件存在
-          CODE_FILE_COUNT=$(ls -l "$CODE_GEN_DIR" | grep -v '^total' | wc -l)
-          TEST_FILE_COUNT=$(ls -l "$TEST_GEN_DIR" | grep -v '^total' | wc -l)
-
-          if [ "$CODE_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No code files generated, aborting workflow!"
-            exit 1
-          fi
-
-          if [ "$TEST_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No test files generated, aborting workflow!"
-            exit 1
-          fi
-
-          # 输出文件统计信息
-          echo "✅ Generated $CODE_FILE_COUNT code files in $CODE_GEN_DIR"
-          echo "✅ Generated $TEST_FILE_COUNT test files in $TEST_GEN_DIR"
-          echo "code_files=$(ls $CODE_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
-          echo "test_files=$(ls $TEST_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
-          echo "code_file_count=$CODE_FILE_COUNT" >> "$GITHUB_OUTPUT"
-          echo "test_file_count=$TEST_FILE_COUNT" >> "$GITHUB_OUTPUT"
-
-      # -------------------------- 提交生成的文件到仓库（仅Push事件，出错则中断） --------------------------
+      # -------------------------- 提交生成的文件 --------------------------
       - name: Commit Generated Files
-        if: github.event_name == 'push'  # 仅 Push 事件提交，PR 事件避免冲突
-        # 移除 continue-on-error，出错直接终止
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
-          TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
-          CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
-          # 配置 Git 身份
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-          # 添加生成的文件（代码+测试+Spec修复建议文件）
-          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" specs/active/*.fix.*
+          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" specs/active/*.fix.* 2>/dev/null || true
 
-          # 验证有变更需要提交
           if git diff --cached --quiet; then
             echo "ℹ️ No generated files to commit, skipping commit step."
           else
-            # 提交变更
             git commit -m "SDD: Auto-generate code/tests/spec-fix from changed spec files (${{ github.sha }})"
-            # 推送提交（出错则中断）
             git push origin ${{ github.ref_name }}
             echo "✅ Generated files committed to ${{ github.ref_name }}"
           fi
 
-      # -------------------------- 发布所有结果到 PR/Issue（出错则中断） --------------------------
+      # -------------------------- 发布结果到 Issue --------------------------
       - name: Publish All SDD Results
-        # 移除 continue-on-error，出错直接终止
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
+          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review_result }}
           SPEC_FIX_FILES: ${{ steps.gen-spec-fix.outputs.spec_fix_files || 'None' }}
-          CODE_GEN_SUMMARY: "Generated files: ${{ steps.write-files.outputs.code_files }} (Total: ${{ steps.write-files.outputs.code_file_count }})"
-          TEST_GEN_SUMMARY: "Generated test files: ${{ steps.write-files.outputs.test_files }} (Total: ${{ steps.write-files.outputs.test_file_count }})"
-          PR_NUMBER: ${{ github.event.pull_request.number || 'none' }}
+          CODE_RESULT: ${{ steps.gen-code.outputs.code_result }}
+          TEST_RESULT: ${{ steps.gen-test.outputs.test_result }}
           COMMIT_SHA: ${{ github.sha }}
           SPEC_FILES_LIST: ${{ steps.detect-spec-files.outputs.spec_files_list }}
         run: |
-          # 兜底处理空结果（仅为展示，前面步骤已验证非空）
           SPEC_REVIEW_RESULT=${SPEC_REVIEW_RESULT:-"⚠️ No Spec review result returned."}
-          
-          # 格式化最终结果
+
           FINAL_RESULT="## 📋 SDD Full Lifecycle Result
           - Commit SHA: $COMMIT_SHA
           - Changed Spec Files: $SPEC_FILES_LIST
@@ -321,25 +229,18 @@ jobs:
           $SPEC_REVIEW_RESULT
 
           ### 2. Code Generation Summary
-          $CODE_GEN_SUMMARY
+          $CODE_RESULT
 
           ### 3. Test Case Generation Summary
-          $TEST_GEN_SUMMARY
+          $TEST_RESULT
 
-          > Notes: 
-          > - Generated files are committed to the repository (Push event only).
-          > - Spec fix suggestions are saved to specs/active/*.fix.* files (original spec files are NOT modified).
+          > Notes:
+          > - Generated files are committed to the repository.
+          > - Spec fix suggestions are saved to specs/active/*.fix.* files.
           > - Workflow aborts immediately on any step failure (strict mode)."
 
-          # PR 事件：评论到 PR
-          if [ "$PR_NUMBER" != "none" ]; then
-            gh pr comment "$PR_NUMBER" --body "$FINAL_RESULT"
-            echo "✅ SDD results published to PR #$PR_NUMBER comments"
-          # Push 事件：创建专属 Issue
-          else
-            gh issue create \
-              --title "SDD Full Lifecycle: $COMMIT_SHA (Spec: $SPEC_FILES_LIST)" \
-              --body "$FINAL_RESULT" \
-              --label "sdd-full-lifecycle,claude-official,auto-gen,strict-mode"
-            echo "✅ SDD results published to new Issue"
-          fi
+          gh issue create \
+            --title "SDD Full Lifecycle: $COMMIT_SHA (Spec: $SPEC_FILES_LIST)" \
+            --body "$FINAL_RESULT" \
+            --label "sdd-full-lifecycle,claude-official,auto-gen,strict-mode"
+          echo "✅ SDD results published to new Issue"
