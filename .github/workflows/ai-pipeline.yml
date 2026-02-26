@@ -120,7 +120,7 @@ jobs:
 
       - name: Step 1 - Review Spec Rationality
         id: review-spec
-        uses: anthropics/claude-code-action-official@v1
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
@@ -180,7 +180,7 @@ jobs:
       - name: Step 2 - Generate Code from Spec
         id: gen-code
         if: steps.review-spec.outcome == 'success'
-        uses: anthropics/claude-code-action-official@v1
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
@@ -209,7 +209,7 @@ jobs:
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
         if: steps.gen-code.outcome == 'success'
-        uses: anthropics/claude-code-action-official@v1
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
