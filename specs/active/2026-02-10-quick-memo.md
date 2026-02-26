@@ -141,4 +141,4 @@ CREATE TABLE memo_tags (
 - [ ] API 符合 Spec
 - [ ] 构建成功
 
-<!-- pipeline-check: trigger CI workflows -->
+<!-- pipeline-check: trigger CI workflows (v2) -->
