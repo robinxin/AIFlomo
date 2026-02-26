@@ -1,53 +1,36 @@
-name: Deploy to Self-Hosted Server
+name: Deploy to Local Self-Hosted Runner
 
 on:
   workflow_run:
     workflows: ["Quality & Security Gate"]
     branches: [main-new]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_migrate:
+        description: 'Run prisma migrate (1=yes, 0=no)'
+        default: '1'
+        required: true
 
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
-    env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-      DEPLOY_COMMAND: ${{ secrets.DEPLOY_COMMAND }}
     steps:
-      - name: Validate deploy secrets
-        run: |
-          missing=0
-          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_COMMAND; do
-            if [ -z "${!var}" ]; then
-              echo "Missing secret: $var"
-              missing=1
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then
-            echo "Deploy workflow requires DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_COMMAND."
-            exit 1
-          fi
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          {
-            echo "Host deploy"
-            echo "  HostName $DEPLOY_HOST"
-            echo "  User $DEPLOY_USER"
-            echo "  Port ${DEPLOY_PORT:-22}"
-            echo "  IdentityFile ~/.ssh/id_deploy"
-            echo "  StrictHostKeyChecking no"
-          } > ~/.ssh/config
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/flomo/package-lock.json
 
-      - name: Run deploy command
+      - name: Deploy locally
+        env:
+          RUN_MIGRATE: ${{ github.event.inputs.run_migrate || '1' }}
         run: |
-          echo "Running deploy command on $DEPLOY_HOST..."
-          ssh deploy "$DEPLOY_COMMAND"
+          bash apps/flomo/scripts/deploy-local.sh
