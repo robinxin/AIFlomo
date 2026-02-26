@@ -2,10 +2,10 @@ name: Claude Codereview
 # 1. 触发器：监听 pr 事件和 push 事件
 on:
   pull_request:
-    branches: [feat/lss]
+    branches: [main, feat/lss]
     types: [opened, synchronize, reopened]
   push:
-    branches: [feat/lss]
+    branches: [main, feat/lss]
     types: [created, edited]
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
         - Potential bugs or issues
         - Security implications
         - Performance considerations
-
+        Provide detailed feedback using inline comments for specific issues.
         Note: The PR branch is already checked out in the current working directory.
 
         Use `gh pr comment` for top-level feedback.
@@ -75,6 +75,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
           model: claude-sonnet-4-5-20250929
+          track_progress: ${{ github.event_name == 'pull_request' && true || false }} # ✨ Enables tracking comments
           # 修复：用条件表达式选择对应的 prompt 变量
           prompt: ${{ github.event_name == 'pull_request' && env.PR_PROMPT || env.PUSH_PROMPT }}
           # 优化：精简 claude_args，区分 PR/Push 事件的工具
