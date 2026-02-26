@@ -54,67 +54,6 @@ jobs:
           printf "changed_specs<<EOF\n%s\nEOF\n" "$files" >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$files" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
-  spec-plan:
-    needs: detect
-    if: needs.detect.outputs.spec_changed == 'true'
-    runs-on: [self-hosted, ai-runner]
-    environment: codex
-    permissions:
-      contents: read
-      issues: write
-    outputs:
-      final_message: ${{ steps.run_codex.outputs.final-message }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate Codex secrets
-        run: |
-          missing=0
-          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
-            echo "Missing secret: OPENAI_API_KEY"
-            missing=1
-          fi
-          if [ -z "${{ secrets.OPENAI_BASE_URL }}" ]; then
-            echo "Missing secret: OPENAI_BASE_URL"
-            missing=1
-          fi
-          if [ "$missing" -ne 0 ]; then
-            echo "Codex workflow requires OPENAI_API_KEY and OPENAI_BASE_URL secrets."
-            exit 1
-          fi
-
-      - name: Run Codex
-        id: run_codex
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: .github/codex/prompts/spec-to-plan.md
-          output-file: codex-spec-plan.md
-          safety-strategy: drop-sudo
-          sandbox: workspace-read
-
-      - name: Create issue with plan
-        if: steps.run_codex.outputs.final-message != ''
-        uses: actions/github-script@v7
-        env:
-          CODEX_FINAL_MESSAGE: ${{ steps.run_codex.outputs.final-message }}
-          CHANGED_SPECS: ${{ needs.detect.outputs.changed_specs }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const bodyParts = [];
-            if (process.env.CHANGED_SPECS && process.env.CHANGED_SPECS.trim().length > 0) {
-              bodyParts.push('**Changed specs:**\n' + process.env.CHANGED_SPECS.trim());
-            }
-            bodyParts.push(process.env.CODEX_FINAL_MESSAGE);
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Spec AI Plan (${context.ref.replace('refs/heads/', '')})`,
-              body: bodyParts.join('\n\n'),
-            });
-
   sdd:
     needs: detect
     if: >-
