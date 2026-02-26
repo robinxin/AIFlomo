@@ -1,0 +1,54 @@
+name: Auto Create Release PR
+
+on:
+  push:
+    branches:
+      - 'feat/lss'
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'Base branch to open PR into'
+        default: 'main-new'
+        required: true
+      head:
+        description: 'Head branch to open PR from'
+        default: 'feat/lss'
+        required: true
+      title:
+        description: 'PR title override (optional)'
+        required: false
+
+jobs:
+  create-release-pr:
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create PR if missing
+        env:
+          BASE: ${{ github.event.inputs.base || 'main-new' }}
+          HEAD: ${{ github.event.inputs.head || 'feat/lss' }}
+          TITLE_OVERRIDE: ${{ github.event.inputs.title || '' }}
+        run: |
+          EXISTING=$(gh pr list --head "$HEAD" --base "$BASE" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "PR already exists: #$EXISTING"
+            exit 0
+          fi
+
+          TITLE="${TITLE_OVERRIDE}"
+          if [ -z "$TITLE" ]; then
+            TITLE="${HEAD} -> ${BASE}"
+          fi
+
+          gh pr create \
+            --base "$BASE" \
+            --head "$HEAD" \
+            --title "$TITLE" \
+            --body "Auto-created release PR from ${HEAD}."

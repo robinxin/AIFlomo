@@ -1,0 +1,53 @@
+name: Deploy to Self-Hosted Server
+
+on:
+  workflow_run:
+    workflows: ["Quality & Security Gate"]
+    branches: [main-new]
+    types: [completed]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_COMMAND: ${{ secrets.DEPLOY_COMMAND }}
+    steps:
+      - name: Validate deploy secrets
+        run: |
+          missing=0
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_COMMAND; do
+            if [ -z "${!var}" ]; then
+              echo "Missing secret: $var"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Deploy workflow requires DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_COMMAND."
+            exit 1
+          fi
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          {
+            echo "Host deploy"
+            echo "  HostName $DEPLOY_HOST"
+            echo "  User $DEPLOY_USER"
+            echo "  Port ${DEPLOY_PORT:-22}"
+            echo "  IdentityFile ~/.ssh/id_deploy"
+            echo "  StrictHostKeyChecking no"
+          } > ~/.ssh/config
+
+      - name: Run deploy command
+        run: |
+          echo "Running deploy command on $DEPLOY_HOST..."
+          ssh deploy "$DEPLOY_COMMAND"

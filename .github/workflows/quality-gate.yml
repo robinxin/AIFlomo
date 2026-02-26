@@ -2,9 +2,9 @@ name: Quality & Security Gate
 
 on:
   pull_request:
-    branches: [feat/lss]
+    branches: [feat/lss, main-new]
   push:
-    branches: [feat/lss]
+    branches: [feat/lss, main-new]
 
 jobs:
   quality-gate:

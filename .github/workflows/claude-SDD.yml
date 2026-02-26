@@ -1,17 +1,19 @@
 name: SDD - Claude Full Lifecycle (Spec Review + Code Gen + Test Gen)
 on:
   push:
-    branches: [develop]
+    branches: [feat/lss]
     paths:
-      - 'spec/**/*'  # 仅监听规格文档变更
-      - 'src/**/*'   # 监听代码目录
-      - 'tests/**/*' # 监听测试用例目录
+      - 'specs/active/**/*'      # 仅监听规格文档变更
+      - 'apps/flomo/app/**/*'    # 监听代码目录
+      - 'apps/flomo/lib/**/*'    # 监听代码目录
+      - 'apps/flomo/tests/**/*'  # 监听测试用例目录
   pull_request:
-    branches: [develop]
+    branches: [feat/lss]
     paths:
-      - 'spec/**/*'
-      - 'src/**/*'
-      - 'tests/**/*'
+      - 'specs/active/**/*'
+      - 'apps/flomo/app/**/*'
+      - 'apps/flomo/lib/**/*'
+      - 'apps/flomo/tests/**/*'
 
 jobs:
   sdd-full-lifecycle:
@@ -21,14 +23,23 @@ jobs:
       pull-requests: write
       issues: write
     env:
-      CODE_GEN_DIR: 'src/'        # 自动生成代码的目录
-      TEST_GEN_DIR: 'tests/'      # 自动生成测试用例的目录
+      CODE_GEN_DIR: 'apps/flomo/app/'    # 自动生成代码的目录
+      TEST_GEN_DIR: 'apps/flomo/tests/'  # 自动生成测试用例的目录
     steps:
       # 步骤1：检出代码（包含 Spec、源码、测试目录）
       - name: Checkout code & spec
         uses: actions/checkout@v6
         with:
           fetch-depth: 0  # 确保能提交代码
+
+      - name: Install GitHub CLI (gh)
+        run: |
+          # 适配 Ubuntu 自托管 Runner，其他系统需调整
+          if ! command -v gh &> /dev/null; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update && sudo apt install -y gh
+          fi
 
       # -------------------------- 核心：动态识别变更的 Spec 文件（无兜底，不存在则中断） --------------------------
       - name: Detect Changed Spec Files
@@ -41,18 +52,18 @@ jobs:
           # 区分 Push/PR 事件，提取变更的 Spec 文件
           if [ "${{ github.event_name }}" = "push" ]; then
             # Push 事件：通过 git diff 获取本次提交变更的文件
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '^spec/.*\.\(md\|yaml\|yml\|json\)$')
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             # PR 事件：通过 GitHub API 获取变更文件
-            CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep '^spec/.*\.\(md\|yaml\|yml\|json\)$')
+            CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           fi
 
           # 去重并过滤有效 Spec 文件（仅保留 md/yaml/yml/json）
-          CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^spec/.*\.(md|yaml|yml|json)$')
+          CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^specs/active/.*\.(md|yaml|yml|json)$')
 
           # 关键：无变更的 Spec 文件则直接中断流程
           if [ -z "$CHANGED_SPEC_FILES" ]; then
-            echo "❌ No changed spec files found in spec/**/*, aborting workflow!"
+            echo "❌ No changed spec files found in specs/active/**/*, aborting workflow!"
             exit 1
           fi
 
@@ -82,7 +93,7 @@ jobs:
       - name: Step 1 - Review Spec Rationality
         id: review-spec
         # 移除 continue-on-error，出错直接终止
-        if: contains(github.event.paths, 'spec/**/*')
+        if: steps.detect-spec-files.outputs.changed_spec_files != ''
         uses: anthropics/claude-code-action-official@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -113,7 +124,7 @@ jobs:
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
         # 移除 continue-on-error，出错直接终止
-        if: steps.review-spec.outcome == 'success' && contains(github.event.paths, 'spec/**/*')
+        if: steps.review-spec.outcome == 'success'
         env:
           SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
@@ -144,14 +155,14 @@ jobs:
           done
 
           # 输出建议文件列表供后续使用
-          FIX_FILES=$(ls spec/*.fix.* 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+          FIX_FILES=$(ls specs/active/*.fix.* 2>/dev/null | tr '\n' ',' | sed 's/,$//')
           echo "spec_fix_files=$FIX_FILES" >> "$GITHUB_OUTPUT"
 
       # -------------------------- 场景2：根据 Spec 生成代码（出错则中断） --------------------------
       - name: Step 2 - Generate Code from Spec
         id: gen-code
         # 移除 continue-on-error，出错直接终止
-        if: steps.review-spec.outcome == 'success' && contains(github.event.paths, 'spec/**/*')
+        if: steps.review-spec.outcome == 'success'
         uses: anthropics/claude-code-action-official@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -167,7 +178,7 @@ jobs:
             ### TASK: Generate Code from Spec (SDD)
             Generate production-ready code based on ALL changed spec files, following these strict rules:
             1. Save code to directory: ${{ env.CODE_GEN_DIR }} (create subdirectories if needed to map to spec files)
-            2. Use the same programming language as existing code in src/ (detect automatically from file extensions)
+            2. Use the same programming language as existing code in apps/flomo/app/ (detect automatically from file extensions)
             3. Follow the spec's interface/parameter/return value rules strictly (no deviations)
             4. Add clear comments linking code to specific spec files/sections (e.g., "# From api_spec.md: User API Endpoint - Input Validation")
             5. Generate only the code defined in the spec (no extra functionality or debug code)
@@ -176,7 +187,7 @@ jobs:
             ### OUTPUT REQUIREMENT
             First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
           claude-args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*))"  # 允许创建目录/读取现有代码/检测文件类型
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"  # 允许创建目录/读取现有代码/检测文件类型
 
       # -------------------------- 场景3：生成 Spec 对应的测试用例（出错则中断） --------------------------
       - name: Step 3 - Generate Test Cases from Spec
@@ -201,7 +212,7 @@ jobs:
             ### TASK: Generate Test Cases from Spec (SDD)
             Generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
             1. Save test cases to directory: ${{ env.TEST_GEN_DIR }} (mirror the directory structure of generated code)
-            2. Align test framework with existing tests in tests/ (detect automatically from file extensions)
+            2. Align test framework with existing tests in apps/flomo/tests/ (detect automatically from file extensions)
             3. Cover ALL functions/rules defined in the spec (include positive, negative, and edge cases)
             4. Link each test case to the corresponding spec file/section (e.g., "# Test for db_spec.yml: User Table - Unique Constraint")
             5. Ensure test cases are fully runnable (valid syntax, correct imports, no missing dependencies)
@@ -210,7 +221,7 @@ jobs:
             ### OUTPUT REQUIREMENT
             First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
           claude-args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*))"  # 允许创建目录/读取现有测试/检测文件类型
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"  # 允许创建目录/读取现有测试/检测文件类型
 
       # -------------------------- 将生成的代码/测试用例写入文件（出错则中断） --------------------------
       - name: Write Generated Code & Tests to Files
@@ -282,7 +293,7 @@ jobs:
           git config --global user.email "actions@github.com"
 
           # 添加生成的文件（代码+测试+Spec修复建议文件）
-          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" spec/*.fix.*
+          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" specs/active/*.fix.*
 
           # 验证有变更需要提交
           if git diff --cached --quiet; then
@@ -330,7 +341,7 @@ jobs:
 
           > Notes: 
           > - Generated files are committed to the repository (Push event only).
-          > - Spec fix suggestions are saved to spec/*.fix.* files (original spec files are NOT modified).
+          > - Spec fix suggestions are saved to specs/active/*.fix.* files (original spec files are NOT modified).
           > - Workflow aborts immediately on any step failure (strict mode)."
 
           # PR 事件：评论到 PR
