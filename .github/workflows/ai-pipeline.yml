@@ -47,7 +47,10 @@ jobs:
         id: detect
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- specs/active/ || true)
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            HEAD_REF="${{ github.event.pull_request.head.ref }}"
+            git fetch origin "$BASE_REF" "$HEAD_REF"
+            files=$(git diff --name-only "origin/${BASE_REF}...origin/${HEAD_REF}" -- specs/active/ || true)
           elif [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
             files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ || true)
           else
@@ -112,7 +115,10 @@ jobs:
           SPEC_CONTENT=""
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED_FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            HEAD_REF="${{ github.event.pull_request.head.ref }}"
+            git fetch origin "$BASE_REF" "$HEAD_REF"
+            CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...origin/${HEAD_REF}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           elif [ "${{ github.event_name }}" = "push" ]; then
             CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           else
