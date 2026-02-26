@@ -4,17 +4,21 @@
 
 ## 项目简介
 
-AIFlomo 包含两部分：
-1. **Flomo 笔记应用** — 基于 Next.js + TypeScript 的全栈笔记应用
-2. **CI/CD 流水线** — 基于 GitHub Actions 的自动化代码审查、测试、构建和部署
+AIFlomo 包含三部分：
+1. **Flomo Web 应用** — 基于 Next.js + TypeScript 的全栈笔记应用
+2. **Flomo Mac 桌面应用** — 基于 Electron，内嵌 Next.js 服务器，离线可用
+3. **CI/CD 流水线** — 基于 GitHub Actions 的自动化代码审查、测试、构建和部署
 
 ## 应用功能
 
 | 模块 | 功能 |
 |------|------|
 | 用户 | 注册、登录、登出 |
-| 笔记 | 创建、编辑、删除、搜索 |
+| 笔记 | 创建、编辑、删除（回收站）、搜索 |
 | 标签 | 创建标签、按标签筛选、标签计数 |
+| 图片 | 上传图片、插入笔记、有图片筛选 |
+| 链接 | 插入链接、自动渲染、有链接筛选 |
+| 桌面端 | Mac 桌面应用，内嵌服务器，离线可用 |
 
 ## 技术栈
 
@@ -24,11 +28,14 @@ AIFlomo 包含两部分：
 | 语言 | TypeScript (Strict) |
 | 数据库 | SQLite + Prisma ORM |
 | 认证 | bcryptjs + HttpOnly Cookie Session |
+| 桌面端 | Electron（内嵌 Next.js 服务器） |
 | 样式 | 原生 CSS + CSS 变量 |
 | CI/CD | GitHub Actions (5 个工作流) |
 | AI 审查 | Claude Code Action |
 
 ## 快速开始
+
+### Web 应用
 
 ```bash
 cd apps/flomo
@@ -41,6 +48,29 @@ npm run dev
 
 浏览器打开 http://localhost:3000
 
+### Mac 桌面应用（开发模式）
+
+```bash
+# 1. 先启动 Web 应用
+cd apps/flomo
+npm run dev
+
+# 2. 新开终端，启动桌面应用
+cd apps/flomo-desktop
+npm install
+npm run dev
+```
+
+### Mac 桌面应用（打包 .dmg）
+
+```bash
+# 一键打包（自动构建 Next.js + 打包 Electron）
+cd apps/flomo-desktop
+npm run build
+```
+
+打包完成后，`.dmg` 安装包在 `apps/flomo-desktop/release/` 目录下。安装后完全离线可用，数据存储在 `~/Library/Application Support/Flomo-印象笔记/`。
+
 ## 项目结构
 
 ```
@@ -52,10 +82,15 @@ AIFlomo/
 │   ├── lint.yml               # 代码规范 + 安全检查
 │   ├── prisma-check.yml       # 数据库 Schema 检查
 │   └── deploy-preview.yml     # PR 预览构建报告
-├── apps/flomo/                # Flomo 笔记应用
+├── apps/flomo/                # Next.js Web 应用
 │   ├── app/                   # 页面和 API 路由
-│   ├── lib/                   # 工具函数
-│   └── prisma/                # 数据库 Schema
+│   ├── lib/                   # 工具函数（认证、数据库）
+│   ├── prisma/                # 数据库 Schema 和迁移
+│   └── public/                # 静态资源
+├── apps/flomo-desktop/        # Electron 桌面应用
+│   ├── main.ts                # 主进程（窗口管理、服务器启动）
+│   ├── preload.ts             # 预加载脚本
+│   └── next-server.js         # 内嵌 Next.js 生产服务器
 ├── CONTRIBUTING.md            # 工程规范
 └── README.md                  # 本文件
 ```

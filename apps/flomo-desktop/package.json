@@ -1,0 +1,56 @@
+{
+  "name": "flomo-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsc && electron .",
+    "build:next": "cd ../flomo && npm run build",
+    "build:electron": "tsc && electron-builder --mac",
+    "build": "npm run build:next && npm run build:electron",
+    "tsc": "tsc"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.5.4"
+  },
+  "build": {
+    "appId": "com.aiflomo.desktop",
+    "productName": "Flomo-印象笔记",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "extraResources": [
+      {
+        "from": "../flomo/.next",
+        "to": "flomo-app/.next"
+      },
+      {
+        "from": "../flomo/public",
+        "to": "flomo-app/public"
+      },
+      {
+        "from": "../flomo/prisma",
+        "to": "flomo-app/prisma"
+      },
+      {
+        "from": "../flomo/package.json",
+        "to": "flomo-app/package.json"
+      },
+      {
+        "from": "../flomo/node_modules",
+        "to": "flomo-app/node_modules"
+      },
+      {
+        "from": "next-server.js",
+        "to": "flomo-app/next-server.js"
+      }
+    ]
+  }
+}
