@@ -1,5 +1,5 @@
-export default {
-  preset: 'ts-jest',
+module.exports = {
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
   transform: {
