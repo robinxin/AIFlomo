@@ -1,0 +1,52 @@
+name: Auto Create PR
+
+on:
+  push:
+    branches:
+      - 'feat/*'
+      - 'bugfix/*'
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'Base branch to open PR into'
+        default: 'feat/lss'
+        required: true
+      title:
+        description: 'PR title override (optional)'
+        required: false
+
+jobs:
+  create-pr:
+    if: github.ref_name != 'feat/lss' && github.ref_name != 'workflow-jl'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create PR if missing
+        env:
+          BASE: ${{ github.event.inputs.base || 'feat/lss' }}
+          TITLE_OVERRIDE: ${{ github.event.inputs.title || '' }}
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          EXISTING=$(gh pr list --head "$BRANCH" --base "$BASE" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "PR already exists: #$EXISTING"
+            exit 0
+          fi
+
+          TITLE="${TITLE_OVERRIDE}"
+          if [ -z "$TITLE" ]; then
+            TITLE="${BRANCH} -> ${BASE}"
+          fi
+
+          gh pr create \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --title "$TITLE" \
+            --body "Auto-created PR for ${BRANCH}."

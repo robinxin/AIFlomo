@@ -1,0 +1,75 @@
+name: Spec AI Plan (Codex)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  codex-plan:
+    runs-on: [self-hosted, ai-runner]
+    environment: codex
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      final_message: ${{ steps.run_codex.outputs.final-message }}
+      changed_specs: ${{ steps.spec_files.outputs.changed_specs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Codex secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
+            echo "Missing secret: OPENAI_API_KEY"
+            missing=1
+          fi
+          if [ -z "${{ secrets.OPENAI_BASE_URL }}" ]; then
+            echo "Missing secret: OPENAI_BASE_URL"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Codex workflow requires OPENAI_API_KEY and OPENAI_BASE_URL secrets."
+            exit 1
+          fi
+
+      - name: Collect spec files
+        id: spec_files
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ || true)
+          else
+            files=$(ls specs/active 2>/dev/null || true)
+          fi
+          printf "changed_specs<<EOF\n%s\nEOF\n" "$files" >> "$GITHUB_OUTPUT"
+
+      - name: Run Codex
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/spec-to-plan.md
+          output-file: codex-spec-plan.md
+          safety-strategy: drop-sudo
+          sandbox: workspace-read
+
+      - name: Create issue with plan
+        if: steps.run_codex.outputs.final-message != ''
+        uses: actions/github-script@v7
+        env:
+          CODEX_FINAL_MESSAGE: ${{ steps.run_codex.outputs.final-message }}
+          CHANGED_SPECS: ${{ steps.spec_files.outputs.changed_specs }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const bodyParts = [];
+            if (process.env.CHANGED_SPECS && process.env.CHANGED_SPECS.trim().length > 0) {
+              bodyParts.push('**Changed specs:**\n' + process.env.CHANGED_SPECS.trim());
+            }
+            bodyParts.push(process.env.CODEX_FINAL_MESSAGE);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Spec AI Plan (${context.ref.replace('refs/heads/', '')})`,
+              body: bodyParts.join('\n\n'),
+            });
