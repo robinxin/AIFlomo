@@ -76,11 +76,24 @@ jobs:
 
       - name: Install GitHub CLI (gh)
         run: |
-          if ! command -v gh &> /dev/null; then
+          if command -v gh &> /dev/null; then
+            exit 0
+          fi
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
             sudo apt update && sudo apt install -y gh
+            exit 0
           fi
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            brew install gh
+            exit 0
+          fi
+
+          echo "Unsupported runner OS for gh install: ${{ runner.os }}"
+          exit 1
 
       - name: Detect Changed Spec Files
         id: detect-spec-files
@@ -400,11 +413,24 @@ jobs:
 
       - name: Install GitHub CLI (gh)
         run: |
-          if ! command -v gh &> /dev/null; then
+          if command -v gh &> /dev/null; then
+            exit 0
+          fi
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
             sudo apt update && sudo apt install -y gh
+            exit 0
           fi
+
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            brew install gh
+            exit 0
+          fi
+
+          echo "Unsupported runner OS for gh install: ${{ runner.os }}"
+          exit 1
 
       - name: Create PR if missing
         env:
