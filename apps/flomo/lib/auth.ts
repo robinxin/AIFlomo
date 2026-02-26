@@ -33,7 +33,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     return null;
   }
 
-  return { id: session.user.id, email: session.user.email, nickname: session.user.nickname };
+  return { id: session.user.id, email: session.user.email ?? '', nickname: session.user.nickname ?? '' };
 }
 
 export async function getSessionUserFromRequest(req: NextRequest): Promise<SessionUser | null> {
@@ -51,7 +51,7 @@ export async function getSessionUserFromRequest(req: NextRequest): Promise<Sessi
     return null;
   }
 
-  return { id: session.user.id, email: session.user.email, nickname: session.user.nickname };
+  return { id: session.user.id, email: session.user.email ?? '', nickname: session.user.nickname ?? '' };
 }
 
 export async function createSession(userId: string) {

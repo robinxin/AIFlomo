@@ -4,7 +4,7 @@ import { ChildProcess, fork } from 'child_process';
 import * as net from 'net';
 import * as fs from 'fs';
 
-const DEV_URL = 'http://localhost:3000';
+const DEV_URL = process.env.DEV_URL || 'http://localhost:3004';
 const isDev = !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
