@@ -8,6 +8,13 @@ on:
       - 'apps/flomo/app/**/*'
       - 'apps/flomo/lib/**/*'
       - 'apps/flomo/tests/**/*'
+  pull_request:
+    branches: [main-new]
+    paths:
+      - 'specs/active/**/*'
+      - 'apps/flomo/app/**/*'
+      - 'apps/flomo/lib/**/*'
+      - 'apps/flomo/tests/**/*'
   workflow_dispatch:
     inputs:
       run_sdd:
@@ -39,7 +46,9 @@ jobs:
       - name: Detect changed spec files
         id: detect
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- specs/active/ || true)
+          elif [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
             files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ || true)
           else
             files=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' || true)
@@ -58,7 +67,7 @@ jobs:
     needs: detect
     if: >-
       ${{ needs.detect.outputs.spec_changed == 'true'
-          && (github.event_name != 'push' || (contains(github.event.head_commit.message, 'SDD: Auto-generate') == false))
+          && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
@@ -68,6 +77,7 @@ jobs:
     env:
       CODE_GEN_DIR: 'apps/flomo/app/'
       TEST_GEN_DIR: 'apps/flomo/tests/'
+      ANTHROPIC_API_BASE_URL: 'https://claude.hatch.yinxiang.com/api'
     steps:
       - name: Checkout code & spec
         uses: actions/checkout@v6
@@ -101,7 +111,9 @@ jobs:
           CHANGED_SPEC_FILES=""
           SPEC_CONTENT=""
 
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
+          elif [ "${{ github.event_name }}" = "push" ]; then
             CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           else
             CHANGED_FILES=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' | grep -E '\.(md|yaml|yml|json)$' || true)
@@ -135,9 +147,7 @@ jobs:
         id: review-spec
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
-          model: claude-sonnet-4-5-20250929
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -157,7 +167,7 @@ jobs:
             - Prioritize critical issues (e.g., missing core function definitions)
             - Clearly link all issues to the corresponding spec file name
             - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
-          claude-args: "--allowedTools ''"
+          claude_args: "--allowedTools ''"
 
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
@@ -195,9 +205,7 @@ jobs:
         if: steps.review-spec.outcome == 'success'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
-          model: claude-sonnet-4-5-20250929
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -216,7 +224,7 @@ jobs:
 
             ### OUTPUT REQUIREMENT
             First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude-args: |
+          claude_args: |
             --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
 
       - name: Step 3 - Generate Test Cases from Spec
@@ -224,9 +232,7 @@ jobs:
         if: steps.gen-code.outcome == 'success'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
-          model: claude-sonnet-4-5-20250929
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -248,7 +254,7 @@ jobs:
 
             ### OUTPUT REQUIREMENT
             First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude-args: |
+          claude_args: |
             --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
 
       - name: Write Generated Code & Tests to Files
@@ -364,8 +370,10 @@ jobs:
           fi
 
   quality:
-    needs: sdd
-    if: ${{ needs.sdd.result != 'failure' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
+    needs: [detect, sdd]
+    if: >-
+      ${{ needs.sdd.result != 'failure'
+          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
     runs-on: [self-hosted, ai-runner]
     steps:
       - name: Checkout
@@ -400,7 +408,10 @@ jobs:
 
   release-pr:
     needs: quality
-    if: ${{ needs.quality.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_release_pr == '1') }}
+    if: >-
+      ${{ github.event_name != 'pull_request'
+          && needs.quality.result == 'success'
+          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_release_pr == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
