@@ -288,37 +288,7 @@ jobs:
   quality:
     needs: sdd
     if: ${{ needs.sdd.result != 'failure' && github.event.inputs.run_quality == '1' }}
-    runs-on: [self-hosted, ai-runner]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/flomo/package-lock.json
-
-      - name: Install dependencies
-        working-directory: apps/flomo
-        run: npm install
-
-      - name: Prisma generate
-        working-directory: apps/flomo
-        run: npm run db:generate
-
-      - name: npm audit (critical only)
-        working-directory: apps/flomo
-        run: npm audit --audit-level=critical
-
-      - name: Build
-        working-directory: apps/flomo
-        run: npm run build
-
-      - name: Test (coverage gate)
-        working-directory: apps/flomo
-        run: npm run test:coverage
+    uses: ./.github/workflows/quality-gate.yml
 
   release-pr:
     needs: quality

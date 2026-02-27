@@ -5,6 +5,7 @@ on:
     branches: [workflow-jl, main]
   push:
     branches: [main, workflow-jl]
+  workflow_call:
 
 jobs:
   quality-gate:
