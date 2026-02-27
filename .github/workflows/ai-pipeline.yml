@@ -1,6 +1,13 @@
 name: AI Pipeline (Spec -> SDD -> Quality -> Release PR)
 
 on:
+  push:
+    branches: [feat/lss]
+    paths:
+      - 'specs/active/**/*'
+      - 'apps/flomo/app/**/*'
+      - 'apps/flomo/lib/**/*'
+      - 'apps/flomo/tests/**/*'
   pull_request:
     branches: [main-new]
     paths:
@@ -40,10 +47,7 @@ jobs:
         id: detect
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF="${{ github.event.pull_request.base.ref }}"
-            HEAD_REF="${{ github.event.pull_request.head.ref }}"
-            git fetch origin "$BASE_REF" "$HEAD_REF"
-            files=$(git diff --name-only "origin/${BASE_REF}...origin/${HEAD_REF}" -- specs/active/ || true)
+            files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- specs/active/ || true)
           elif [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
             files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ || true)
           else
@@ -56,33 +60,29 @@ jobs:
             echo "spec_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "changed_specs<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$files" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          printf "changed_specs<<EOF\n%s\nEOF\n" "$files" >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$files" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
   sdd:
     needs: detect
     if: >-
       ${{ needs.detect.outputs.spec_changed == 'true'
+          && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
       pull-requests: write
       issues: write
-      id-token: write
     env:
       CODE_GEN_DIR: 'apps/flomo/app/'
       TEST_GEN_DIR: 'apps/flomo/tests/'
       ANTHROPIC_API_BASE_URL: 'https://claude.hatch.yinxiang.com/api'
     steps:
       - name: Checkout code & spec
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install GitHub CLI (gh)
         run: |
@@ -109,12 +109,10 @@ jobs:
         id: detect-spec-files
         run: |
           CHANGED_SPEC_FILES=""
+          SPEC_CONTENT=""
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF="${{ github.event.pull_request.base.ref }}"
-            HEAD_REF="${{ github.event.pull_request.head.ref }}"
-            git fetch origin "$BASE_REF" "$HEAD_REF"
-            CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...origin/${HEAD_REF}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
+            CHANGED_FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           elif [ "${{ github.event_name }}" = "push" ]; then
             CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$')
           else
@@ -135,9 +133,14 @@ jobs:
             fi
           done
 
-          echo "changed_spec_files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          for FILE in $CHANGED_SPEC_FILES; do
+            echo "📄 Reading spec file: $FILE"
+            FILE_CONTENT=$(cat "$FILE" | awk '{gsub(/"/, "\\\""); print}' | tr '\n' '\\n')
+            SPEC_CONTENT+="### Spec File: $FILE\n$FILE_CONTENT\n\n"
+          done
+
+          echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
+          echo "spec_content=$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
       - name: Step 1 - Review Spec Rationality
@@ -149,9 +152,11 @@ jobs:
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
+            ### SPECIFICATION CONTENT (Combined)
+            ${{ steps.detect-spec-files.outputs.spec_content }}
+
             ### TASK: Spec Rationality Review
-            Read each spec file listed above using the Read tool before analyzing.
-            Then analyze the changed spec files for SDD (Specification-Driven Development) and output:
+            Analyze the above changed spec files for SDD (Specification-Driven Development) and output:
             1. **Completeness**: List missing parts for EACH changed file (e.g., "api_spec.md: no input/output definition for User API")
             2. **Ambiguity**: Highlight vague descriptions for EACH changed file (e.g., "db_spec.yml: 'fast query' without response time metrics")
             3. **Logical Conflicts**: Point out contradictory rules BETWEEN changed files (if multiple)
@@ -162,13 +167,13 @@ jobs:
             - Prioritize critical issues (e.g., missing core function definitions)
             - Clearly link all issues to the corresponding spec file name
             - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
-          claude_args: "--allowedTools 'Read'"
+          claude_args: "--allowedTools ''"
 
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
         if: steps.review-spec.outcome == 'success'
         env:
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
+          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-result }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
           if [ -z "$SPEC_REVIEW_RESULT" ]; then
@@ -205,8 +210,11 @@ jobs:
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
+            ### COMBINED SPEC CONTENT
+            ${{ steps.detect-spec-files.outputs.spec_content }}
+
             ### TASK: Generate Code from Spec (SDD)
-            First use the Read tool to read each spec file listed above, then generate production-ready code based on ALL changed spec files, following these strict rules:
+            Generate production-ready code based on ALL changed spec files, following these strict rules:
             1. Save code to directory: ${{ env.CODE_GEN_DIR }} (create subdirectories if needed to map to spec files)
             2. Use the same programming language as existing code in apps/flomo/app/ (detect automatically from file extensions)
             3. Follow the spec's interface/parameter/return value rules strictly (no deviations)
@@ -215,10 +223,9 @@ jobs:
             6. Ensure consistency across code generated from multiple spec files
 
             ### OUTPUT REQUIREMENT
-            Use the Write tool to directly create each generated file at the correct path under ${{ env.CODE_GEN_DIR }}.
-            After all files are written, output a summary listing: file path, lines of code, and which spec section it implements.
-            Do NOT output raw code blocks — write files directly via the Write tool.
-          claude_args: "--allowedTools 'Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
+            First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
+          claude_args: |
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
 
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
@@ -230,11 +237,14 @@ jobs:
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
+            ### COMBINED SPEC CONTENT
+            ${{ steps.detect-spec-files.outputs.spec_content }}
+
             ### GENERATED CODE SUMMARY
-            ${{ steps.gen-code.outputs.review-output }}
+            ${{ steps.gen-code.outputs.review-result }}
 
             ### TASK: Generate Test Cases from Spec (SDD)
-            First use the Read tool to read each spec file listed above and the generated code, then generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
+            Generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
             1. Save test cases to directory: ${{ env.TEST_GEN_DIR }} (mirror the directory structure of generated code)
             2. Align test framework with existing tests in apps/flomo/tests/ (detect automatically from file extensions)
             3. Cover ALL functions/rules defined in the spec (include positive, negative, and edge cases)
@@ -243,38 +253,58 @@ jobs:
             6. Include assertions that validate compliance with spec requirements (not just code functionality)
 
             ### OUTPUT REQUIREMENT
-            Use the Write tool to directly create each test file at the correct path under ${{ env.TEST_GEN_DIR }}.
-            After all files are written, output a summary listing: file path, test count, and which spec section each test covers.
-            Do NOT output raw code blocks — write files directly via the Write tool.
-          claude_args: "--allowedTools 'Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
+            First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
+          claude_args: |
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
 
-      - name: Verify Generated Files
+      - name: Write Generated Code & Tests to Files
         id: write-files
         env:
+          CODE_GEN_RESULT: ${{ steps.gen-code.outputs.review-result }}
+          TEST_GEN_RESULT: ${{ steps.gen-test.outputs.review-result }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
         run: |
-          CODE_FILE_COUNT=$(find "$CODE_GEN_DIR" -type f | wc -l | tr -d ' ')
-          TEST_FILE_COUNT=$(find "$TEST_GEN_DIR" -type f | wc -l | tr -d ' ')
+          if [ -z "$CODE_GEN_RESULT" ]; then
+            echo "❌ Empty code generation result, aborting workflow!"
+            exit 1
+          fi
+
+          if [ -z "$TEST_GEN_RESULT" ]; then
+            echo "❌ Empty test generation result, aborting workflow!"
+            exit 1
+          fi
+
+          mkdir -p "$CODE_GEN_DIR" "$TEST_GEN_DIR"
+
+          echo "🔧 Extracting generated code..."
+          echo "$CODE_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=CODE_GEN_DIR "/" $0; print "Creating code file: " file} else {print >> file}}'
+
+          echo "🔧 Extracting generated test cases..."
+          echo "$TEST_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=TEST_GEN_DIR "/" $0; print "Creating test file: " file} else {print >> file}}'
+
+          CODE_FILE_COUNT=$(ls -l "$CODE_GEN_DIR" | grep -v '^total' | wc -l)
+          TEST_FILE_COUNT=$(ls -l "$TEST_GEN_DIR" | grep -v '^total' | wc -l)
 
           if [ "$CODE_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No code files found in $CODE_GEN_DIR, aborting workflow!"
+            echo "❌ No code files generated, aborting workflow!"
             exit 1
           fi
 
           if [ "$TEST_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No test files found in $TEST_GEN_DIR, aborting workflow!"
+            echo "❌ No test files generated, aborting workflow!"
             exit 1
           fi
 
-          echo "✅ Found $CODE_FILE_COUNT code files in $CODE_GEN_DIR"
-          echo "✅ Found $TEST_FILE_COUNT test files in $TEST_GEN_DIR"
-          echo "code_files=$(find $CODE_GEN_DIR -type f | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
-          echo "test_files=$(find $TEST_GEN_DIR -type f | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+          echo "✅ Generated $CODE_FILE_COUNT code files in $CODE_GEN_DIR"
+          echo "✅ Generated $TEST_FILE_COUNT test files in $TEST_GEN_DIR"
+          echo "code_files=$(ls $CODE_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+          echo "test_files=$(ls $TEST_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
           echo "code_file_count=$CODE_FILE_COUNT" >> "$GITHUB_OUTPUT"
           echo "test_file_count=$TEST_FILE_COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Commit Generated Files
+        if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
@@ -296,8 +326,8 @@ jobs:
 
       - name: Publish All SDD Results
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-result }}
           SPEC_FIX_FILES: ${{ steps.gen-spec-fix.outputs.spec_fix_files || 'None' }}
           CODE_GEN_SUMMARY: "Generated files: ${{ steps.write-files.outputs.code_files }} (Total: ${{ steps.write-files.outputs.code_file_count }})"
           TEST_GEN_SUMMARY: "Generated test files: ${{ steps.write-files.outputs.test_files }} (Total: ${{ steps.write-files.outputs.test_file_count }})"
@@ -345,8 +375,6 @@ jobs:
       ${{ needs.sdd.result != 'failure'
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
     runs-on: [self-hosted, ai-runner]
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -377,43 +405,6 @@ jobs:
       - name: Test (coverage gate)
         working-directory: apps/flomo
         run: npm run test:coverage
-
-      - name: Archive Spec to Completed
-        if: success()
-        env:
-          CHANGED_SPECS: ${{ needs.detect.outputs.changed_specs }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -z "$CHANGED_SPECS" ]; then
-            echo "ℹ️ No spec files to archive, skipping."
-            exit 0
-          fi
-
-          mkdir -p specs/completed
-          ARCHIVED=""
-          for FILE in $CHANGED_SPECS; do
-            if [ -f "$FILE" ]; then
-              BASENAME=$(basename "$FILE")
-              mv "$FILE" "specs/completed/$BASENAME"
-              ARCHIVED="$ARCHIVED $BASENAME"
-              echo "✅ Archived $FILE → specs/completed/$BASENAME"
-            fi
-          done
-
-          if [ -z "$ARCHIVED" ]; then
-            echo "ℹ️ All spec files already archived."
-            exit 0
-          fi
-
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git pull origin ${{ github.ref_name }} --rebase
-          git add specs/active/ specs/completed/
-          git diff --cached --quiet || (
-            git commit -m "SDD: Archive spec(s) to completed after quality gate [$ARCHIVED]" &&
-            git push origin ${{ github.ref_name }} &&
-            echo "✅ Spec(s) archived and committed"
-          )
 
   release-pr:
     needs: quality
