@@ -56,7 +56,9 @@ jobs:
             echo "spec_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          printf "changed_specs<<EOF\n%s\nEOF\n" "$files" >> "$GITHUB_OUTPUT"
+          echo "changed_specs<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$files" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$files" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
   sdd:
