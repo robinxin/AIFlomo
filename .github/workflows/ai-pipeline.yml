@@ -134,7 +134,9 @@ jobs:
             fi
           done
 
-          echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
+          echo "changed_spec_files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
       - name: Step 1 - Review Spec Rationality
