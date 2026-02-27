@@ -74,6 +74,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write
     env:
       CODE_GEN_DIR: 'apps/flomo/app/'
       TEST_GEN_DIR: 'apps/flomo/tests/'
