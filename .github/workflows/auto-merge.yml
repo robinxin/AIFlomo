@@ -2,7 +2,7 @@ name: Auto Merge PR (Squash)
 
 on:
   pull_request:
-    branches: [feat/lss, workflow-jl]
+    branches: [workflow-jl]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:

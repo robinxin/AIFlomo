@@ -9,7 +9,7 @@ on:
     inputs:
       base:
         description: 'Base branch to open PR into'
-        default: 'feat/lss'
+        default: 'workflow-jl'
         required: true
       title:
         description: 'PR title override (optional)'
@@ -17,7 +17,7 @@ on:
 
 jobs:
   create-pr:
-    if: github.ref_name != 'feat/lss' && github.ref_name != 'workflow-jl'
+    if: github.ref_name != 'workflow-jl' && github.ref_name != 'workflow-jl'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
@@ -30,7 +30,7 @@ jobs:
 
       - name: Create PR if missing
         env:
-          BASE: ${{ github.event.inputs.base || 'feat/lss' }}
+          BASE: ${{ github.event.inputs.base || 'workflow-jl' }}
           TITLE_OVERRIDE: ${{ github.event.inputs.title || '' }}
         run: |
           BRANCH="${GITHUB_REF_NAME}"

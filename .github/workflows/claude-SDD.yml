@@ -77,13 +77,8 @@ jobs:
         id: review-spec
         if: steps.detect-spec-files.outputs.changed_spec_files != ''
         run: |
-          # 构建 prompt，将 spec 文件内容嵌入
-          SPEC_CONTENT=""
-          for FILE in ${{ steps.detect-spec-files.outputs.spec_files_list }}; do
-            FILE_PATH=$(echo "$FILE" | tr ',' ' ')
-          done
-
-          PROMPT="### CHANGED SPEC FILES
+          cat > /tmp/sdd-prompt.txt <<'PROMPT_EOF'
+          ### CHANGED SPEC FILES
           ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
           ### TASK: Spec Rationality Review
@@ -97,9 +92,10 @@ jobs:
           - Be objective and specific
           - Prioritize critical issues
           - Clearly link all issues to the corresponding spec file name
-          - If spec has fatal flaws, explicitly mark as CRITICAL"
+          - If spec has fatal flaws, explicitly mark as CRITICAL
+          PROMPT_EOF
 
-          RESULT=$(claude --print --model claude-sonnet-4-5-20250929 --allowedTools "Read" "$PROMPT")
+          RESULT=$(claude --print --model claude-sonnet-4-5-20250929 --allowedTools "Read" < /tmp/sdd-prompt.txt)
 
           echo "review_result<<EOF" >> "$GITHUB_OUTPUT"
           echo "$RESULT" >> "$GITHUB_OUTPUT"
@@ -142,7 +138,8 @@ jobs:
         id: gen-code
         if: steps.review-spec.outcome == 'success'
         run: |
-          PROMPT="### CHANGED SPEC FILES
+          cat > /tmp/sdd-prompt.txt <<'PROMPT_EOF'
+          ### CHANGED SPEC FILES
           ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
           ### TASK: Generate Code from Spec (SDD)
@@ -152,11 +149,12 @@ jobs:
           3. Follow the spec's interface/parameter/return value rules strictly
           4. Add clear comments linking code to specific spec files/sections
           5. Generate only the code defined in the spec
-          6. Ensure consistency across code generated from multiple spec files"
+          6. Ensure consistency across code generated from multiple spec files
+          PROMPT_EOF
 
           RESULT=$(claude --print --model claude-sonnet-4-5-20250929 \
             --allowedTools "Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)" \
-            "$PROMPT")
+            < /tmp/sdd-prompt.txt)
 
           echo "code_result<<EOF" >> "$GITHUB_OUTPUT"
           echo "$RESULT" >> "$GITHUB_OUTPUT"
@@ -167,7 +165,8 @@ jobs:
         id: gen-test
         if: steps.gen-code.outcome == 'success'
         run: |
-          PROMPT="### CHANGED SPEC FILES
+          cat > /tmp/sdd-prompt.txt <<'PROMPT_EOF'
+          ### CHANGED SPEC FILES
           ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
           ### TASK: Generate Test Cases from Spec (SDD)
@@ -177,11 +176,12 @@ jobs:
           3. Cover ALL functions/rules defined in the spec (positive, negative, edge cases)
           4. Link each test case to the corresponding spec file/section
           5. Ensure test cases are fully runnable
-          6. Include assertions that validate compliance with spec requirements"
+          6. Include assertions that validate compliance with spec requirements
+          PROMPT_EOF
 
           RESULT=$(claude --print --model claude-sonnet-4-5-20250929 \
             --allowedTools "Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)" \
-            "$PROMPT")
+            < /tmp/sdd-prompt.txt)
 
           echo "test_result<<EOF" >> "$GITHUB_OUTPUT"
           echo "$RESULT" >> "$GITHUB_OUTPUT"

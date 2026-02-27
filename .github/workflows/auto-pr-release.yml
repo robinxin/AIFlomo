@@ -9,7 +9,7 @@ on:
         required: true
       head:
         description: 'Head branch to open PR from'
-        default: 'feat/lss'
+        default: 'workflow-jl'
         required: true
       title:
         description: 'PR title override (optional)'
@@ -39,7 +39,7 @@ jobs:
       - name: Create PR if missing
         env:
           BASE: ${{ github.event.inputs.base || 'main-new' }}
-          HEAD: ${{ github.event.inputs.head || 'feat/lss' }}
+          HEAD: ${{ github.event.inputs.head || 'workflow-jl' }}
           TITLE_OVERRIDE: ${{ github.event.inputs.title || '' }}
         run: |
           EXISTING=$(gh pr list --head "$HEAD" --base "$BASE" --json number --jq '.[0].number')
