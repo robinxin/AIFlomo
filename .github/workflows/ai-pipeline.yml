@@ -158,7 +158,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
+          show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -217,7 +217,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
+          show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -245,7 +245,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
+          show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
