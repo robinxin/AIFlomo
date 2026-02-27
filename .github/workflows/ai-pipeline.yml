@@ -109,7 +109,7 @@ jobs:
       - name: Install Claude Code 2.1.50
         id: install-claude
         run: |
-          bun install -g @anthropic-ai/claude-code@2.1.50
+          npm install -g @anthropic-ai/claude-code@2.1.50
           echo "claude_path=$(which claude)" >> "$GITHUB_OUTPUT"
 
       - name: Detect Changed Spec Files
