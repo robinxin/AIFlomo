@@ -20,7 +20,7 @@ jobs:
       CODE_GEN_DIR: 'apps/flomo/app/'
       TEST_GEN_DIR: 'apps/flomo/tests/'
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
+      # ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
     steps:
       - name: Checkout code & spec
         uses: actions/checkout@v4

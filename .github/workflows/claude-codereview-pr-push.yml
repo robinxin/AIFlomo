@@ -38,7 +38,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
+          # anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
           model: claude-sonnet-4-5-20250929
           track_progress: true
           prompt: ${{ env.PR_PROMPT }}
@@ -53,7 +53,7 @@ jobs:
       issues: write
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
+      # ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
