@@ -106,6 +106,12 @@ jobs:
           echo "Unsupported runner OS for gh install: ${{ runner.os }}"
           exit 1
 
+      - name: Install Claude Code 2.1.50
+        id: install-claude
+        run: |
+          bun install -g @anthropic-ai/claude-code@2.1.50
+          echo "claude_path=$(which claude)" >> "$GITHUB_OUTPUT"
+
       - name: Detect Changed Spec Files
         id: detect-spec-files
         run: |
@@ -160,6 +166,7 @@ jobs:
           DEBUG_CLAUDE_AGENT_SDK: "1"
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          path_to_claude_code_executable: ${{ steps.install-claude.outputs.claude_path }}
           show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
@@ -219,6 +226,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          path_to_claude_code_executable: ${{ steps.install-claude.outputs.claude_path }}
           show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
@@ -247,6 +255,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          path_to_claude_code_executable: ${{ steps.install-claude.outputs.claude_path }}
           show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
