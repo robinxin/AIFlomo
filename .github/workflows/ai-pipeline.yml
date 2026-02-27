@@ -247,20 +247,27 @@ jobs:
             - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
           claude_args: "--allowedTools '' --model claude-sonnet-4-5-20250929"
 
-      - name: Debug review-spec outputs
-        if: always()
+      - name: Capture review result from log
+        id: capture-review
+        if: steps.review-spec.outcome == 'success'
         run: |
-          echo "=== review-spec outputs ==="
-          echo "review-result: ${{ steps.review-spec.outputs.review-result }}"
-          echo "output: ${{ steps.review-spec.outputs.output }}"
-          echo "result: ${{ steps.review-spec.outputs.result }}"
-          echo "outcome: ${{ steps.review-spec.outcome }}"
+          RESULT=$(python3 -c "
+          import json, sys
+          with open('$RUNNER_TEMP/claude-execution-output.json') as f:
+              d = json.load(f)
+          print(d.get('result', ''))
+          ")
+          {
+            echo "review_result<<CAPTURE_EOF"
+            echo "$RESULT"
+            echo "CAPTURE_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
         if: steps.review-spec.outcome == 'success'
         env:
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-result }}
+          SPEC_REVIEW_RESULT: ${{ steps.capture-review.outputs.review_result }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
           if [ -z "$SPEC_REVIEW_RESULT" ]; then
@@ -316,6 +323,22 @@ jobs:
           claude_args: |
             --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)" --model claude-sonnet-4-5-20250929
 
+      - name: Capture code generation result from log
+        id: capture-gen-code
+        if: steps.gen-code.outcome == 'success'
+        run: |
+          RESULT=$(python3 -c "
+          import json
+          with open('$RUNNER_TEMP/claude-execution-output.json') as f:
+              d = json.load(f)
+          print(d.get('result', ''))
+          ")
+          {
+            echo "gen_code_result<<CAPTURE_EOF"
+            echo "$RESULT"
+            echo "CAPTURE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
         if: steps.gen-code.outcome == 'success'
@@ -332,7 +355,7 @@ jobs:
             ${{ steps.detect-spec-files.outputs.spec_content }}
 
             ### GENERATED CODE SUMMARY
-            ${{ steps.gen-code.outputs.review-result }}
+            ${{ steps.capture-gen-code.outputs.gen_code_result }}
 
             ### TASK: Generate Test Cases from Spec (SDD)
             Generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
@@ -348,11 +371,27 @@ jobs:
           claude_args: |
             --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)" --model claude-sonnet-4-5-20250929
 
+      - name: Capture test generation result from log
+        id: capture-gen-test
+        if: steps.gen-test.outcome == 'success'
+        run: |
+          RESULT=$(python3 -c "
+          import json
+          with open('$RUNNER_TEMP/claude-execution-output.json') as f:
+              d = json.load(f)
+          print(d.get('result', ''))
+          ")
+          {
+            echo "gen_test_result<<CAPTURE_EOF"
+            echo "$RESULT"
+            echo "CAPTURE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Write Generated Code & Tests to Files
         id: write-files
         env:
-          CODE_GEN_RESULT: ${{ steps.gen-code.outputs.review-result }}
-          TEST_GEN_RESULT: ${{ steps.gen-test.outputs.review-result }}
+          CODE_GEN_RESULT: ${{ steps.capture-gen-code.outputs.gen_code_result }}
+          TEST_GEN_RESULT: ${{ steps.capture-gen-test.outputs.gen_test_result }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
         run: |
