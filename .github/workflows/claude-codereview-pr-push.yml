@@ -1,25 +1,21 @@
 name: Claude Codereview
-# 1. 触发器：监听 pr 事件和 push 事件
+
 on:
   pull_request:
     branches: [main, workflow-jl]
     types: [opened, synchronize, reopened]
   push:
     branches: [main, workflow-jl]
-    types: [created, edited]
 
 jobs:
-  claude-codereview:
-    # 2. 指定运行器：使用你刚才配置的自托管运行器
+  # PR 事件：使用 claude-code-action（原生支持 PR 评论）
+  claude-codereview-pr:
+    if: github.event_name == 'pull_request'
     runs-on: [self-hosted, ai-runner]
-    # 3. 权限设置：补充 issues:write 权限（创建 Issue 需）
     permissions:
       contents: read
       pull-requests: write
-      issues: write  # 新增：创建 Issue 必须的权限
-    # 核心修复：先定义差异化的 prompt 变量
     env:
-      # PR 场景的提示词
       PR_PROMPT: |
         REPO: ${{ github.repository }}
         PR NUMBER: ${{ github.event.pull_request.number }}
@@ -35,67 +31,74 @@ jobs:
         Use `gh pr comment` for top-level feedback.
         Use `mcp__github_inline_comment__create_inline_comment` to highlight specific code issues.
         Only post GitHub comments - don't submit review text as messages.
-      # Push 场景的提示词
-      PUSH_PROMPT: |
-        REPO: ${{ github.repository }}
-        PUSHER: ${{ github.actor }}
-        COMMIT SHA: ${{ github.sha }}
-        COMMIT MESSAGE: ${{ github.event.head_commit.message }}
-        PUSH BRANCH: ${{ github.ref_name }}
-
-        Please review this push commit with a focus on:
-        - Completeness and correctness of submitted code
-        - Whether new syntax errors or runtime issues are introduced
-        - Whether the submission complies with branch development specifications
-        - Whether temporary debugging code or sensitive information is missing
-        - Whether the code submission granularity is reasonable
-
-        Note: The current branch code has been checked out to the working directory.
-        Only submit necessary feedback comments, focusing on core issues of the pushed code.
     steps:
-      # 第一步：检出代码（必须）
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      # 新增：自托管 Runner 安装 gh 客户端（按需）
-      - name: Install GitHub CLI (gh)
-        if: github.event_name == 'push'
-        run: |
-          # 适配 Ubuntu 自托管 Runner，其他系统需调整
-          if ! command -v gh &> /dev/null; then
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update && sudo apt install -y gh
-          fi
-
-      # 第二步：运行 Claude 代码审查工具（修正：id 移到这一步）
       - uses: anthropics/claude-code-action@v1
-        id: claude-review  # 关键：id 必须加在这个步骤上
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
           model: claude-sonnet-4-5-20250929
-          track_progress: ${{ github.event_name == 'pull_request' && true || false }} # ✨ Enables tracking comments
-          # 修复：用条件表达式选择对应的 prompt 变量
-          prompt: ${{ github.event_name == 'pull_request' && env.PR_PROMPT || env.PUSH_PROMPT }}
-          # 优化：精简 claude_args，区分 PR/Push 事件的工具
-          claude_args: ${{ github.event_name == 'pull_request' && '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"' || '--allowedTools ""' }}
-      
-      # 第三步：push事件类型创建对应的 GitHub Issue
-      - name: Create Review Issue for Push
-        if: github.event_name == 'push'
+          track_progress: true
+          prompt: ${{ env.PR_PROMPT }}
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"'
+
+  # Push 事件：使用 Claude CLI（action 不支持 push）
+  claude-codereview-push:
+    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+      issues: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Review push commit
+        id: review
+        run: |
+          DIFF=$(git diff HEAD^ HEAD || true)
+
+          cat > /tmp/review-prompt.txt <<PROMPT_EOF
+          REPO: ${{ github.repository }}
+          PUSHER: ${{ github.actor }}
+          COMMIT SHA: ${{ github.sha }}
+          PUSH BRANCH: ${{ github.ref_name }}
+
+          Please review this push commit diff with a focus on:
+          - Completeness and correctness of submitted code
+          - Whether new syntax errors or runtime issues are introduced
+          - Whether temporary debugging code or sensitive information is included
+          - Whether the code submission granularity is reasonable
+
+          --- DIFF ---
+          $DIFF
+          PROMPT_EOF
+
+          RESULT=$(claude --print --model claude-sonnet-4-5-20250929 < /tmp/review-prompt.txt)
+
+          echo "review_result<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESULT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create Review Issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUSH_SHA: ${{ github.sha }}
-          PUSH_BRANCH: ${{ github.ref_name }}
-          REVIEW_RESULT: ${{ steps.claude-review.outputs.review-result }}
+          REVIEW_RESULT: ${{ steps.review.outputs.review_result }}
         run: |
-          # 兜底：若 REVIEW_RESULT 为空，填充默认提示
           if [ -z "$REVIEW_RESULT" ]; then
-            REVIEW_RESULT="No review result returned from Claude. Please check workflow logs for details."
+            REVIEW_RESULT="No review result returned from Claude. Please check workflow logs."
           fi
-          # 创建 Issue，标题包含提交 SHA 和分支，内容为审查结果
           gh issue create \
-            --title "Code Review Result: Push to $PUSH_BRANCH ($PUSH_SHA)" \
-            --body "### Code Review for Push Commit\n\n$REVIEW_RESULT" \
+            --title "Code Review: Push to ${{ github.ref_name }} (${{ github.sha }})" \
+            --body "$REVIEW_RESULT" \
             --label "code-review,push-event"

@@ -5,7 +5,7 @@ on:
     inputs:
       base:
         description: 'Base branch to open PR into'
-        default: 'main-new'
+        default: 'main'
         required: true
       head:
         description: 'Head branch to open PR from'
@@ -38,7 +38,7 @@ jobs:
 
       - name: Create PR if missing
         env:
-          BASE: ${{ github.event.inputs.base || 'main-new' }}
+          BASE: ${{ github.event.inputs.base || 'main' }}
           HEAD: ${{ github.event.inputs.head || 'workflow-jl' }}
           TITLE_OVERRIDE: ${{ github.event.inputs.title || '' }}
         run: |

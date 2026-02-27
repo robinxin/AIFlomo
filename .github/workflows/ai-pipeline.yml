@@ -60,7 +60,7 @@ jobs:
       ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
     steps:
       - name: Checkout code & spec
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -356,7 +356,7 @@ jobs:
 
       - name: Create PR if missing
         env:
-          BASE: main-new
+          BASE: main
           HEAD: workflow-jl
         run: |
           EXISTING=$(gh pr list --head "$HEAD" --base "$BASE" --json number --jq '.[0].number')

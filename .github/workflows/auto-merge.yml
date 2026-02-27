@@ -19,6 +19,9 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Enable auto-merge
         if: github.event_name == 'workflow_dispatch'
         run: |

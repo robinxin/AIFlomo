@@ -2,9 +2,9 @@ name: Quality & Security Gate
 
 on:
   pull_request:
-    branches: [workflow-jl, main-new]
+    branches: [workflow-jl, main]
   push:
-    branches: [main-new, workflow-jl]
+    branches: [main, workflow-jl]
 
 jobs:
   quality-gate:

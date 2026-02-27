@@ -17,7 +17,7 @@ on:
 
 jobs:
   create-pr:
-    if: github.ref_name != 'workflow-jl' && github.ref_name != 'workflow-jl'
+    if: github.ref_name != 'workflow-jl' && github.ref_name != 'main'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read

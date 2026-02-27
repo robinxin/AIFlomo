@@ -3,7 +3,7 @@ name: Deploy to Local Self-Hosted Runner
 on:
   workflow_run:
     workflows: ["Quality & Security Gate"]
-    branches: [main-new, workflow-jl]
+    branches: [main, workflow-jl]
     types: [completed]
   workflow_dispatch:
     inputs:

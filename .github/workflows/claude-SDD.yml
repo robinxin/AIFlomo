@@ -8,6 +8,9 @@ on:
 
 jobs:
   sdd-full-lifecycle:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -20,7 +23,7 @@ jobs:
       ANTHROPIC_BASE_URL: "https://claude.hatch.yinxiang.com/api"
     steps:
       - name: Checkout code & spec
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -200,7 +203,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "ℹ️ No generated files to commit, skipping commit step."
           else
-            git commit -m "SDD: Auto-generate code/tests/spec-fix from changed spec files (${{ github.sha }})"
+            git commit -m "SDD: Auto-generate code/tests/spec-fix [skip ci]"
             git push origin ${{ github.ref_name }}
             echo "✅ Generated files committed to ${{ github.ref_name }}"
           fi
