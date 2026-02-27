@@ -71,6 +71,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write
     env:
       CODE_GEN_DIR: 'apps/flomo/app/'
       TEST_GEN_DIR: 'apps/flomo/tests/'
@@ -295,7 +296,7 @@ jobs:
 
       - name: Publish All SDD Results
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
           SPEC_FIX_FILES: ${{ steps.gen-spec-fix.outputs.spec_fix_files || 'None' }}
           CODE_GEN_SUMMARY: "Generated files: ${{ steps.write-files.outputs.code_files }} (Total: ${{ steps.write-files.outputs.code_file_count }})"
