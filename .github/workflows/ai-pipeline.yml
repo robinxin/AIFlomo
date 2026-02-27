@@ -70,7 +70,6 @@ jobs:
     needs: detect
     if: >-
       ${{ needs.detect.outputs.spec_changed == 'true'
-          && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
@@ -83,9 +82,11 @@ jobs:
       ANTHROPIC_API_BASE_URL: 'https://claude.hatch.yinxiang.com/api'
     steps:
       - name: Checkout code & spec
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install GitHub CLI (gh)
         run: |
@@ -229,9 +230,10 @@ jobs:
             6. Ensure consistency across code generated from multiple spec files
 
             ### OUTPUT REQUIREMENT
-            First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude_args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
+            Use the Write tool to directly create each generated file at the correct path under ${{ env.CODE_GEN_DIR }}.
+            After all files are written, output a summary listing: file path, lines of code, and which spec section it implements.
+            Do NOT output raw code blocks — write files directly via the Write tool.
+          claude_args: "--allowedTools 'Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
 
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
@@ -259,58 +261,38 @@ jobs:
             6. Include assertions that validate compliance with spec requirements (not just code functionality)
 
             ### OUTPUT REQUIREMENT
-            First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude_args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
+            Use the Write tool to directly create each test file at the correct path under ${{ env.TEST_GEN_DIR }}.
+            After all files are written, output a summary listing: file path, test count, and which spec section each test covers.
+            Do NOT output raw code blocks — write files directly via the Write tool.
+          claude_args: "--allowedTools 'Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
 
-      - name: Write Generated Code & Tests to Files
+      - name: Verify Generated Files
         id: write-files
         env:
-          CODE_GEN_RESULT: ${{ steps.gen-code.outputs.review-output }}
-          TEST_GEN_RESULT: ${{ steps.gen-test.outputs.review-output }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
         run: |
-          if [ -z "$CODE_GEN_RESULT" ]; then
-            echo "❌ Empty code generation result, aborting workflow!"
-            exit 1
-          fi
-
-          if [ -z "$TEST_GEN_RESULT" ]; then
-            echo "❌ Empty test generation result, aborting workflow!"
-            exit 1
-          fi
-
-          mkdir -p "$CODE_GEN_DIR" "$TEST_GEN_DIR"
-
-          echo "🔧 Extracting generated code..."
-          echo "$CODE_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=CODE_GEN_DIR "/" $0; print "Creating code file: " file} else {print >> file}}'
-
-          echo "🔧 Extracting generated test cases..."
-          echo "$TEST_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=TEST_GEN_DIR "/" $0; print "Creating test file: " file} else {print >> file}}'
-
-          CODE_FILE_COUNT=$(ls -l "$CODE_GEN_DIR" | grep -v '^total' | wc -l)
-          TEST_FILE_COUNT=$(ls -l "$TEST_GEN_DIR" | grep -v '^total' | wc -l)
+          CODE_FILE_COUNT=$(find "$CODE_GEN_DIR" -type f | wc -l | tr -d ' ')
+          TEST_FILE_COUNT=$(find "$TEST_GEN_DIR" -type f | wc -l | tr -d ' ')
 
           if [ "$CODE_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No code files generated, aborting workflow!"
+            echo "❌ No code files found in $CODE_GEN_DIR, aborting workflow!"
             exit 1
           fi
 
           if [ "$TEST_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No test files generated, aborting workflow!"
+            echo "❌ No test files found in $TEST_GEN_DIR, aborting workflow!"
             exit 1
           fi
 
-          echo "✅ Generated $CODE_FILE_COUNT code files in $CODE_GEN_DIR"
-          echo "✅ Generated $TEST_FILE_COUNT test files in $TEST_GEN_DIR"
-          echo "code_files=$(ls $CODE_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
-          echo "test_files=$(ls $TEST_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+          echo "✅ Found $CODE_FILE_COUNT code files in $CODE_GEN_DIR"
+          echo "✅ Found $TEST_FILE_COUNT test files in $TEST_GEN_DIR"
+          echo "code_files=$(find $CODE_GEN_DIR -type f | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+          echo "test_files=$(find $TEST_GEN_DIR -type f | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
           echo "code_file_count=$CODE_FILE_COUNT" >> "$GITHUB_OUTPUT"
           echo "test_file_count=$TEST_FILE_COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Commit Generated Files
-        if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
