@@ -178,7 +178,7 @@ jobs:
             - Prioritize critical issues (e.g., missing core function definitions)
             - Clearly link all issues to the corresponding spec file name
             - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
-          claude_args: "--allowedTools ''"
+          claude_args: "--allowedTools '' --model claude-sonnet-4-5-20250929"
 
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
@@ -237,7 +237,7 @@ jobs:
             ### OUTPUT REQUIREMENT
             First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
           claude_args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)" --model claude-sonnet-4-5-20250929
 
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
@@ -268,7 +268,7 @@ jobs:
             ### OUTPUT REQUIREMENT
             First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
           claude_args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)"
+            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)" --model claude-sonnet-4-5-20250929
 
       - name: Write Generated Code & Tests to Files
         id: write-files
