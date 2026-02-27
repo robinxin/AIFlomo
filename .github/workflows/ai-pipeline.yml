@@ -1,13 +1,6 @@
 name: AI Pipeline (Spec -> SDD -> Quality -> Release PR)
 
 on:
-  push:
-    branches: [feat/lss]
-    paths:
-      - 'specs/active/**/*'
-      - 'apps/flomo/app/**/*'
-      - 'apps/flomo/lib/**/*'
-      - 'apps/flomo/tests/**/*'
   pull_request:
     branches: [main-new]
     paths:
