@@ -78,7 +78,11 @@ jobs:
     env:
       CODE_GEN_DIR: 'apps/flomo/app/'
       TEST_GEN_DIR: 'apps/flomo/tests/'
+<<<<<<< HEAD
       ANTHROPIC_API_BASE_URL: 'https://claude.hatch.yinxiang.com/api'
+=======
+      ANTHROPIC_BASE_URL: 'https://claude.hatch.yinxiang.com/api'
+>>>>>>> main
     steps:
       - name: Checkout code & spec
         uses: actions/checkout@v6
@@ -158,6 +162,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+<<<<<<< HEAD
+=======
+
+>>>>>>> main
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -216,6 +224,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+<<<<<<< HEAD
+=======
+
+>>>>>>> main
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -243,6 +255,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+<<<<<<< HEAD
+=======
+
+>>>>>>> main
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
