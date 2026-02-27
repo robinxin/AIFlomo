@@ -147,8 +147,22 @@ jobs:
           PROXYEOF
           node /tmp/strip-proxy.js &
           sleep 2
-          echo "Proxy started, checking port..."
-          curl -s http://127.0.0.1:18080 || true
+
+      - name: Verify proxy strips context_management
+        run: |
+          # 发一个带 context_management 的请求给本地代理，上游不应再返回 400
+          RESPONSE=$(curl -s -o /tmp/proxy-test-response.json -w "%{http_code}" \
+            http://127.0.0.1:18080/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
+            -d '{"model":"claude-sonnet-4-5-20250929","max_tokens":5,"messages":[{"role":"user","content":"hi"}],"context_management":{"type":"enabled"}}')
+          echo "HTTP status: $RESPONSE"
+          cat /tmp/proxy-test-response.json
+          if [ "$RESPONSE" = "400" ]; then
+            echo "❌ Proxy is NOT stripping context_management, upstream still returns 400"
+            exit 1
+          fi
+          echo "✅ Proxy is working, context_management was stripped"
 
       - name: Install Claude Code 2.1.50
         id: install-claude
