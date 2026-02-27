@@ -71,8 +71,12 @@ jobs:
           done
 
           # 输出到 step 变量（供后续步骤使用）
-          echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
-          echo "spec_content=$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
+          echo "changed_spec_files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "spec_content<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           # 输出文件列表（逗号分隔，供结果展示）
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 

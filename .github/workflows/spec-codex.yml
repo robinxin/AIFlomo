@@ -41,7 +41,9 @@ jobs:
           else
             files=$(ls specs/active 2>/dev/null || true)
           fi
-          printf "changed_specs<<EOF\n%s\nEOF\n" "$files" >> "$GITHUB_OUTPUT"
+          echo "changed_specs<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$files" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Run Codex
         id: run_codex
