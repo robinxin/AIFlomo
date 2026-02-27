@@ -247,6 +247,15 @@ jobs:
             - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
           claude_args: "--allowedTools '' --model claude-sonnet-4-5-20250929"
 
+      - name: Debug review-spec outputs
+        if: always()
+        run: |
+          echo "=== review-spec outputs ==="
+          echo "review-result: ${{ steps.review-spec.outputs.review-result }}"
+          echo "output: ${{ steps.review-spec.outputs.output }}"
+          echo "result: ${{ steps.review-spec.outputs.result }}"
+          echo "outcome: ${{ steps.review-spec.outcome }}"
+
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
         if: steps.review-spec.outcome == 'success'
