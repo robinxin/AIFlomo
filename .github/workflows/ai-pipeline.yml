@@ -139,8 +139,17 @@ jobs:
             SPEC_CONTENT+="### Spec File: $FILE\n$FILE_CONTENT\n\n"
           done
 
-          echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
-          echo "spec_content=$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
+          {
+            echo "changed_spec_files<<EOF"
+            echo "$CHANGED_SPEC_FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "spec_content<<EOF"
+            echo "$SPEC_CONTENT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
       - name: Step 1 - Review Spec Rationality
@@ -173,7 +182,7 @@ jobs:
         id: gen-spec-fix
         if: steps.review-spec.outcome == 'success'
         env:
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
+          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-result }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
           if [ -z "$SPEC_REVIEW_RESULT" ]; then
@@ -241,7 +250,7 @@ jobs:
             ${{ steps.detect-spec-files.outputs.spec_content }}
 
             ### GENERATED CODE SUMMARY
-            ${{ steps.gen-code.outputs.review-output }}
+            ${{ steps.gen-code.outputs.review-result }}
 
             ### TASK: Generate Test Cases from Spec (SDD)
             Generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
@@ -260,8 +269,8 @@ jobs:
       - name: Write Generated Code & Tests to Files
         id: write-files
         env:
-          CODE_GEN_RESULT: ${{ steps.gen-code.outputs.review-output }}
-          TEST_GEN_RESULT: ${{ steps.gen-test.outputs.review-output }}
+          CODE_GEN_RESULT: ${{ steps.gen-code.outputs.review-result }}
+          TEST_GEN_RESULT: ${{ steps.gen-test.outputs.review-result }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
         run: |
@@ -327,7 +336,7 @@ jobs:
       - name: Publish All SDD Results
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-output }}
+          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-result }}
           SPEC_FIX_FILES: ${{ steps.gen-spec-fix.outputs.spec_fix_files || 'None' }}
           CODE_GEN_SUMMARY: "Generated files: ${{ steps.write-files.outputs.code_files }} (Total: ${{ steps.write-files.outputs.code_file_count }})"
           TEST_GEN_SUMMARY: "Generated test files: ${{ steps.write-files.outputs.test_files }} (Total: ${{ steps.write-files.outputs.test_file_count }})"
