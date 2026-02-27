@@ -1,13 +1,6 @@
 name: AI Pipeline (Spec -> SDD -> Quality -> Release PR)
 
 on:
-  push:
-    branches: [workflow-jl]
-    paths:
-      - 'specs/active/**/*'
-      - 'apps/flomo/app/**/*'
-      - 'apps/flomo/lib/**/*'
-      - 'apps/flomo/tests/**/*'
   workflow_dispatch:
     inputs:
       run_sdd:
@@ -39,11 +32,7 @@ jobs:
       - name: Detect changed spec files
         id: detect
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
-            files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ || true)
-          else
-            files=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' || true)
-          fi
+          files=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' || true)
 
           if [ -n "$files" ]; then
             echo "spec_changed=true" >> "$GITHUB_OUTPUT"
@@ -58,8 +47,7 @@ jobs:
     needs: detect
     if: >-
       ${{ needs.detect.outputs.spec_changed == 'true'
-          && (github.event_name != 'push' || (contains(github.event.head_commit.message, 'SDD: Auto-generate') == false))
-          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
+          && github.event.inputs.run_sdd == '1' }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -105,11 +93,7 @@ jobs:
         run: |
           CHANGED_SPEC_FILES=""
 
-          if [ "${{ github.event_name }}" = "push" ]; then
-            CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^specs/active/.*\.\(md\|yaml\|yml\|json\)$' || true)
-          else
-            CHANGED_FILES=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' | grep -E '\.(md|yaml|yml|json)$' || true)
-          fi
+          CHANGED_FILES=$(ls specs/active 2>/dev/null | sed 's#^#specs/active/#' | grep -E '\.(md|yaml|yml|json)$' || true)
 
           CHANGED_SPEC_FILES=$(echo "$CHANGED_FILES" | sort | uniq | grep -E '^specs/active/.*\.(md|yaml|yml|json)$' || true)
 
@@ -246,7 +230,6 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Commit Generated Files
-        if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -304,7 +287,7 @@ jobs:
 
   quality:
     needs: sdd
-    if: ${{ needs.sdd.result != 'failure' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
+    if: ${{ needs.sdd.result != 'failure' && github.event.inputs.run_quality == '1' }}
     runs-on: [self-hosted, ai-runner]
     steps:
       - name: Checkout
@@ -339,7 +322,7 @@ jobs:
 
   release-pr:
     needs: quality
-    if: ${{ needs.quality.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_release_pr == '1') }}
+    if: ${{ needs.quality.result == 'success' && github.event.inputs.run_release_pr == '1' }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read

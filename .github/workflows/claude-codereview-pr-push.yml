@@ -2,10 +2,10 @@ name: Claude Codereview
 # 1. 触发器：监听 pr 事件和 push 事件
 on:
   pull_request:
-    branches: [main, feat/lss, workflow-jl]
+    branches: [main, workflow-jl]
     types: [opened, synchronize, reopened]
   push:
-    branches: [main, feat/lss, workflow-jl]
+    branches: [main, workflow-jl]
     types: [created, edited]
 
 jobs:
