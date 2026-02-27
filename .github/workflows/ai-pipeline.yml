@@ -113,7 +113,6 @@ jobs:
         id: detect-spec-files
         run: |
           CHANGED_SPEC_FILES=""
-          SPEC_CONTENT=""
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_REF="${{ github.event.pull_request.base.ref }}"
@@ -140,14 +139,7 @@ jobs:
             fi
           done
 
-          for FILE in $CHANGED_SPEC_FILES; do
-            echo "📄 Reading spec file: $FILE"
-            FILE_CONTENT=$(cat "$FILE" | awk '{gsub(/"/, "\\\""); print}' | tr '\n' '\\n')
-            SPEC_CONTENT+="### Spec File: $FILE\n$FILE_CONTENT\n\n"
-          done
-
           echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
-          echo "spec_content=$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
       - name: Step 1 - Review Spec Rationality
@@ -159,11 +151,9 @@ jobs:
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
-            ### SPECIFICATION CONTENT (Combined)
-            ${{ steps.detect-spec-files.outputs.spec_content }}
-
             ### TASK: Spec Rationality Review
-            Analyze the above changed spec files for SDD (Specification-Driven Development) and output:
+            Read each spec file listed above using the Read tool before analyzing.
+            Then analyze the changed spec files for SDD (Specification-Driven Development) and output:
             1. **Completeness**: List missing parts for EACH changed file (e.g., "api_spec.md: no input/output definition for User API")
             2. **Ambiguity**: Highlight vague descriptions for EACH changed file (e.g., "db_spec.yml: 'fast query' without response time metrics")
             3. **Logical Conflicts**: Point out contradictory rules BETWEEN changed files (if multiple)
@@ -174,7 +164,7 @@ jobs:
             - Prioritize critical issues (e.g., missing core function definitions)
             - Clearly link all issues to the corresponding spec file name
             - If spec has fatal flaws (e.g., empty core function definition), explicitly mark as "CRITICAL"
-          claude_args: "--allowedTools ''"
+          claude_args: "--allowedTools 'Read'"
 
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
@@ -217,11 +207,8 @@ jobs:
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
-            ### COMBINED SPEC CONTENT
-            ${{ steps.detect-spec-files.outputs.spec_content }}
-
             ### TASK: Generate Code from Spec (SDD)
-            Generate production-ready code based on ALL changed spec files, following these strict rules:
+            First use the Read tool to read each spec file listed above, then generate production-ready code based on ALL changed spec files, following these strict rules:
             1. Save code to directory: ${{ env.CODE_GEN_DIR }} (create subdirectories if needed to map to spec files)
             2. Use the same programming language as existing code in apps/flomo/app/ (detect automatically from file extensions)
             3. Follow the spec's interface/parameter/return value rules strictly (no deviations)
@@ -233,7 +220,7 @@ jobs:
             Use the Write tool to directly create each generated file at the correct path under ${{ env.CODE_GEN_DIR }}.
             After all files are written, output a summary listing: file path, lines of code, and which spec section it implements.
             Do NOT output raw code blocks — write files directly via the Write tool.
-          claude_args: "--allowedTools 'Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
+          claude_args: "--allowedTools 'Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
 
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
@@ -245,14 +232,11 @@ jobs:
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
 
-            ### COMBINED SPEC CONTENT
-            ${{ steps.detect-spec-files.outputs.spec_content }}
-
             ### GENERATED CODE SUMMARY
             ${{ steps.gen-code.outputs.review-output }}
 
             ### TASK: Generate Test Cases from Spec (SDD)
-            Generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
+            First use the Read tool to read each spec file listed above and the generated code, then generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
             1. Save test cases to directory: ${{ env.TEST_GEN_DIR }} (mirror the directory structure of generated code)
             2. Align test framework with existing tests in apps/flomo/tests/ (detect automatically from file extensions)
             3. Cover ALL functions/rules defined in the spec (include positive, negative, and edge cases)
@@ -264,7 +248,7 @@ jobs:
             Use the Write tool to directly create each test file at the correct path under ${{ env.TEST_GEN_DIR }}.
             After all files are written, output a summary listing: file path, test count, and which spec section each test covers.
             Do NOT output raw code blocks — write files directly via the Write tool.
-          claude_args: "--allowedTools 'Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
+          claude_args: "--allowedTools 'Read,Write,Edit,Bash(mkdir:*),Bash(ls:*)'"
 
       - name: Verify Generated Files
         id: write-files
@@ -363,6 +347,8 @@ jobs:
       ${{ needs.sdd.result != 'failure'
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
     runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -393,6 +379,43 @@ jobs:
       - name: Test (coverage gate)
         working-directory: apps/flomo
         run: npm run test:coverage
+
+      - name: Archive Spec to Completed
+        if: success()
+        env:
+          CHANGED_SPECS: ${{ needs.detect.outputs.changed_specs }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$CHANGED_SPECS" ]; then
+            echo "ℹ️ No spec files to archive, skipping."
+            exit 0
+          fi
+
+          mkdir -p specs/completed
+          ARCHIVED=""
+          for FILE in $CHANGED_SPECS; do
+            if [ -f "$FILE" ]; then
+              BASENAME=$(basename "$FILE")
+              mv "$FILE" "specs/completed/$BASENAME"
+              ARCHIVED="$ARCHIVED $BASENAME"
+              echo "✅ Archived $FILE → specs/completed/$BASENAME"
+            fi
+          done
+
+          if [ -z "$ARCHIVED" ]; then
+            echo "ℹ️ All spec files already archived."
+            exit 0
+          fi
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git pull origin ${{ github.ref_name }} --rebase
+          git add specs/active/ specs/completed/
+          git diff --cached --quiet || (
+            git commit -m "SDD: Archive spec(s) to completed after quality gate [$ARCHIVED]" &&
+            git push origin ${{ github.ref_name }} &&
+            echo "✅ Spec(s) archived and committed"
+          )
 
   release-pr:
     needs: quality
