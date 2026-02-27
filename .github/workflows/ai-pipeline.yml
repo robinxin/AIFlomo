@@ -108,12 +108,13 @@ jobs:
           exit 1
 
       - name: Start context_management stripping proxy
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
         run: |
-          node -e "
+          cat > /tmp/strip-proxy.js << 'PROXYEOF'
           const http = require('http');
           const https = require('https');
-          const url = require('url');
-          const upstream = url.parse('${{ env.UPSTREAM_API_URL }}');
+          const upstreamUrl = new URL(process.env.UPSTREAM_API_URL);
           http.createServer((req, res) => {
             let body = '';
             req.on('data', c => body += c);
@@ -124,13 +125,13 @@ jobs:
                 body = JSON.stringify(d);
               } catch(e) {}
               const opts = {
-                hostname: upstream.hostname,
+                hostname: upstreamUrl.hostname,
                 port: 443,
-                path: upstream.pathname + (req.url === '/' ? '' : req.url),
+                path: upstreamUrl.pathname + (req.url === '/' ? '' : req.url),
                 method: req.method,
                 headers: {
                   ...req.headers,
-                  host: upstream.hostname,
+                  host: upstreamUrl.hostname,
                   'content-length': Buffer.byteLength(body)
                 }
               };
@@ -143,8 +144,11 @@ jobs:
               r.end();
             });
           }).listen(18080, '127.0.0.1', () => console.log('Proxy listening on 127.0.0.1:18080'));
-          " &
+          PROXYEOF
+          node /tmp/strip-proxy.js &
           sleep 2
+          echo "Proxy started, checking port..."
+          curl -s http://127.0.0.1:18080 || true
 
       - name: Install Claude Code 2.1.50
         id: install-claude
