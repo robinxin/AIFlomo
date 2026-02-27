@@ -139,8 +139,17 @@ jobs:
             SPEC_CONTENT+="### Spec File: $FILE\n$FILE_CONTENT\n\n"
           done
 
-          echo "changed_spec_files=$CHANGED_SPEC_FILES" >> "$GITHUB_OUTPUT"
-          echo "spec_content=$SPEC_CONTENT" >> "$GITHUB_OUTPUT"
+          {
+            echo "changed_spec_files<<EOF"
+            echo "$CHANGED_SPEC_FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "spec_content<<EOF"
+            echo "$SPEC_CONTENT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "spec_files_list=$(echo "$CHANGED_SPEC_FILES" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
 
       - name: Step 1 - Review Spec Rationality
