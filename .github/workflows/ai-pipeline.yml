@@ -252,10 +252,19 @@ jobs:
         if: steps.review-spec.outcome == 'success'
         run: |
           RESULT=$(python3 -c "
-          import json, sys
+          import json
           with open('$RUNNER_TEMP/claude-execution-output.json') as f:
-              d = json.load(f)
-          print(d.get('result', ''))
+              for line in f:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  try:
+                      d = json.loads(line)
+                      if isinstance(d, dict) and d.get('type') == 'result':
+                          print(d.get('result', ''))
+                          break
+                  except:
+                      pass
           ")
           {
             echo "review_result<<CAPTURE_EOF"
@@ -457,7 +466,7 @@ jobs:
       - name: Publish All SDD Results
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SPEC_REVIEW_RESULT: ${{ steps.review-spec.outputs.review-result }}
+          SPEC_REVIEW_RESULT: ${{ steps.capture-review.outputs.review_result }}
           SPEC_FIX_FILES: ${{ steps.gen-spec-fix.outputs.spec_fix_files || 'None' }}
           CODE_GEN_SUMMARY: "Generated files: ${{ steps.write-files.outputs.code_files }} (Total: ${{ steps.write-files.outputs.code_file_count }})"
           TEST_GEN_SUMMARY: "Generated test files: ${{ steps.write-files.outputs.test_files }} (Total: ${{ steps.write-files.outputs.test_file_count }})"
