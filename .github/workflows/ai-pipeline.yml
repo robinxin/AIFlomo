@@ -499,12 +499,11 @@ jobs:
           echo "test_file_count=$TEST_FILE_COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Commit Generated Files
-        if: github.event_name == 'workflow_dispatch'
+        if: steps.write-files.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
-          CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
@@ -513,11 +512,13 @@ jobs:
           git add specs/active/*.fix.* 2>/dev/null || true
 
           if git diff --cached --quiet; then
-            echo "ℹ️ No generated files to commit, skipping commit step."
+            echo "ℹ️ No generated files to commit, skipping."
           else
-            git commit -m "SDD: Auto-generate code/tests/spec-fix from changed spec files (${{ github.sha }})"
-            git push origin ${{ github.ref_name }}
-            echo "✅ Generated files committed to ${{ github.ref_name }}"
+            # PR 事件用 head_ref，dispatch/push 用 ref_name
+            BRANCH="${{ github.head_ref || github.ref_name }}"
+            git commit -m "SDD: auto-generate code/tests from spec (${{ github.sha }})"
+            git push origin "HEAD:$BRANCH"
+            echo "✅ Generated files committed to $BRANCH"
           fi
 
       - name: Publish All SDD Results
