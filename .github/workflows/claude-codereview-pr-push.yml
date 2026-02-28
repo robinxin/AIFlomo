@@ -81,7 +81,8 @@ jobs:
           else
             git diff "$BEFORE" "$SHA" > /tmp/review.diff
           fi
-          echo "REVIEW_CONTEXT=Push to ${{ github.ref_name }} by ${{ github.actor }} — ${{ github.event.head_commit.message }}" >> "$GITHUB_ENV"
+          MSG=$(echo "${{ github.event.head_commit.message }}" | head -1)
+          echo "REVIEW_CONTEXT=Push to ${{ github.ref_name }} by ${{ github.actor }} — ${MSG}" >> "$GITHUB_ENV"
 
       # 调用 Claude 执行代码审查
       - name: Run Claude Code Review
