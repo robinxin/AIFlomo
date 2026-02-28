@@ -335,18 +335,19 @@ jobs:
             ${{ steps.detect-spec-files.outputs.spec_content }}
 
             ### TASK: Generate Code from Spec (SDD)
-            Generate production-ready code based on ALL changed spec files, following these strict rules:
-            1. Save code to directory: ${{ env.CODE_GEN_DIR }} (create subdirectories if needed to map to spec files)
-            2. Use the same programming language as existing code in apps/flomo/app/ (detect automatically from file extensions)
-            3. Follow the spec's interface/parameter/return value rules strictly (no deviations)
-            4. Add clear comments linking code to specific spec files/sections (e.g., "# From api_spec.md: User API Endpoint - Input Validation")
-            5. Generate only the code defined in the spec (no extra functionality or debug code)
-            6. Ensure consistency across code generated from multiple spec files
+            Use the Write tool to write production-ready code files DIRECTLY TO DISK under ${{ env.CODE_GEN_DIR }}.
 
-            ### OUTPUT REQUIREMENT
-            First output a summary of generated files (with full paths), then output the complete code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude_args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)" --model claude-sonnet-4-5-20250929
+            Steps:
+            1. Use Read + Bash(ls) to inspect existing code in apps/flomo/app/ (understand language, style, patterns)
+            2. For each component defined in the spec, use the Write tool to save it with the full path (e.g. apps/flomo/app/feature.ts)
+            3. Follow the spec's interface/parameter/return value rules strictly — no deviations
+            4. Do NOT output markdown code blocks — write files directly with the Write tool
+            5. Only generate what the spec explicitly defines
+
+            After writing all files, output a plain-text summary:
+            WRITTEN: apps/flomo/app/file1.ts
+            WRITTEN: apps/flomo/app/file2.ts
+          claude_args: "--allowedTools 'Write,Read,Bash(mkdir:*),Bash(ls:*)' --model claude-sonnet-4-5-20250929"
 
       - name: Capture code generation result from log
         id: capture-gen-code
@@ -404,22 +405,24 @@ jobs:
             ### COMBINED SPEC CONTENT
             ${{ steps.detect-spec-files.outputs.spec_content }}
 
-            ### GENERATED CODE SUMMARY
+            ### GENERATED CODE FILES
             ${{ steps.capture-gen-code.outputs.gen_code_result }}
 
             ### TASK: Generate Test Cases from Spec (SDD)
-            Generate comprehensive unit test cases based on the changed spec files and generated code, following these rules:
-            1. Save test cases to directory: ${{ env.TEST_GEN_DIR }} (mirror the directory structure of generated code)
-            2. Align test framework with existing tests in apps/flomo/tests/ (detect automatically from file extensions)
-            3. Cover ALL functions/rules defined in the spec (include positive, negative, and edge cases)
-            4. Link each test case to the corresponding spec file/section (e.g., "# Test for db_spec.yml: User Table - Unique Constraint")
-            5. Ensure test cases are fully runnable (valid syntax, correct imports, no missing dependencies)
-            6. Include assertions that validate compliance with spec requirements (not just code functionality)
+            Use the Write tool to write comprehensive unit test files DIRECTLY TO DISK under ${{ env.TEST_GEN_DIR }}.
 
-            ### OUTPUT REQUIREMENT
-            First output a summary of generated test files (with full paths), then output the complete test code for each file (enclosed in ```language ... ``` blocks with file path as header).
-          claude_args: |
-            --allowedTools "Bash(mkdir:*),Bash(cat:*),Bash(ls:*),Bash(file:*)" --model claude-sonnet-4-5-20250929
+            Steps:
+            1. Use Read + Bash(ls) to inspect existing tests in apps/flomo/tests/ (understand test framework, patterns)
+            2. Read the generated code files listed above to understand what you are testing
+            3. For each spec-defined component, use Write to save the test file (e.g. apps/flomo/tests/feature.test.ts)
+            4. Cover positive, negative, and edge cases for every function/rule in the spec
+            5. Do NOT output markdown code blocks — write files directly with the Write tool
+            6. Ensure tests are runnable: correct imports, valid syntax, no missing dependencies
+
+            After writing all test files, output a plain-text summary:
+            WRITTEN: apps/flomo/tests/file1.test.ts
+            WRITTEN: apps/flomo/tests/file2.test.ts
+          claude_args: "--allowedTools 'Write,Read,Bash(mkdir:*),Bash(ls:*)' --model claude-sonnet-4-5-20250929"
 
       - name: Capture test generation result from log
         id: capture-gen-test
@@ -463,50 +466,35 @@ jobs:
             echo "CAPTURE_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Write Generated Code & Tests to Files
+      - name: Verify Generated Files
         id: write-files
         if: steps.capture-gen-test.outcome == 'success'
         env:
-          CODE_GEN_RESULT: ${{ steps.capture-gen-code.outputs.gen_code_result }}
-          TEST_GEN_RESULT: ${{ steps.capture-gen-test.outputs.gen_test_result }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
           TEST_GEN_DIR: ${{ env.TEST_GEN_DIR }}
         run: |
-          if [ -z "$CODE_GEN_RESULT" ]; then
-            echo "❌ Empty code generation result, aborting workflow!"
-            exit 1
-          fi
+          # Claude already wrote files directly using the Write tool during the action steps.
+          # Use git status to find what was newly added or modified.
+          NEW_CODE=$(git status --porcelain "$CODE_GEN_DIR" 2>/dev/null | awk '{print $NF}')
+          NEW_TEST=$(git status --porcelain "$TEST_GEN_DIR" 2>/dev/null | awk '{print $NF}')
 
-          if [ -z "$TEST_GEN_RESULT" ]; then
-            echo "❌ Empty test generation result, aborting workflow!"
-            exit 1
-          fi
-
-          mkdir -p "$CODE_GEN_DIR" "$TEST_GEN_DIR"
-
-          echo "🔧 Extracting generated code..."
-          echo "$CODE_GEN_RESULT" | awk -v BASE_DIR="$CODE_GEN_DIR" '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=BASE_DIR "/" $0; print "Creating code file: " file} else {print >> file}}'
-
-          echo "🔧 Extracting generated test cases..."
-          echo "$TEST_GEN_RESULT" | awk -v BASE_DIR="$TEST_GEN_DIR" '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=BASE_DIR "/" $0; print "Creating test file: " file} else {print >> file}}'
-
-          CODE_FILE_COUNT=$(ls -l "$CODE_GEN_DIR" | grep -v '^total' | wc -l)
-          TEST_FILE_COUNT=$(ls -l "$TEST_GEN_DIR" | grep -v '^total' | wc -l)
+          CODE_FILE_COUNT=$(printf '%s\n' $NEW_CODE | grep -v '^$' | wc -l | tr -d ' ')
+          TEST_FILE_COUNT=$(printf '%s\n' $NEW_TEST | grep -v '^$' | wc -l | tr -d ' ')
 
           if [ "$CODE_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No code files generated, aborting workflow!"
+            echo "❌ No new code files detected in $CODE_GEN_DIR"
             exit 1
           fi
 
           if [ "$TEST_FILE_COUNT" -eq 0 ]; then
-            echo "❌ No test files generated, aborting workflow!"
+            echo "❌ No new test files detected in $TEST_GEN_DIR"
             exit 1
           fi
 
-          echo "✅ Generated $CODE_FILE_COUNT code files in $CODE_GEN_DIR"
-          echo "✅ Generated $TEST_FILE_COUNT test files in $TEST_GEN_DIR"
-          echo "code_files=$(ls $CODE_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
-          echo "test_files=$(ls $TEST_GEN_DIR | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+          echo "✅ $CODE_FILE_COUNT new/modified code files in $CODE_GEN_DIR"
+          echo "✅ $TEST_FILE_COUNT new/modified test files in $TEST_GEN_DIR"
+          echo "code_files=$(printf '%s\n' $NEW_CODE | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+          echo "test_files=$(printf '%s\n' $NEW_TEST | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
           echo "code_file_count=$CODE_FILE_COUNT" >> "$GITHUB_OUTPUT"
           echo "test_file_count=$TEST_FILE_COUNT" >> "$GITHUB_OUTPUT"
 
