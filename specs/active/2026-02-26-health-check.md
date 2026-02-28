@@ -48,4 +48,4 @@
 - [ ] 请求 `/api/health` 返回 HTTP 200
 - [ ] 返回 JSON 中包含 `status: "ok"`
 
-<!-- pipeline-trigger: 2026-02-28 11:45 -->
+<!-- pipeline-trigger: 2026-02-28 12:00 -->
