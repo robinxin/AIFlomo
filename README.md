@@ -106,7 +106,7 @@ git push origin feat/your-feature
 | 工作流 | 触发条件 | 说明 |
 |---|---|---|
 | SDD Pipeline | push `feat/**`（specs 有变更）/ workflow_dispatch | Spec → 代码生成 → 质量门禁 → Release PR |
-| Claude Code Review | push `feat/**` / PR 到 main | AI 自动代码审查，结果发布为 PR 评论或 Issue |
+| Claude Code Review | push `feat/**`（apps/scripts 有变更）/ PR 到 main | AI 自动代码审查，结果发布为 PR 评论或 Issue |
 | Deploy | push `main` | 自动部署到自托管服务器 |
 
 ## API 设计（待实现）
