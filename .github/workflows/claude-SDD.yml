@@ -238,6 +238,8 @@ jobs:
     runs-on: [self-hosted, ai-runner]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-node@v4
         with:
