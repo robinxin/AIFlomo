@@ -67,7 +67,7 @@ jobs:
     needs: detect
     if: >-
       ${{ needs.detect.outputs.spec_changed == 'true'
-          && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+          && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
@@ -507,6 +507,8 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
+          # 带 token 的 remote URL，解决 HTTPS 鉴权失败
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
 
           git add "$CODE_GEN_DIR" "$TEST_GEN_DIR"
           git add specs/active/*.fix.* 2>/dev/null || true
@@ -514,11 +516,9 @@ jobs:
           if git diff --cached --quiet; then
             echo "ℹ️ No generated files to commit, skipping."
           else
-            # PR 事件用 head_ref，dispatch/push 用 ref_name
-            BRANCH="${{ github.head_ref || github.ref_name }}"
             git commit -m "SDD: auto-generate code/tests from spec (${{ github.sha }})"
-            git push origin "HEAD:$BRANCH"
-            echo "✅ Generated files committed to $BRANCH"
+            git push origin "HEAD:${{ github.ref_name }}"
+            echo "✅ Generated files committed to ${{ github.ref_name }}"
           fi
 
       - name: Publish All SDD Results
@@ -569,7 +569,9 @@ jobs:
   quality:
     needs: [detect, sdd]
     if: >-
-      ${{ needs.sdd.result != 'failure'
+      ${{ always()
+          && needs.detect.result == 'success'
+          && (needs.sdd.result == 'success' || needs.sdd.result == 'skipped')
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
     runs-on: [self-hosted, ai-runner]
     steps:
@@ -606,9 +608,9 @@ jobs:
   release-pr:
     needs: quality
     if: >-
-      ${{ github.event_name != 'pull_request'
+      ${{ github.event_name == 'workflow_dispatch'
           && needs.quality.result == 'success'
-          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_release_pr == '1') }}
+          && github.event.inputs.run_release_pr == '1' }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
