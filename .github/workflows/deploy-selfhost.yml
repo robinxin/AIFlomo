@@ -1,0 +1,36 @@
+name: Deploy to Local Self-Hosted Runner
+
+on:
+  workflow_run:
+    workflows: ["Quality & Security Gate"]
+    branches: [main-new]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_migrate:
+        description: 'Run prisma migrate (1=yes, 0=no)'
+        default: '1'
+        required: true
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Deploy locally
+        env:
+          RUN_MIGRATE: ${{ github.event.inputs.run_migrate || '1' }}
+        run: |
+          bash apps/flomo/scripts/deploy-local.sh

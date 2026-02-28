@@ -1,103 +1,166 @@
-name: Claude Codereview
-# 1. 触发器：监听 pr 事件和 push 事件
+name: Claude Code Review
+
 on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
   push:
-    branches: [main]
-    types: [created, edited]
+    branches: ['feat/**']
 
 jobs:
-  claude-codereview:
-    # 2. 指定运行器：使用你刚才配置的自托管运行器
+  code-review:
     runs-on: [self-hosted, ai-runner]
-    # 3. 权限设置：补充 issues:write 权限（创建 Issue 需）
     permissions:
       contents: read
       pull-requests: write
-      issues: write  # 新增：创建 Issue 必须的权限
-    # 核心修复：先定义差异化的 prompt 变量
+      issues: write
     env:
-      # PR 场景的提示词
-      PR_PROMPT: |
-        REPO: ${{ github.repository }}
-        PR NUMBER: ${{ github.event.pull_request.number }}
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
 
-        Please review this pull request with a focus on:
-        - Code quality and best practices
-        - Potential bugs or issues
-        - Security implications
-        - Performance considerations
-
-        Provide detailed feedback using inline comments for specific issues.
-        
-        Note: The PR branch is already checked out in the current working directory.
-
-        Use `gh pr comment` for top-level feedback.
-        Use `mcp__github_inline_comment__create_inline_comment` to highlight specific code issues.
-        Only post GitHub comments - don't submit review text as messages.
-      # Push 场景的提示词
-      PUSH_PROMPT: |
-        REPO: ${{ github.repository }}
-        PUSHER: ${{ github.actor }}
-        COMMIT SHA: ${{ github.sha }}
-        COMMIT MESSAGE: ${{ github.event.head_commit.message }}
-        PUSH BRANCH: ${{ github.ref_name }}
-
-        Please review this push commit with a focus on:
-        - Completeness and correctness of submitted code
-        - Whether new syntax errors or runtime issues are introduced
-        - Whether the submission complies with branch development specifications
-        - Whether temporary debugging code or sensitive information is missing
-        - Whether the code submission granularity is reasonable
-
-        Note: The current branch code has been checked out to the working directory.
-        Only submit necessary feedback comments, focusing on core issues of the pushed code.
     steps:
-      # 第一步：检出代码（必须）
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # 新增：自托管 Runner 安装 gh 客户端（按需）
-      - name: Install GitHub CLI (gh)
+      # 启动代理，剥离 context_management（与 sdd-pipeline 保持一致）
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      # 获取 diff（PR 场景）
+      - name: Get diff for PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} > /tmp/review.diff
+          echo "REVIEW_CONTEXT=PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}" >> "$GITHUB_ENV"
+
+      # 获取 diff（Push 场景）
+      - name: Get diff for Push
         if: github.event_name == 'push'
         run: |
-          # 适配 Ubuntu 自托管 Runner，其他系统需调整
-          if ! command -v gh &> /dev/null; then
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update && sudo apt install -y gh
+          BEFORE="${{ github.event.before }}"
+          SHA="${{ github.sha }}"
+          # before 全为 0 表示新建分支，只展示最新一次提交
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || \
+             ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            git show "$SHA" > /tmp/review.diff
+          else
+            git diff "$BEFORE" "$SHA" > /tmp/review.diff
           fi
+          echo "REVIEW_CONTEXT=Push to ${{ github.ref_name }} by ${{ github.actor }} — ${{ github.event.head_commit.message }}" >> "$GITHUB_ENV"
 
-      # 第二步：运行 Claude 代码审查工具（修正：id 移到这一步）
-      - uses: anthropics/claude-code-action@v1
-        id: claude-review  # 关键：id 必须加在这个步骤上
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          anthropic-api-base-url: "https://claude.hatch.yinxiang.com/api"
-          model: claude-sonnet-4-5-20250929
-          track_progress: ${{ github.event_name == 'pull_request' && true || false }} # ✨ Enables tracking comments
-          # 修复：用条件表达式选择对应的 prompt 变量
-          prompt: ${{ github.event_name == 'pull_request' && env.PR_PROMPT || env.PUSH_PROMPT }}
-          # 优化：精简 claude_args，区分 PR/Push 事件的工具
-          claude_args: ${{ github.event_name == 'pull_request' && '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"' || '--allowedTools ""' }}
-      
-      # 第三步：push事件类型创建对应的 GitHub Issue
-      - name: Create Review Issue for Push
+      # 调用 Claude 执行代码审查
+      - name: Run Claude Code Review
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          DIFF=$(cat /tmp/review.diff)
+
+          RESULT=$(claude --print \
+            --allowedTools "Read,Bash(ls:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          You are an experienced code reviewer. Review the following code diff.
+          Context: ${REVIEW_CONTEXT}
+
+          Analyze the diff from these angles:
+          1. **Code Quality** — naming, structure, readability, best practices
+          2. **Bugs & Logic** — off-by-one, null dereference, incorrect conditions
+          3. **Security** — injection, XSS, sensitive data exposure, input validation
+          4. **Performance** — unnecessary computation, N+1 queries, memory leaks
+          5. **Conventions** — follows project style (TypeScript, Next.js App Router, Prisma, no any/ts-ignore)
+
+          DIFF:
+          ${DIFF}
+
+          Format your response as:
+          ## Summary
+          One-line verdict: ✅ LGTM / ⚠️ Needs Changes / 🚨 Critical Issues
+
+          ## Issues
+          For each issue: [CRITICAL/WARN/INFO] file:line — description and suggestion
+
+          ## Highlights (optional)
+          Any notably good practices worth calling out.
+          PROMPT
+          )")
+
+          echo "$RESULT"
+          echo "$RESULT" > /tmp/review-result.txt
+
+          {
+            echo "result<<RESULT_EOF"
+            echo "$RESULT"
+            echo "RESULT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # PR 场景：把审查结果作为评论发到 PR
+      - name: Post review comment on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY="$(cat /tmp/review-result.txt)"
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "## Claude Code Review
+
+${BODY}
+
+---
+*Generated by Claude \`${MODEL}\` · [Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
+
+      # Push 场景：把审查结果创建为 GitHub Issue
+      - name: Create review issue for Push
         if: github.event_name == 'push'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUSH_SHA: ${{ github.sha }}
-          PUSH_BRANCH: ${{ github.ref_name }}
-          REVIEW_RESULT: ${{ steps.claude-review.outputs.review-result }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 兜底：若 REVIEW_RESULT 为空，填充默认提示
-          if [ -z "$REVIEW_RESULT" ]; then
-            REVIEW_RESULT="No review result returned from Claude. Please check workflow logs for details."
+          BODY="$(cat /tmp/review-result.txt)"
+          if [ -z "$BODY" ]; then
+            BODY="No review result returned from Claude. Check workflow logs for details."
           fi
-          # 创建 Issue，标题包含提交 SHA 和分支，内容为审查结果
           gh issue create \
-            --title "Code Review Result: Push to $PUSH_BRANCH ($PUSH_SHA)" \
-            --body "### Code Review for Push Commit\n\n$REVIEW_RESULT" \
-            --label "code-review,push-event"
+            --title "Code Review: Push to ${{ github.ref_name }} (${GITHUB_SHA::7})" \
+            --body "### Code Review for Push Commit
+
+**Branch**: \`${{ github.ref_name }}\`
+**Commit**: \`${{ github.sha }}\`
+**Author**: ${{ github.actor }}
+**Message**: ${{ github.event.head_commit.message }}
+**Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+---
+
+${BODY}" \
+            --label "code-review"
