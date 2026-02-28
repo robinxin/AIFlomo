@@ -1,0 +1,299 @@
+name: SDD Pipeline (Detect -> SDD -> Quality -> Release PR)
+
+on:
+  push:
+    branches: [feat/lss]
+    paths:
+      - 'specs/active/**'
+  pull_request:
+    branches: [main-new]
+    paths:
+      - 'specs/active/**'
+      - 'apps/flomo/app/**'
+      - 'apps/flomo/lib/**'
+      - 'apps/flomo/tests/**'
+  workflow_dispatch:
+    inputs:
+      run_sdd:
+        description: 'Run SDD (1=yes, 0=no)'
+        default: '1'
+        required: true
+      run_quality:
+        description: 'Run quality gate (1=yes, 0=no)'
+        default: '1'
+        required: true
+      run_release_pr:
+        description: 'Create release PR (1=yes, 0=no)'
+        default: '1'
+        required: true
+
+jobs:
+  # ─── Job 1: 检测变更的 Spec 文件 ───────────────────────────────────────────
+  detect:
+    runs-on: [self-hosted, ai-runner]
+    outputs:
+      spec_changed: ${{ steps.detect.outputs.spec_changed }}
+      spec_files:   ${{ steps.detect.outputs.spec_files }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed spec files
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FILES=$(git diff --name-only \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" \
+              -- specs/active/ | grep -E '\.(md|yaml|yml|json)$' || true)
+          elif [ "${{ github.event_name }}" = "push" ] \
+               && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
+            FILES=$(git diff --name-only \
+              "${{ github.event.before }}" "${{ github.sha }}" \
+              -- specs/active/ | grep -E '\.(md|yaml|yml|json)$' || true)
+          else
+            # workflow_dispatch: 取 specs/active/ 下所有文件
+            FILES=$(ls specs/active/ 2>/dev/null \
+              | sed 's#^#specs/active/#' \
+              | grep -E '\.(md|yaml|yml|json)$' || true)
+          fi
+
+          if [ -n "$FILES" ]; then
+            echo "spec_changed=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Changed specs:"
+            echo "$FILES"
+          else
+            echo "spec_changed=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ No spec changes detected."
+          fi
+
+          {
+            echo "spec_files<<EOF"
+            echo "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  # ─── Job 2: SDD — Spec Review + Code Gen + Test Gen ──────────────────────
+  sdd:
+    needs: detect
+    if: >-
+      ${{ needs.detect.outputs.spec_changed == 'true'
+          && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      CODE_DIR:           'apps/flomo/app'
+      TEST_DIR:           'apps/flomo/tests'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Step 1 — Review Spec
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
+
+          REVIEW=$(claude --print \
+            --allowedTools "Read,Bash(ls:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          Read the following spec files and review their quality for SDD:
+          ${SPEC_FILES}
+
+          For each spec file, analyze:
+          1. Completeness — are all inputs/outputs/errors defined?
+          2. Ambiguity — any vague terms without measurable criteria?
+          3. Conflicts — any contradictions between specs?
+          4. Suggestions — specific improvements needed
+
+          Be concise and actionable. Mark critical issues as [CRITICAL].
+          PROMPT
+          )")
+
+          echo "$REVIEW"
+
+          # 保存审查结果供后续使用
+          {
+            echo "review<<REVIEW_EOF"
+            echo "$REVIEW"
+            echo "REVIEW_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Step 2 — Generate Code
+        id: codegen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          Read these spec files: ${SPEC_FILES}
+
+          Then implement the feature:
+          1. Use Read + Bash(ls) to understand existing code in ${CODE_DIR}/ (language, style, patterns)
+          2. Use Write to create each required file under ${CODE_DIR}/
+          3. Follow existing conventions (TypeScript, Next.js App Router, Prisma)
+          4. Only implement what the spec defines — no extras
+
+          After writing all files, list them:
+          WRITTEN: <full path>
+          PROMPT
+          )"
+
+      - name: Step 3 — Generate Tests
+        id: testgen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          Read these spec files: ${SPEC_FILES}
+
+          Write tests for the code you just generated in ${CODE_DIR}/:
+          1. Use Read + Bash(ls) to understand existing tests in ${TEST_DIR}/
+          2. Use Write to create test files under ${TEST_DIR}/
+          3. Match the existing test framework
+          4. Cover: happy path, error cases, edge cases from the spec
+
+          After writing all files, list them:
+          WRITTEN: <full path>
+          PROMPT
+          )"
+
+      - name: Commit generated files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git add "$CODE_DIR" "$TEST_DIR"
+          git add specs/active/*.fix.* 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "ℹ️ Nothing to commit."
+          else
+            git commit -m "sdd: auto-generate code/tests from spec (${{ github.sha }})"
+            git push origin "HEAD:${{ github.ref_name }}"
+            echo "✅ Committed to ${{ github.ref_name }}"
+          fi
+
+  # ─── Job 3: Quality Gate ──────────────────────────────────────────────────
+  quality:
+    needs: [detect, sdd]
+    if: >-
+      ${{ always()
+          && needs.detect.result == 'success'
+          && (needs.sdd.result == 'success' || needs.sdd.result == 'skipped')
+          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/flomo/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/flomo
+        run: npm install
+
+      - name: Prisma generate
+        working-directory: apps/flomo
+        run: npm run db:generate
+
+      - name: Audit (critical only)
+        working-directory: apps/flomo
+        run: npm audit --audit-level=critical
+
+      - name: Build
+        working-directory: apps/flomo
+        run: npm run build
+
+      - name: Test (coverage gate)
+        working-directory: apps/flomo
+        run: npm run test:coverage
+
+  # ─── Job 4: Release PR ───────────────────────────────────────────────────
+  release-pr:
+    needs: quality
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+          && needs.quality.result == 'success'
+          && github.event.inputs.run_release_pr == '1' }}
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create PR feat/lss -> main-new
+        run: |
+          EXISTING=$(gh pr list \
+            --head "feat/lss" --base "main-new" \
+            --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING" ]; then
+            echo "PR already exists: #$EXISTING"
+            exit 0
+          fi
+
+          gh pr create \
+            --base "main-new" \
+            --head "feat/lss" \
+            --title "feat/lss -> main-new" \
+            --body "Auto-created release PR. Quality gate passed."
