@@ -6,6 +6,10 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: ['feat/**']
+    paths:
+      - 'apps/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
 
 jobs:
   code-review:
