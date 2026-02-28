@@ -1,0 +1,166 @@
+name: Spec to Code (Auto Codegen)
+
+on:
+  push:
+    branches: [feat/lss]
+    paths:
+      - 'specs/active/**'
+  workflow_dispatch:
+
+jobs:
+  codegen:
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL: 'https://claude.hatch.yinxiang.com/api'
+      MODEL: 'claude-sonnet-4-5-20250929'
+      CODE_DIR: 'apps/flomo/app'
+      TEST_DIR: 'apps/flomo/tests'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed spec files
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
+            FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- specs/active/ \
+              | grep -E '\.(md|yaml|yml|json)$' || true)
+          else
+            FILES=$(ls specs/active/ 2>/dev/null | sed 's#^#specs/active/#' \
+              | grep -E '\.(md|yaml|yml|json)$' || true)
+          fi
+
+          if [ -z "$FILES" ]; then
+            echo "No spec files changed, skipping."
+            echo "has_specs=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "✅ Changed specs: $FILES"
+          echo "has_specs=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "spec_files<<EOF"
+            echo "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Start context_management stripping proxy
+        if: steps.detect.outputs.has_specs == 'true'
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'PROXYEOF'
+          const http = require('http');
+          const https = require('https');
+          const upstreamUrl = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try {
+                const d = JSON.parse(body);
+                delete d.context_management;
+                body = JSON.stringify(d);
+              } catch(e) {}
+              const opts = {
+                hostname: upstreamUrl.hostname, port: 443,
+                path: upstreamUrl.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: upstreamUrl.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready'));
+          PROXYEOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        if: steps.detect.outputs.has_specs == 'true'
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Generate code from spec
+        if: steps.detect.outputs.has_specs == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          SPEC_FILES="${{ steps.detect.outputs.spec_files }}"
+
+          cat > /tmp/codegen-prompt.txt << PROMPTEOF
+          You are an expert developer. Your task is to implement features based on spec files.
+
+          Spec files to implement:
+          ${SPEC_FILES}
+
+          Steps:
+          1. Use the Read tool to read each spec file listed above
+          2. Use Bash(ls) and Read to understand existing code patterns in ${CODE_DIR}/
+          3. Use the Write tool to create each required code file under ${CODE_DIR}/
+          4. Follow existing code conventions (TypeScript, Next.js App Router, Prisma)
+          5. Only implement what the spec defines — no extra features
+
+          After writing all files, print a summary:
+          WRITTEN: <full file path>
+          (one line per file)
+          PROMPTEOF
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+            --model "$MODEL" \
+            "$(cat /tmp/codegen-prompt.txt)"
+
+      - name: Generate tests from spec
+        if: steps.detect.outputs.has_specs == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          SPEC_FILES="${{ steps.detect.outputs.spec_files }}"
+
+          cat > /tmp/testgen-prompt.txt << PROMPTEOF
+          You are an expert developer. Your task is to write tests for recently implemented features.
+
+          Spec files:
+          ${SPEC_FILES}
+
+          Steps:
+          1. Use Read to read each spec file
+          2. Use Bash(ls) and Read to understand existing tests in ${TEST_DIR}/ and the code in ${CODE_DIR}/
+          3. Use Write to create test files under ${TEST_DIR}/ matching the framework already in use
+          4. Cover positive cases, negative cases, and edge cases defined in the spec
+
+          After writing all files, print a summary:
+          WRITTEN: <full file path>
+          (one line per file)
+          PROMPTEOF
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+            --model "$MODEL" \
+            "$(cat /tmp/testgen-prompt.txt)"
+
+      - name: Commit generated files
+        if: steps.detect.outputs.has_specs == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git add "$CODE_DIR" "$TEST_DIR"
+
+          if git diff --cached --quiet; then
+            echo "ℹ️ No files generated, nothing to commit."
+          else
+            git commit -m "codegen: auto-implement spec ${{ github.sha }}"
+            git push origin "HEAD:${{ github.ref_name }}"
+            echo "✅ Generated files committed to ${{ github.ref_name }}"
+          fi
