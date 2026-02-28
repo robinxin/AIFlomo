@@ -82,7 +82,7 @@ jobs:
       UPSTREAM_API_URL: 'https://claude.hatch.yinxiang.com/api'
     steps:
       - name: Checkout code & spec
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -220,12 +220,9 @@ jobs:
       - name: Step 1 - Review Spec Rationality
         id: review-spec
         uses: anthropics/claude-code-action@v1
-        env:
-          DEBUG_CLAUDE_AGENT_SDK: "1"
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           path_to_claude_code_executable: ${{ steps.install-claude.outputs.claude_path }}
-          show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -251,21 +248,41 @@ jobs:
         id: capture-review
         if: steps.review-spec.outcome == 'success'
         run: |
-          RESULT=$(python3 -c "
-          import json
-          with open('$RUNNER_TEMP/claude-execution-output.json') as f:
-              for line in f:
-                  line = line.strip()
-                  if not line:
-                      continue
-                  try:
-                      d = json.loads(line)
-                      if isinstance(d, dict) and d.get('type') == 'result':
-                          print(d.get('result', ''))
-                          break
-                  except:
-                      pass
-          ")
+          RESULT=$(python3 - << 'PYEOF'
+          import json, sys, os
+          log_path = os.path.join(os.environ.get('RUNNER_TEMP', ''), 'claude-execution-output.json')
+          try:
+              content = open(log_path).read()
+          except Exception as e:
+              print(f'ERROR: Cannot open log file {log_path}: {e}', file=sys.stderr)
+              sys.exit(1)
+          # Try as JSON (object or array)
+          try:
+              data = json.loads(content)
+              items = data if isinstance(data, list) else [data]
+              for item in items:
+                  if isinstance(item, dict) and item.get('type') == 'result':
+                      print(item.get('result', ''))
+                      sys.exit(0)
+          except json.JSONDecodeError:
+              pass
+          # Try JSONL
+          for line in content.splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              try:
+                  d = json.loads(line)
+                  if isinstance(d, dict) and d.get('type') == 'result':
+                      print(d.get('result', ''))
+                      sys.exit(0)
+              except Exception:
+                  pass
+          print('ERROR: No result entry found in log file', file=sys.stderr)
+          print(f'Log file size: {len(content)} bytes', file=sys.stderr)
+          sys.exit(1)
+          PYEOF
+          )
           {
             echo "review_result<<CAPTURE_EOF"
             echo "$RESULT"
@@ -274,7 +291,7 @@ jobs:
 
       - name: Generate Spec Fix Suggestion Files
         id: gen-spec-fix
-        if: steps.review-spec.outcome == 'success'
+        if: steps.capture-review.outcome == 'success'
         env:
           SPEC_REVIEW_RESULT: ${{ steps.capture-review.outputs.review_result }}
           CHANGED_SPEC_FILES: ${{ steps.detect-spec-files.outputs.changed_spec_files }}
@@ -305,12 +322,11 @@ jobs:
 
       - name: Step 2 - Generate Code from Spec
         id: gen-code
-        if: steps.review-spec.outcome == 'success'
+        if: steps.capture-review.outcome == 'success'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           path_to_claude_code_executable: ${{ steps.install-claude.outputs.claude_path }}
-          show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -336,12 +352,38 @@ jobs:
         id: capture-gen-code
         if: steps.gen-code.outcome == 'success'
         run: |
-          RESULT=$(python3 -c "
-          import json
-          with open('$RUNNER_TEMP/claude-execution-output.json') as f:
-              d = json.load(f)
-          print(d.get('result', ''))
-          ")
+          RESULT=$(python3 - << 'PYEOF'
+          import json, sys, os
+          log_path = os.path.join(os.environ.get('RUNNER_TEMP', ''), 'claude-execution-output.json')
+          try:
+              content = open(log_path).read()
+          except Exception as e:
+              print(f'ERROR: Cannot open log file {log_path}: {e}', file=sys.stderr)
+              sys.exit(1)
+          try:
+              data = json.loads(content)
+              items = data if isinstance(data, list) else [data]
+              for item in items:
+                  if isinstance(item, dict) and item.get('type') == 'result':
+                      print(item.get('result', ''))
+                      sys.exit(0)
+          except json.JSONDecodeError:
+              pass
+          for line in content.splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              try:
+                  d = json.loads(line)
+                  if isinstance(d, dict) and d.get('type') == 'result':
+                      print(d.get('result', ''))
+                      sys.exit(0)
+              except Exception:
+                  pass
+          print('ERROR: No result entry found in log file', file=sys.stderr)
+          sys.exit(1)
+          PYEOF
+          )
           {
             echo "gen_code_result<<CAPTURE_EOF"
             echo "$RESULT"
@@ -350,12 +392,11 @@ jobs:
 
       - name: Step 3 - Generate Test Cases from Spec
         id: gen-test
-        if: steps.gen-code.outcome == 'success'
+        if: steps.capture-gen-code.outcome == 'success'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           path_to_claude_code_executable: ${{ steps.install-claude.outputs.claude_path }}
-          show_full_output: true
           prompt: |
             ### CHANGED SPEC FILES
             ${{ steps.detect-spec-files.outputs.spec_files_list }}
@@ -384,12 +425,38 @@ jobs:
         id: capture-gen-test
         if: steps.gen-test.outcome == 'success'
         run: |
-          RESULT=$(python3 -c "
-          import json
-          with open('$RUNNER_TEMP/claude-execution-output.json') as f:
-              d = json.load(f)
-          print(d.get('result', ''))
-          ")
+          RESULT=$(python3 - << 'PYEOF'
+          import json, sys, os
+          log_path = os.path.join(os.environ.get('RUNNER_TEMP', ''), 'claude-execution-output.json')
+          try:
+              content = open(log_path).read()
+          except Exception as e:
+              print(f'ERROR: Cannot open log file {log_path}: {e}', file=sys.stderr)
+              sys.exit(1)
+          try:
+              data = json.loads(content)
+              items = data if isinstance(data, list) else [data]
+              for item in items:
+                  if isinstance(item, dict) and item.get('type') == 'result':
+                      print(item.get('result', ''))
+                      sys.exit(0)
+          except json.JSONDecodeError:
+              pass
+          for line in content.splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              try:
+                  d = json.loads(line)
+                  if isinstance(d, dict) and d.get('type') == 'result':
+                      print(d.get('result', ''))
+                      sys.exit(0)
+              except Exception:
+                  pass
+          print('ERROR: No result entry found in log file', file=sys.stderr)
+          sys.exit(1)
+          PYEOF
+          )
           {
             echo "gen_test_result<<CAPTURE_EOF"
             echo "$RESULT"
@@ -398,6 +465,7 @@ jobs:
 
       - name: Write Generated Code & Tests to Files
         id: write-files
+        if: steps.capture-gen-test.outcome == 'success'
         env:
           CODE_GEN_RESULT: ${{ steps.capture-gen-code.outputs.gen_code_result }}
           TEST_GEN_RESULT: ${{ steps.capture-gen-test.outputs.gen_test_result }}
@@ -417,10 +485,10 @@ jobs:
           mkdir -p "$CODE_GEN_DIR" "$TEST_GEN_DIR"
 
           echo "🔧 Extracting generated code..."
-          echo "$CODE_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=CODE_GEN_DIR "/" $0; print "Creating code file: " file} else {print >> file}}'
+          echo "$CODE_GEN_RESULT" | awk -v BASE_DIR="$CODE_GEN_DIR" '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=BASE_DIR "/" $0; print "Creating code file: " file} else {print >> file}}'
 
           echo "🔧 Extracting generated test cases..."
-          echo "$TEST_GEN_RESULT" | awk '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=TEST_GEN_DIR "/" $0; print "Creating test file: " file} else {print >> file}}'
+          echo "$TEST_GEN_RESULT" | awk -v BASE_DIR="$TEST_GEN_DIR" '/```/{f=!f; if(f) {file=""; next} else {if(file!="") close(file); file=""}; next} f {if(file=="") {file=BASE_DIR "/" $0; print "Creating test file: " file} else {print >> file}}'
 
           CODE_FILE_COUNT=$(ls -l "$CODE_GEN_DIR" | grep -v '^total' | wc -l)
           TEST_FILE_COUNT=$(ls -l "$TEST_GEN_DIR" | grep -v '^total' | wc -l)
@@ -443,7 +511,7 @@ jobs:
           echo "test_file_count=$TEST_FILE_COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Commit Generated Files
-        if: github.event_name == 'push'
+        if: github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODE_GEN_DIR: ${{ env.CODE_GEN_DIR }}
@@ -453,7 +521,8 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR" specs/active/*.fix.*
+          git add "$CODE_GEN_DIR" "$TEST_GEN_DIR"
+          git add specs/active/*.fix.* 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "ℹ️ No generated files to commit, skipping commit step."
