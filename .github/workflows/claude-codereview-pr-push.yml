@@ -171,5 +171,4 @@ jobs:
           echo "$BODY" >> /tmp/issue-body.md
           gh issue create \
             --title "Code Review: Push to ${{ github.ref_name }} (${GITHUB_SHA::7})" \
-            --body-file /tmp/issue-body.md \
-            --label "code-review"
+            --body-file /tmp/issue-body.md
