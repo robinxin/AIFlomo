@@ -1,0 +1,75 @@
+name: Bug Report
+description: 报告一个 Bug
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你报告 Bug！填写完成后，给 Issue 打上 `ai-bugfix` 标签，AI 将自动分析并修复。
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug 描述
+      description: 清晰描述这个 Bug 是什么
+      placeholder: 例如：点击"保存"按钮后页面报 500 错误
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: 复现步骤
+      description: 详细列出复现步骤
+      placeholder: |
+        1. 打开页面 /memos
+        2. 输入内容 "..."
+        3. 点击"保存"
+        4. 看到错误
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 期望行为
+      description: 描述正确情况下应该发生什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: 实际行为
+      description: 描述实际发生了什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-logs
+    attributes:
+      label: 错误日志（可选）
+      description: 粘贴浏览器控制台或服务器日志
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: related-files
+    attributes:
+      label: 疑似相关文件（可选）
+      description: 你认为 Bug 可能出在哪些文件？
+      placeholder: 例如：apps/flomo/app/api/memos/route.ts
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **触发 AI 修复**：填写完成后，给此 Issue 打上 `ai-bugfix` 标签，AI 将自动：
+        1. 分析代码定位 Bug
+        2. 创建 `bugfix/<issue-number>-<slug>` 分支并修复
+        3. 创建 PR 并关联此 Issue

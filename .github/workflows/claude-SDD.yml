@@ -269,9 +269,10 @@ jobs:
   release-pr:
     needs: quality
     if: >-
-      ${{ github.event_name == 'workflow_dispatch'
-          && needs.quality.result == 'success'
-          && github.event.inputs.run_release_pr == '1' }}
+      ${{ needs.quality.result == 'success'
+          && (github.event_name == 'push'
+              || (github.event_name == 'workflow_dispatch'
+                  && github.event.inputs.run_release_pr == '1')) }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
@@ -294,8 +295,19 @@ jobs:
             exit 0
           fi
 
+          # 从分支名 feat/<issue-number>-<slug> 中提取 issue number
+          ISSUE_NUMBER=$(echo "$HEAD" | sed 's|feat/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "$HEAD" ] || [ -z "$ISSUE_NUMBER" ]; then
+            # 分支名不含 issue number（如手动触发），不添加 Closes
+            CLOSES_LINE=""
+          else
+            CLOSES_LINE="Closes #${ISSUE_NUMBER}"
+          fi
+
           gh pr create \
             --base "main" \
             --head "$HEAD" \
             --title "$HEAD -> main" \
-            --body "Auto-created release PR from $HEAD. Quality gate passed."
+            --body "Auto-created release PR from $HEAD. Quality gate passed.
+
+${CLOSES_LINE}"

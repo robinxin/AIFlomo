@@ -1,0 +1,184 @@
+name: Issue Bugfix (ai-bugfix label)
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  auto-bugfix:
+    if: github.event.label.name == 'ai-bugfix'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comment — AI 正在分析
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "🔍 **AI 正在分析 Bug**
+
+          正在读取代码库并定位问题，请稍候...
+
+          [查看工作流进度](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Generate slug and branch name
+        id: branch
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          SLUG=$(echo "$ISSUE_TITLE" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed 's/\[feature\] //g; s/\[bug\] //g' \
+            | tr -cs 'a-z0-9' '-' \
+            | sed 's/^-//; s/-$//' \
+            | cut -c1-40 \
+            | sed 's/-$//')
+          BRANCH="bugfix/${ISSUE_NUMBER}-${SLUG}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Branch will be: $BRANCH"
+
+      - name: Analyze and fix bug
+        id: bugfix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_BODY="${{ github.event.issue.body }}"
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          You are an expert software engineer. Analyze and fix the bug described in the GitHub Issue below.
+
+          GitHub Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
+
+          Issue Body:
+          ${ISSUE_BODY}
+
+          Instructions:
+          1. Use Bash(ls) and Bash(find) to explore the codebase structure under apps/flomo/
+          2. Use Bash(grep) to search for relevant code related to the bug description
+          3. Use Read to read the relevant source files
+          4. Identify the root cause of the bug
+          5. Use Write to apply the minimal fix — do not refactor or change unrelated code
+          6. Follow project conventions: TypeScript, Next.js App Router, Prisma, no any/ts-ignore
+
+          After fixing, output a summary:
+          FIXED: <file path> — <what was changed and why>
+          ROOT_CAUSE: <brief explanation of the bug>
+          PROMPT
+          )"
+
+      - name: Create branch and commit fix
+        run: |
+          BRANCH="${{ steps.branch.outputs.branch }}"
+
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git checkout -b "$BRANCH"
+          git add apps/
+
+          if git diff --cached --quiet; then
+            echo "⚠️ No files were modified by Claude."
+            exit 1
+          fi
+
+          git commit -m "fix: auto-fix for issue #${{ github.event.issue.number }} — ${{ github.event.issue.title }}"
+          git push origin "$BRANCH"
+          echo "✅ Branch $BRANCH created with fix."
+
+      - name: Create PR
+        id: create-pr
+        run: |
+          BRANCH="${{ steps.branch.outputs.branch }}"
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+
+          PR_URL=$(gh pr create \
+            --base "main" \
+            --head "$BRANCH" \
+            --title "fix: $ISSUE_TITLE" \
+            --body "## Bug Fix
+
+          Closes #${ISSUE_NUMBER}
+
+          Auto-generated fix for issue #${ISSUE_NUMBER}.
+
+          Please review the changes before merging.
+
+          ---
+          *Generated by AI Bugfix Workflow · [Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*")
+
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "PR created: $PR_URL"
+
+      - name: Comment — PR 已创建
+        if: success()
+        run: |
+          PR_URL="${{ steps.create-pr.outputs.pr_url }}"
+          BRANCH="${{ steps.branch.outputs.branch }}"
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "✅ **Bug 已修复，PR 待 Review**
+
+          - **修复分支**: \`${BRANCH}\`
+          - **Pull Request**: ${PR_URL}
+
+          请 Review PR 并确认修复正确后合并。"
+
+      - name: Comment — 失败通知
+        if: failure()
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "❌ **AI 修复失败**
+
+          自动修复过程中发生错误，需要人工介入。
+
+          [查看错误详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
