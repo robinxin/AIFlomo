@@ -3,7 +3,7 @@ name: Deploy to Aliyun ECS
 on:
   push:
     branches:
-      - main
+      - workflow-di-v2
   workflow_dispatch:
     inputs:
       run_migrate:
@@ -18,6 +18,7 @@ on:
 jobs:
   deploy:
     name: Deploy to Aliyun ECS
+    if: github.ref_name == 'workflow-di-v2'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
