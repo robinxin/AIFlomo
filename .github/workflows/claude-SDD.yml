@@ -304,10 +304,11 @@ jobs:
             CLOSES_LINE="Closes #${ISSUE_NUMBER}"
           fi
 
+          printf 'Auto-created release PR from %s. Quality gate passed.\n\n%s\n' \
+            "$HEAD" "$CLOSES_LINE" > /tmp/pr-body.md
+
           gh pr create \
             --base "main" \
             --head "$HEAD" \
             --title "$HEAD -> main" \
-            --body "Auto-created release PR from $HEAD. Quality gate passed.
-
-${CLOSES_LINE}"
+            --body-file /tmp/pr-body.md
