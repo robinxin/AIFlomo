@@ -37,6 +37,9 @@ jobs:
           fi
           echo "All required secrets are configured."
 
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
@@ -44,7 +47,17 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy via SSH
+      - name: Rsync code to ECS
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.next' \
+            --exclude='*.db' \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.SSH_PORT || 22 }} -o StrictHostKeyChecking=no" \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_PATH }}/
+
+      - name: Deploy on ECS
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
@@ -52,17 +65,11 @@ jobs:
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
           set -e
 
-          echo "── Pull branch ${{ github.ref_name }} ────────────────────"
-          cd "${{ secrets.DEPLOY_PATH }}"
-          git fetch origin
-          git checkout ${{ github.ref_name }}
-          git reset --hard origin/${{ github.ref_name }}
-
           echo "── Stop service ──────────────────────────────────"
           sudo systemctl stop "${{ secrets.SYSTEMD_SERVICE }}" || true
 
           echo "── Install dependencies ──────────────────────────"
-          cd apps/flomo
+          cd "${{ secrets.DEPLOY_PATH }}/apps/flomo"
           npm ci
 
           echo "── Prisma generate ───────────────────────────────"
