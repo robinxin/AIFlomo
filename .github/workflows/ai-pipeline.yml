@@ -537,7 +537,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Production
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ai-runner]
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'yes'
 
     steps:
