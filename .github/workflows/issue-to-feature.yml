@@ -24,12 +24,10 @@ jobs:
 
       - name: Comment — AI 已接单
         run: |
-          gh issue comment ${{ github.event.issue.number }} \
-            --body "🤖 **AI 已接单**
-
-          正在根据 Issue 内容生成 Spec 文档并创建开发分支，请稍候...
-
-          [查看工作流进度](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          printf '🤖 **AI 已接单**\n\n正在根据 Issue 内容生成 Spec 文档并创建开发分支，请稍候...\n\n[查看工作流进度](%s/%s/actions/runs/%s)\n' \
+            "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
+            > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
 
       - name: Start proxy (strip context_management)
         env:
@@ -137,7 +135,7 @@ jobs:
             exit 1
           fi
 
-          git commit -m "feat: generate spec for issue #${{ github.event.issue.number }} — ${{ github.event.issue.title }}"
+          git commit -m "feat: generate spec for issue #${{ github.event.issue.number }}"
           git push origin "$BRANCH"
           echo "✅ Branch $BRANCH created and spec pushed."
 
@@ -146,26 +144,15 @@ jobs:
         run: |
           BRANCH="${{ steps.branch.outputs.branch }}"
           SPEC_FILE="${{ steps.specgen.outputs.spec_file }}"
-          gh issue comment ${{ github.event.issue.number }} \
-            --body "✅ **Spec 已生成，SDD Pipeline 正在运行**
-
-          - **分支**: \`${BRANCH}\`
-          - **Spec 文件**: \`${SPEC_FILE}\`
-
-          SDD Pipeline 将自动完成：
-          1. 代码生成
-          2. 测试生成
-          3. 质量门禁（build）
-          4. 创建 PR 到 main
-
-          [查看 SDD Pipeline 进度](${{ github.server_url }}/${{ github.repository }}/actions)"
+          printf '✅ **Spec 已生成，SDD Pipeline 正在运行**\n\n- **分支**: `%s`\n- **Spec 文件**: `%s`\n\nSDD Pipeline 将自动完成：\n1. 代码生成\n2. 测试生成\n3. 质量门禁（build）\n4. 创建 PR 到 main\n\n[查看 SDD Pipeline 进度](%s/%s/actions)\n' \
+            "$BRANCH" "$SPEC_FILE" "${{ github.server_url }}" "${{ github.repository }}" \
+            > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
 
       - name: Comment — 失败通知
         if: failure()
         run: |
-          gh issue comment ${{ github.event.issue.number }} \
-            --body "❌ **AI 处理失败**
-
-          Spec 生成或分支创建过程中发生错误，请检查工作流日志。
-
-          [查看错误详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          printf '❌ **AI 处理失败**\n\nSpec 生成或分支创建过程中发生错误，请检查工作流日志。\n\n[查看错误详情](%s/%s/actions/runs/%s)\n' \
+            "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
+            > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
