@@ -1,36 +1,92 @@
-name: Deploy to Local Self-Hosted Runner
+name: Deploy to Aliyun ECS
 
 on:
-  workflow_run:
-    workflows: ["Quality & Security Gate"]
-    branches: [main-new]
-    types: [completed]
+  push:
+    branches:
+      - workflow-di-v2
   workflow_dispatch:
     inputs:
       run_migrate:
-        description: 'Run prisma migrate (1=yes, 0=no)'
-        default: '1'
+        description: 'Run prisma migrate deploy (yes/no)'
         required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    name: Deploy to Aliyun ECS
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/flomo/package-lock.json
-
-      - name: Deploy locally
-        env:
-          RUN_MIGRATE: ${{ github.event.inputs.run_migrate || '1' }}
+      - name: Verify required secrets
         run: |
-          bash apps/flomo/scripts/deploy-local.sh
+          MISSING=""
+          [ -z "${{ secrets.SSH_HOST }}"        ] && MISSING="$MISSING SSH_HOST"
+          [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
+          [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
+          [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
+          [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:$MISSING"
+            exit 1
+          fi
+          echo "All required secrets are configured."
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || '22' }}
+          script: |
+            set -e
+
+            echo "── Pull branch workflow-di-v2 ────────────────────"
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git fetch origin
+            git checkout workflow-di-v2
+            git reset --hard origin/workflow-di-v2
+
+            echo "── Install dependencies ──────────────────────────"
+            cd apps/flomo
+            npm ci
+
+            echo "── Prisma generate ───────────────────────────────"
+            npx prisma generate
+
+            echo "── Prisma migrate ────────────────────────────────"
+            if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}" = "true" ]; then
+              npx prisma migrate deploy
+              echo "Migration complete."
+            else
+              echo "Skipped migration."
+            fi
+
+            echo "── Build ─────────────────────────────────────────"
+            npm run build
+
+            echo "── Restart service ───────────────────────────────"
+            sudo systemctl restart "${{ secrets.SYSTEMD_SERVICE }}"
+            sudo systemctl is-active "${{ secrets.SYSTEMD_SERVICE }}"
+
+            echo "✅ Deploy complete"
+
+      - name: Write step summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          [ "$STATUS" = "success" ] && BADGE="✅ Success" || BADGE="❌ Failed"
+          echo "## 🚀 Deploy Result: $BADGE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Server | \`${{ secrets.SSH_HOST }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`workflow-di-v2\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
