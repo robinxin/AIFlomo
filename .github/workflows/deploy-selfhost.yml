@@ -59,6 +59,9 @@ jobs:
           git checkout ${{ github.ref_name }}
           git reset --hard origin/${{ github.ref_name }}
 
+          echo "── Stop service ──────────────────────────────────"
+          sudo systemctl stop "${{ secrets.SYSTEMD_SERVICE }}" || true
+
           echo "── Install dependencies ──────────────────────────"
           cd apps/flomo
           npm ci
@@ -77,8 +80,8 @@ jobs:
           echo "── Build ─────────────────────────────────────────"
           npm run build
 
-          echo "── Restart service ───────────────────────────────"
-          sudo systemctl restart "${{ secrets.SYSTEMD_SERVICE }}"
+          echo "── Start service ─────────────────────────────────"
+          sudo systemctl start "${{ secrets.SYSTEMD_SERVICE }}"
           sudo systemctl is-active "${{ secrets.SYSTEMD_SERVICE }}"
 
           echo "✅ Deploy complete"
