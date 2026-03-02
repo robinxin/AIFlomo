@@ -38,45 +38,55 @@ jobs:
           fi
           echo "All required secrets are configured."
 
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || '22' }}
-          script: |
-            set -e
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p ${{ secrets.SSH_PORT || 22 }} \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
+          set -e
 
-            echo "── Pull branch ${{ github.ref_name }} ────────────────────"
-            cd "${{ secrets.DEPLOY_PATH }}"
-            git fetch origin
-            git checkout ${{ github.ref_name }}
-            git reset --hard origin/${{ github.ref_name }}
+          echo "── Pull branch ${{ github.ref_name }} ────────────────────"
+          cd "${{ secrets.DEPLOY_PATH }}"
+          git fetch origin
+          git checkout ${{ github.ref_name }}
+          git reset --hard origin/${{ github.ref_name }}
 
-            echo "── Install dependencies ──────────────────────────"
-            cd apps/flomo
-            npm ci
+          echo "── Install dependencies ──────────────────────────"
+          cd apps/flomo
+          npm ci
 
-            echo "── Prisma generate ───────────────────────────────"
-            npx prisma generate
+          echo "── Prisma generate ───────────────────────────────"
+          npx prisma generate
 
-            echo "── Prisma migrate ────────────────────────────────"
-            if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}" = "true" ]; then
-              npx prisma migrate deploy
-              echo "Migration complete."
-            else
-              echo "Skipped migration."
-            fi
+          echo "── Prisma migrate ────────────────────────────────"
+          if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}" = "true" ]; then
+            npx prisma migrate deploy
+            echo "Migration complete."
+          else
+            echo "Skipped migration."
+          fi
 
-            echo "── Build ─────────────────────────────────────────"
-            npm run build
+          echo "── Build ─────────────────────────────────────────"
+          npm run build
 
-            echo "── Restart service ───────────────────────────────"
-            sudo systemctl restart "${{ secrets.SYSTEMD_SERVICE }}"
-            sudo systemctl is-active "${{ secrets.SYSTEMD_SERVICE }}"
+          echo "── Restart service ───────────────────────────────"
+          sudo systemctl restart "${{ secrets.SYSTEMD_SERVICE }}"
+          sudo systemctl is-active "${{ secrets.SYSTEMD_SERVICE }}"
 
-            echo "✅ Deploy complete"
+          echo "✅ Deploy complete"
+          ENDSSH
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
 
       - name: Write step summary
         if: always()
