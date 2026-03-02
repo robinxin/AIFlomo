@@ -125,28 +125,148 @@ jobs:
           PROMPT
           )"
 
-      - name: Quality gate — build verification
-        id: build-verify
+      - name: Install app dependencies
         working-directory: apps/flomo
         run: |
           npm install --silent
           npm run db:generate
 
-          if npm run build 2>&1 | tee /tmp/build-output.txt; then
-            echo "✅ Build passed"
+      - name: Quality gate — audit
+        id: audit-check
+        working-directory: apps/flomo
+        continue-on-error: true
+        run: |
+          if npm audit --audit-level=critical 2>&1 | tee /tmp/audit-output.txt; then
+            echo "audit_passed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "build_failed=true" >> "$GITHUB_OUTPUT"
-            echo "❌ Build failed after AI fix"
+            echo "audit_passed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Comment — build failed
-        if: steps.build-verify.outputs.build_failed == 'true'
+      - name: Quality gate — build (with self-healing)
+        id: build-verify
+        working-directory: apps/flomo
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          BUILD_ERR=$(tail -30 /tmp/build-output.txt)
-          printf '❌ **AI 修复后构建失败，需要人工介入**\n\n构建错误（最后 30 行）：\n```\n%s\n```\n\n[查看完整日志](%s/%s/actions/runs/%s)\n' \
-            "$BUILD_ERR" \
-            "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
-            > /tmp/comment.md
+          set -o pipefail
+          MAX_FIX_ATTEMPTS=2
+          BUILD_PASSED=false
+
+          if npm run build 2>&1 | tee /tmp/build-output.txt; then
+            echo "✅ Build passed"
+            BUILD_PASSED=true
+          else
+            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
+              echo "🔧 Build failed, auto-fix attempt $attempt/$MAX_FIX_ATTEMPTS..."
+              BUILD_ERR=$(tail -50 /tmp/build-output.txt)
+
+              cd "$GITHUB_WORKSPACE"
+              claude --print \
+                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+                --model "$MODEL" \
+                "Fix the build errors below.
+                 Read the failing files, understand the errors, and use Write to fix them.
+                 Do NOT rewrite files from scratch — make minimal targeted fixes.
+
+                 Errors:
+                 ${BUILD_ERR}"
+              cd apps/flomo
+
+              if npm run build 2>&1 | tee /tmp/build-output.txt; then
+                echo "✅ Build passed after fix attempt $attempt"
+                BUILD_PASSED=true
+                break
+              fi
+            done
+          fi
+
+          echo "build_passed=$BUILD_PASSED" >> "$GITHUB_OUTPUT"
+
+      - name: Quality gate — test coverage (with self-healing)
+        id: test-check
+        working-directory: apps/flomo
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          MAX_FIX_ATTEMPTS=2
+          TEST_PASSED=false
+
+          if npm run test:coverage 2>&1 | tee /tmp/test-output.txt; then
+            echo "✅ Tests passed"
+            TEST_PASSED=true
+          else
+            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
+              echo "🔧 Tests failed, auto-fix attempt $attempt/$MAX_FIX_ATTEMPTS..."
+              TEST_ERR=$(tail -50 /tmp/test-output.txt)
+
+              cd "$GITHUB_WORKSPACE"
+              claude --print \
+                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+                --model "$MODEL" \
+                "Fix the failing tests below.
+                 Read the test files and source files, understand why tests fail,
+                 and use Write to fix either the tests or the source code.
+
+                 Test errors:
+                 ${TEST_ERR}"
+              cd apps/flomo
+
+              if npm run test:coverage 2>&1 | tee /tmp/test-output.txt; then
+                echo "✅ Tests passed after fix attempt $attempt"
+                TEST_PASSED=true
+                break
+              fi
+            done
+          fi
+
+          echo "test_passed=$TEST_PASSED" >> "$GITHUB_OUTPUT"
+
+      - name: Comment — quality gate failed
+        if: steps.build-verify.outputs.build_passed == 'false'
+        run: |
+          {
+            printf '❌ **AI 修复后质量检查未通过，需要人工介入**\n\n'
+            printf '### 检查结果\n\n'
+
+            if [ "${{ steps.audit-check.outputs.audit_passed }}" = "true" ]; then
+              printf '- ✅ **Audit**: Passed\n'
+            else
+              printf '- ⚠️ **Audit**: Failed (non-blocking)\n'
+            fi
+
+            if [ "${{ steps.build-verify.outputs.build_passed }}" = "true" ]; then
+              printf '- ✅ **Build**: Passed\n'
+            else
+              printf '- ❌ **Build**: Failed\n'
+            fi
+
+            if [ "${{ steps.test-check.outputs.test_passed }}" = "true" ]; then
+              printf '- ✅ **Test**: Passed\n'
+            else
+              printf '- ⚠️ **Test**: Failed (non-blocking)\n'
+            fi
+
+            printf '\n<details><summary>Build 输出（最后 30 行）</summary>\n\n```\n'
+            tail -30 /tmp/build-output.txt
+            printf '\n```\n</details>\n\n'
+
+            if [ -f /tmp/test-output.txt ]; then
+              printf '<details><summary>Test 输出（最后 30 行）</summary>\n\n```\n'
+              tail -30 /tmp/test-output.txt
+              printf '\n```\n</details>\n\n'
+            fi
+
+            if [ -f /tmp/audit-output.txt ]; then
+              printf '<details><summary>Audit 输出（最后 30 行）</summary>\n\n```\n'
+              tail -30 /tmp/audit-output.txt
+              printf '\n```\n</details>\n\n'
+            fi
+
+            printf '[查看完整日志](%s/%s/actions/runs/%s)\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } > /tmp/comment.md
           gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
           exit 1
 
