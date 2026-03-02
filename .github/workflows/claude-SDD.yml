@@ -126,6 +126,61 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
+      - name: Step 0 — Decompose Spec into Tasks
+        id: decompose
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          Read these spec files: ${SPEC_FILES}
+          Also scan ${CODE_DIR}/ to understand existing code structure.
+
+          Break the feature into ordered, atomic implementation tasks.
+          Write ONLY a valid JSON object to /tmp/tasks.json with this structure:
+          {
+            "feature": "<name>",
+            "tasks": [
+              {
+                "id": 1,
+                "name": "<short task name>",
+                "description": "<what to implement in this task>",
+                "target_files": ["<relative/path/to/file.ts>"]
+              }
+            ]
+          }
+
+          Ordering rules:
+          - Data model / Prisma schema changes first
+          - Then API route handlers and service layer
+          - Then UI components and pages last
+          - Maximum 5 tasks, minimum 1
+          - Each task must be independently implementable
+
+          Use the Write tool to save the JSON to /tmp/tasks.json.
+          PROMPT
+          )"
+
+          # 验证 JSON 合法，否则 fallback 到单任务
+          if ! python3 -c "import json; json.load(open('/tmp/tasks.json'))" 2>/dev/null; then
+            echo "⚠️ Decompose output invalid or missing — falling back to single task"
+            printf '{"feature":"feature","tasks":[{"id":1,"name":"Full implementation","description":"Implement all spec requirements","target_files":[]}]}' \
+              > /tmp/tasks.json
+          fi
+
+          echo "📋 Task breakdown:"
+          python3 -c "
+          import json
+          with open('/tmp/tasks.json') as f:
+              d = json.load(f)
+          for t in d['tasks']:
+              print(f'  Task {t[\"id\"]}: {t[\"name\"]}')
+          "
+
       - name: Step 1 — Review Spec
         id: review
         env:
@@ -159,29 +214,82 @@ jobs:
             echo "REVIEW_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Step 2 — Generate Code
+          # CRITICAL 问题阻断后续代码生成
+          if echo "$REVIEW" | grep -q '\[CRITICAL\]'; then
+            echo "❌ Spec has CRITICAL issues — aborting code generation."
+            exit 1
+          fi
+
+      - name: Step 2 — Generate Code (task by task)
         id: codegen
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
+          REVIEW="${{ steps.review.outputs.review }}"
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
-            --model "$MODEL" \
-            "$(cat << PROMPT
-          Read these spec files: ${SPEC_FILES}
+          TASK_COUNT=$(python3 -c "
+          import json
+          with open('/tmp/tasks.json') as f:
+              d = json.load(f)
+          print(len(d.get('tasks', [])))
+          " 2>/dev/null || echo "1")
 
-          Then implement the feature:
-          1. Use Read + Bash(ls) to understand existing code in ${CODE_DIR}/ (language, style, patterns)
-          2. Use Write to create each required file under ${CODE_DIR}/
+          > /tmp/written-files.txt  # 初始化文件列表
+
+          for i in $(seq 1 "$TASK_COUNT"); do
+            TASK_NAME=$(python3 -c "
+          import json
+          with open('/tmp/tasks.json') as f:
+              tasks = json.load(f).get('tasks', [])
+          idx = $i - 1
+          print(tasks[idx]['name'] if idx < len(tasks) else 'task')
+          ")
+            TASK_DESC=$(python3 -c "
+          import json
+          with open('/tmp/tasks.json') as f:
+              tasks = json.load(f).get('tasks', [])
+          idx = $i - 1
+          print(tasks[idx].get('description', '') if idx < len(tasks) else '')
+          ")
+
+            echo "━━━ Task $i/$TASK_COUNT: $TASK_NAME ━━━"
+
+            ALREADY=$(git diff --name-only 2>/dev/null | tr '\n' ' ')
+
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+              --model "$MODEL" \
+              "$(cat << PROMPT
+          Spec files: ${SPEC_FILES}
+          Spec Review (address all WARN/CRITICAL items): ${REVIEW}
+
+          TASK $i of $TASK_COUNT: ${TASK_NAME}
+          ${TASK_DESC}
+
+          Files already written by previous tasks (do NOT re-implement):
+          ${ALREADY:-none}
+
+          Instructions:
+          1. Use Read + Bash(ls) to understand existing code in ${CODE_DIR}/
+          2. Implement ONLY this task's scope — nothing more
           3. Follow existing conventions (TypeScript, Next.js App Router, Prisma)
-          4. Only implement what the spec defines — no extras
+          4. Use Write to create/modify files under ${CODE_DIR}/
 
-          After writing all files, list them:
+          After writing, list each file:
           WRITTEN: <full path>
           PROMPT
           )"
+
+            # 记录本 task 新增/修改的文件
+            git diff --name-only >> /tmp/written-files.txt
+          done
+
+          {
+            echo "written_files<<WRITTEN_EOF"
+            sort -u /tmp/written-files.txt
+            echo "WRITTEN_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Step 3 — Generate Tests
         id: testgen
@@ -189,6 +297,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
+          WRITTEN_FILES="${{ steps.codegen.outputs.written_files }}"
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
@@ -196,11 +305,15 @@ jobs:
             "$(cat << PROMPT
           Read these spec files: ${SPEC_FILES}
 
-          Write tests for the code you just generated in ${CODE_DIR}/:
-          1. Use Read + Bash(ls) to understand existing tests in ${TEST_DIR}/
-          2. Use Write to create test files under ${TEST_DIR}/
-          3. Match the existing test framework
-          4. Cover: happy path, error cases, edge cases from the spec
+          Write tests for the following generated source files:
+          ${WRITTEN_FILES}
+
+          Instructions:
+          1. Use Read to examine each file listed above — understand what was actually implemented
+          2. Use Read + Bash(ls) to understand existing tests in ${TEST_DIR}/
+          3. Use Write to create test files under ${TEST_DIR}/
+          4. Match the existing test framework and patterns
+          5. Cover: happy path, error cases, and edge cases defined in the spec
 
           After writing all files, list them:
           WRITTEN: <full path>
@@ -217,7 +330,6 @@ jobs:
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
 
           git add "$CODE_DIR" "$TEST_DIR"
-          git add specs/active/*.fix.* 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "ℹ️ Nothing to commit."

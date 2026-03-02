@@ -112,6 +112,31 @@ jobs:
           PROMPT
           )"
 
+      - name: Quality gate — build verification
+        id: build-verify
+        working-directory: apps/flomo
+        run: |
+          npm install --silent
+          npm run db:generate
+
+          if npm run build 2>&1 | tee /tmp/build-output.txt; then
+            echo "✅ Build passed"
+          else
+            echo "build_failed=true" >> "$GITHUB_OUTPUT"
+            echo "❌ Build failed after AI fix"
+          fi
+
+      - name: Comment — build failed
+        if: steps.build-verify.outputs.build_failed == 'true'
+        run: |
+          BUILD_ERR=$(tail -30 /tmp/build-output.txt)
+          printf '❌ **AI 修复后构建失败，需要人工介入**\n\n构建错误（最后 30 行）：\n```\n%s\n```\n\n[查看完整日志](%s/%s/actions/runs/%s)\n' \
+            "$BUILD_ERR" \
+            "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
+            > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
+          exit 1
+
       - name: Create branch and commit fix
         run: |
           BRANCH="${{ steps.branch.outputs.branch }}"
