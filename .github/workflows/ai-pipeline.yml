@@ -1,0 +1,603 @@
+name: AI Pipeline
+
+# Trigger: push to main/master when spec files change, or manually
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "**.spec.md"
+      - "spec/**/*.md"
+      - "specs/**/*.md"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy to production server via SSH"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "no"
+          - "yes"
+
+# Prevent concurrent runs on the same branch
+concurrency:
+  group: ai-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 1 · DETECT
+  # Check whether any spec files changed in this push.
+  # All downstream jobs depend on the outputs of this job.
+  # ─────────────────────────────────────────────────────────────────────────
+  detect:
+    name: Detect Spec Changes
+    runs-on: ubuntu-latest
+    outputs:
+      spec_changed: ${{ steps.changed.outputs.any_changed }}
+      changed_files: ${{ steps.changed.outputs.all_changed_files }}
+      feature_branch: ai-pipeline/run-${{ github.run_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed spec files
+        id: changed
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            **.spec.md
+            spec/**/*.md
+            specs/**/*.md
+
+      - name: Write step summary
+        run: |
+          echo "## 🔍 Spec Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Spec files changed | **${{ steps.changed.outputs.any_changed }}** |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.changed.outputs.any_changed }}" = "true" ]; then
+            echo "| Changed files | \`${{ steps.changed.outputs.all_changed_files }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Feature branch | \`ai-pipeline/run-${{ github.run_number }}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 2 · SDD  (Software Design & Development)
+  # Only runs when spec files actually changed.
+  # Steps:
+  #   1. Generate a Software Design Document from the changed specs
+  #   2. Implement code based on the design document
+  #   3. Write test cases for the implementation
+  # ─────────────────────────────────────────────────────────────────────────
+  sdd:
+    name: Software Design & Development
+    needs: detect
+    if: needs.detect.outputs.spec_changed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      FEATURE_BRANCH: ${{ needs.detect.outputs.feature_branch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create feature branch
+        run: git checkout -b "${{ env.FEATURE_BRANCH }}"
+
+      - name: Verify ANTHROPIC_API_KEY is set
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set. Add it at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+          echo "ANTHROPIC_API_KEY is configured."
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # ── Step 1: Design Document ──────────────────────────────────────────
+      - name: "SDD Step 1 · Generate Software Design Document"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_NO_TELEMETRY: "1"
+        run: |
+          mkdir -p docs
+          claude -p "\
+          You are a software architect. The following spec files have changed: \
+          ${{ needs.detect.outputs.changed_files }}. \
+          Read each spec file and generate a comprehensive Software Design Document \
+          saved to docs/design-document.md. \
+          The document must include: \
+          (1) System overview and goals, \
+          (2) Architecture design and component breakdown, \
+          (3) API / interface definitions, \
+          (4) Data models and schemas, \
+          (5) Implementation roadmap with task breakdown." \
+            --allowedTools "Bash,Edit,Read,Write" \
+            --dangerously-skip-permissions
+
+      # ── Step 2: Implementation ───────────────────────────────────────────
+      - name: "SDD Step 2 · Implement Code"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_NO_TELEMETRY: "1"
+        run: |
+          claude -p "\
+          You are a senior software engineer. \
+          Read docs/design-document.md carefully and implement all required \
+          features and components described in the design. \
+          Follow existing project conventions, write clean production-ready code \
+          with proper error handling. Create or update files as needed." \
+            --allowedTools "Bash,Edit,Read,Write" \
+            --dangerously-skip-permissions
+
+      # ── Step 3: Tests ────────────────────────────────────────────────────
+      - name: "SDD Step 3 · Write Test Cases"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_NO_TELEMETRY: "1"
+        run: |
+          claude -p "\
+          You are a QA engineer. Review the newly implemented code in this project \
+          and write comprehensive tests, including: \
+          (1) Unit tests for all new functions and components, \
+          (2) Integration tests for key workflows, \
+          (3) Edge cases and error scenario coverage. \
+          Follow the project's existing test framework, naming conventions, \
+          and directory structure." \
+            --allowedTools "Bash,Edit,Read,Write" \
+            --dangerously-skip-permissions
+
+      - name: Commit and push to feature branch
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes generated — nothing to commit."
+            exit 0
+          fi
+          git commit -m "feat(ai-sdd): design, implement and test from spec changes
+
+          Changed specs : ${{ needs.detect.outputs.changed_files }}
+          Pipeline run  : #${{ github.run_number }}"
+          git push origin "${{ env.FEATURE_BRANCH }}"
+
+      - name: Write step summary
+        run: |
+          echo "## 🤖 SDD Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Design document : \`docs/design-document.md\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Code implemented and tests written" >> $GITHUB_STEP_SUMMARY
+          echo "- Pushed to       : \`${{ env.FEATURE_BRANCH }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 3 · QUALITY
+  # Run quality checks (lint / type-check / tests).
+  # If any check fails → Claude Code auto-fixes → re-run checks.
+  # Outputs a quality-report.md artifact and sets `passed` output.
+  # ─────────────────────────────────────────────────────────────────────────
+  quality:
+    name: Quality Check & Auto-Fix
+    needs: [detect, sdd]
+    runs-on: ubuntu-latest
+    env:
+      FEATURE_BRANCH: ${{ needs.detect.outputs.feature_branch }}
+      REPORT: quality-report.md
+    outputs:
+      passed: ${{ steps.final-status.outputs.passed }}
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.feature_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install project dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          elif [ -f package.json ]; then
+            npm install
+          fi
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # ── Initial quality checks ───────────────────────────────────────────
+      - name: Run initial quality checks
+        id: initial-check
+        continue-on-error: true
+        shell: bash
+        run: |
+          FAILED=false
+
+          {
+            echo "# Quality Check Report"
+            echo ""
+            echo "| Field  | Value |"
+            echo "|--------|-------|"
+            echo "| Run    | #${{ github.run_number }} |"
+            echo "| Branch | \`${{ env.FEATURE_BRANCH }}\` |"
+            echo "| Date   | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Initial Checks"
+            echo ""
+          } > "$REPORT"
+
+          # Helper: run one check and append result to report
+          run_check() {
+            local label=$1; shift
+            echo "### $label" >> "$REPORT"
+            if "$@" > /tmp/_qc.txt 2>&1; then
+              echo "**Status**: ✅ Passed" >> "$REPORT"
+            else
+              echo "**Status**: ❌ Failed" >> "$REPORT"
+              printf '\n<details><summary>Output</summary>\n\n```\n' >> "$REPORT"
+              cat /tmp/_qc.txt >> "$REPORT"
+              printf '```\n\n</details>\n\n' >> "$REPORT"
+              FAILED=true
+            fi
+            echo "" >> "$REPORT"
+          }
+
+          grep -q '"lint"' package.json 2>/dev/null && run_check "Lint"       npm run lint
+          [ -f tsconfig.json ]                       && run_check "TypeScript" npx tsc --noEmit
+          grep -q '"test"' package.json 2>/dev/null && run_check "Tests"      npm test
+
+          $FAILED && exit 1 || exit 0
+
+      # ── Auto-fix (only when initial checks failed) ───────────────────────
+      - name: "Auto-fix quality issues with Claude Code"
+        id: auto-fix
+        if: steps.initial-check.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_NO_TELEMETRY: "1"
+        run: |
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Auto-Fix"
+            echo ""
+            echo "Claude Code is analyzing and fixing the issues listed above..."
+            echo ""
+          } >> "$REPORT"
+
+          claude -p "\
+          You are a senior software engineer fixing code quality issues. \
+          Read the quality report at $REPORT — it contains failing lint, \
+          TypeScript, and/or test results. \
+          Fix ALL identified issues: \
+          (1) Resolve every lint / ESLint error and warning, \
+          (2) Fix all TypeScript type errors, \
+          (3) Fix failing tests (correct implementation or test expectations as needed). \
+          Make minimal, targeted changes only. \
+          Do not refactor unrelated code or add new features." \
+            --allowedTools "Bash,Edit,Read,Write" \
+            --dangerously-skip-permissions
+
+          echo "" >> "$REPORT"
+          echo "Auto-fix complete." >> "$REPORT"
+
+      # ── Post-fix checks (only when auto-fix ran) ─────────────────────────
+      - name: Run post-fix quality checks
+        id: postfix-check
+        if: steps.initial-check.outcome == 'failure'
+        continue-on-error: true
+        shell: bash
+        run: |
+          FAILED=false
+
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Post-Fix Checks"
+            echo ""
+          } >> "$REPORT"
+
+          run_check() {
+            local label=$1; shift
+            echo "### $label" >> "$REPORT"
+            if "$@" > /tmp/_qc.txt 2>&1; then
+              echo "**Status**: ✅ Passed" >> "$REPORT"
+            else
+              echo "**Status**: ❌ Failed" >> "$REPORT"
+              printf '\n<details><summary>Output</summary>\n\n```\n' >> "$REPORT"
+              cat /tmp/_qc.txt >> "$REPORT"
+              printf '```\n\n</details>\n\n' >> "$REPORT"
+              FAILED=true
+            fi
+            echo "" >> "$REPORT"
+          }
+
+          grep -q '"lint"' package.json 2>/dev/null && run_check "Lint"       npm run lint
+          [ -f tsconfig.json ]                       && run_check "TypeScript" npx tsc --noEmit
+          grep -q '"test"' package.json 2>/dev/null && run_check "Tests"      npm test
+
+          $FAILED && exit 1 || exit 0
+
+      # ── Determine overall pass/fail and write summary ────────────────────
+      - name: Set final quality status
+        id: final-status
+        run: |
+          INITIAL="${{ steps.initial-check.outcome }}"
+          POSTFIX="${{ steps.postfix-check.outcome }}"
+
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Overall Result"
+            echo ""
+          } >> "$REPORT"
+
+          if [ "$INITIAL" = "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ **All checks passed on the first run — no fixes required.**" >> "$REPORT"
+          elif [ "$POSTFIX" = "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ **All issues resolved by auto-fix.**" >> "$REPORT"
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ **Issues remain after auto-fix — manual review required.**" >> "$REPORT"
+          fi
+
+      - name: Upload quality report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: ${{ env.REPORT }}
+          retention-days: 30
+
+      - name: Append report to step summary
+        run: cat "$REPORT" >> $GITHUB_STEP_SUMMARY
+
+      - name: Configure Git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit auto-fix changes and quality report
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "fix(ai-quality): auto-fix quality issues and add quality report
+
+            Pipeline run: #${{ github.run_number }}"
+            git push origin "${{ env.FEATURE_BRANCH }}"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 4 · RELEASE-PR
+  # Open (or update) a Pull Request from the feature branch to the default
+  # branch.  Creates a draft PR when quality checks still have issues.
+  # ─────────────────────────────────────────────────────────────────────────
+  release-pr:
+    name: Create Release PR
+    needs: [detect, sdd, quality]
+    # Run even if quality had issues, but only when sdd succeeded
+    if: always() && needs.detect.outputs.spec_changed == 'true' && needs.sdd.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      FEATURE_BRANCH: ${{ needs.detect.outputs.feature_branch }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.feature_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download quality report
+        uses: actions/download-artifact@v4
+        with:
+          name: quality-report
+          path: /tmp/artifacts
+        continue-on-error: true
+
+      - name: Ensure PR labels exist
+        run: |
+          gh label create "ai-generated" \
+            --color "0075ca" --description "Content generated by AI Pipeline" --force \
+            2>/dev/null || true
+          gh label create "automated" \
+            --color "e4e669" --description "Created by an automated workflow" --force \
+            2>/dev/null || true
+
+      - name: Create or update Pull Request
+        run: |
+          QUALITY_PASSED="${{ needs.quality.outputs.passed }}"
+
+          if [ "$QUALITY_PASSED" = "true" ]; then
+            QUALITY_BADGE="✅ All checks passed"
+            DRAFT_FLAG=""
+          else
+            QUALITY_BADGE="⚠️ Issues remain — manual review required"
+            DRAFT_FLAG="--draft"
+          fi
+
+          QUALITY_SECTION=$(cat /tmp/artifacts/quality-report.md 2>/dev/null || echo "Quality report not available.")
+
+          # Build PR body into a temp file (avoids multi-line YAML/shell quoting issues)
+          {
+            echo "## AI Pipeline — Automated Implementation"
+            echo ""
+            echo "This PR was automatically generated by the **AI Pipeline** workflow"
+            echo "in response to changes detected in spec files."
+            echo ""
+            echo "### Details"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Workflow Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |"
+            echo "| Changed Specs | \`${{ needs.detect.outputs.changed_files }}\` |"
+            echo "| Source Branch | \`${{ github.ref_name }}\` |"
+            echo "| Feature Branch | \`${{ env.FEATURE_BRANCH }}\` |"
+            echo "| Quality Status | $QUALITY_BADGE |"
+            echo ""
+            echo "### What's Included"
+            echo ""
+            echo "- 📄 **Design Document** — \`docs/design-document.md\` (architecture & decisions)"
+            echo "- 💻 **Implementation** — Source code generated from the design document"
+            echo "- 🧪 **Tests** — Unit and integration test coverage"
+            echo "- 🔧 **Quality Fixes** — Auto-fixed lint, type, and test issues (if any)"
+            echo ""
+            echo "<details>"
+            echo "<summary>📊 Quality Check Report</summary>"
+            echo ""
+            echo "$QUALITY_SECTION"
+            echo ""
+            echo "</details>"
+            echo ""
+            echo "---"
+            echo ""
+            echo "> 🤖 Generated by [AI Pipeline](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } > /tmp/pr-body.md
+
+          # Check whether a PR already exists for this branch
+          EXISTING_PR=$(gh pr view "${{ env.FEATURE_BRANCH }}" --json number -q .number 2>/dev/null || true)
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists — updating description."
+            gh pr edit "${{ env.FEATURE_BRANCH }}" --body-file /tmp/pr-body.md
+          else
+            echo "Creating new PR..."
+            gh pr create \
+              --title "feat(ai): implement spec changes [run #${{ github.run_number }}]" \
+              --body-file /tmp/pr-body.md \
+              --base  "${{ github.event.repository.default_branch }}" \
+              --head  "${{ env.FEATURE_BRANCH }}" \
+              --label "ai-generated" \
+              --label "automated" \
+              $DRAFT_FLAG
+          fi
+
+      - name: Write step summary
+        run: |
+          PR_URL=$(gh pr view "${{ env.FEATURE_BRANCH }}" --json url -q .url 2>/dev/null || echo "N/A")
+          echo "## 🚀 Release PR" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR URL**: $PR_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- **Quality passed**: ${{ needs.quality.outputs.passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Draft**: ${{ needs.quality.outputs.passed != 'true' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 5 · DEPLOY
+  # SSH into the production server, pull latest main, build, and restart.
+  # Triggered only via workflow_dispatch with deploy=yes.
+  #
+  # Required GitHub Secrets:
+  #   SSH_HOST        — server IP or hostname
+  #   SSH_USER        — SSH login username
+  #   SSH_PRIVATE_KEY — private key (Ed25519 or RSA) for SSH authentication
+  #   DEPLOY_PATH     — absolute path to the repo on the server (e.g. /opt/aiflomo)
+  #   SYSTEMD_SERVICE — systemd service name to restart (e.g. aiflomo)
+  # Optional:
+  #   SSH_PORT        — SSH port (defaults to 22)
+  #
+  # Server prerequisites:
+  #   - SSH_USER must have passwordless sudo for: systemctl restart <service>
+  #   - The repo must already be cloned at DEPLOY_PATH and tracking origin/main
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'yes'
+
+    steps:
+      - name: Verify required secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.SSH_HOST }}"        ] && MISSING="$MISSING SSH_HOST"
+          [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
+          [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
+          [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
+          [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:$MISSING"
+            echo "Add them at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+          echo "All required secrets are configured."
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+
+            echo "── Pull latest code ──────────────────────────────"
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "── Install dependencies ──────────────────────────"
+            cd apps/flomo
+            npm ci --omit=dev
+
+            echo "── Database migration ────────────────────────────"
+            npx prisma generate
+            npx prisma migrate deploy
+
+            echo "── Build ─────────────────────────────────────────"
+            npm run build
+
+            echo "── Restart service ───────────────────────────────"
+            sudo systemctl restart "${{ secrets.SYSTEMD_SERVICE }}"
+            sudo systemctl is-active "${{ secrets.SYSTEMD_SERVICE }}"
+
+            echo "✅ Deploy complete"
+
+      - name: Write step summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          [ "$STATUS" = "success" ] && BADGE="✅ Success" || BADGE="❌ Failed"
+          echo "## 🖥️ Deploy Result: $BADGE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Server | \`${{ secrets.SSH_HOST }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`main\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
