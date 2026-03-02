@@ -48,16 +48,19 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Rsync code to ECS
+      - name: Push code to ECS via tar+ssh
         run: |
-          export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:$PATH"
-          rsync -avz --delete \
+          tar czf - \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='.next' \
             --exclude='*.db' \
-            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.SSH_PORT || 22 }} -o StrictHostKeyChecking=no" \
-            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_PATH }}/
+            . | \
+          ssh -i ~/.ssh/deploy_key \
+            -p ${{ secrets.SSH_PORT || 22 }} \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "mkdir -p ${{ secrets.DEPLOY_PATH }} && tar xzf - -C ${{ secrets.DEPLOY_PATH }}"
 
       - name: Deploy on ECS
         run: |
