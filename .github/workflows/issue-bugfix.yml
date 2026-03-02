@@ -60,6 +60,14 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Generate slug and branch name
         id: branch
         run: |
@@ -91,6 +99,11 @@ jobs:
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
           You are an expert software engineer. Analyze and fix the bug described in the GitHub Issue below.
 
           GitHub Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}

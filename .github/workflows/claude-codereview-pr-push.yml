@@ -59,6 +59,14 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
       # 获取 diff（PR 场景）
       - name: Get diff for PR
         if: github.event_name == 'pull_request'
@@ -96,6 +104,11 @@ jobs:
             --allowedTools "Read,Bash(ls:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
           You are an experienced code reviewer. Review the following code diff.
           Context: ${REVIEW_CONTEXT}
 

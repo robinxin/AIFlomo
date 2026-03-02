@@ -31,6 +31,9 @@ jobs:
   # ─── Job 1: 检测变更的 Spec 文件 ───────────────────────────────────────────
   detect:
     runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: read
+      issues: write
     outputs:
       spec_changed: ${{ steps.detect.outputs.spec_changed }}
       spec_files:   ${{ steps.detect.outputs.spec_files }}
@@ -74,6 +77,30 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Post spec preview to Issue
+        if: steps.detect.outputs.spec_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 仅 feat/<n>-* 分支（由 issue-to-feature 创建的）才关联 Issue
+          ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|feat/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
+            echo "Not a feat/<n>-* branch — skipping Issue preview."
+            exit 0
+          fi
+
+          SPEC_FILES="${{ steps.detect.outputs.spec_files }}"
+          {
+            printf '📋 **Spec 已生成，等待人工审批后开始代码生成**\n\n'
+            printf '审批入口：[GitHub Actions → sdd job](%s/%s/actions/runs/%s)\n\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+            printf '<details><summary>📄 查看 Spec 全文（点击展开）</summary>\n\n```markdown\n'
+            cat $SPEC_FILES 2>/dev/null || echo "spec file not found"
+            printf '```\n\n</details>\n'
+          } > /tmp/spec-preview.md
+
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/spec-preview.md
+
   # ─── Job 2: SDD — Spec Review + Code Gen + Test Gen ──────────────────────
   sdd:
     needs: detect
@@ -81,6 +108,7 @@ jobs:
       ${{ needs.detect.outputs.spec_changed == 'true'
           && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
+    environment: spec-approval
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -126,6 +154,14 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Step 0 — Decompose Spec into Tasks
         id: decompose
         env:
@@ -137,6 +173,11 @@ jobs:
             --allowedTools "Read,Write,Bash(ls:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
           Read these spec files: ${SPEC_FILES}
           Also scan ${CODE_DIR}/ to understand existing code structure.
 
@@ -192,6 +233,11 @@ jobs:
             --allowedTools "Read,Bash(ls:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
           Read the following spec files and review their quality for SDD:
           ${SPEC_FILES}
 
@@ -261,6 +307,11 @@ jobs:
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
               "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
           Spec files: ${SPEC_FILES}
           Spec Review (address all WARN/CRITICAL items): ${REVIEW}
 
@@ -303,6 +354,11 @@ jobs:
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
           Read these spec files: ${SPEC_FILES}
 
           Write tests for the following generated source files:
