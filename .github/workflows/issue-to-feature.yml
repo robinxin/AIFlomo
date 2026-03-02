@@ -1,0 +1,171 @@
+name: Issue to Feature (ai-feature label)
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  generate-spec:
+    if: github.event.label.name == 'ai-feature'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      issues: write
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comment — AI 已接单
+        run: |
+          printf '🤖 **AI 已接单**\n\n正在根据 Issue 内容生成 Spec 文档并创建开发分支，请稍候...\n\n[查看工作流进度](%s/%s/actions/runs/%s)\n' \
+            "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
+            > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate slug and branch name
+        id: branch
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          # 生成 slug：小写、空格转连字符、去除特殊字符、截取前40字符
+          SLUG=$(echo "$ISSUE_TITLE" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed 's/\[feature\] //g; s/\[bug\] //g' \
+            | tr -cs 'a-z0-9' '-' \
+            | sed 's/^-//; s/-$//' \
+            | cut -c1-40 \
+            | sed 's/-$//')
+          BRANCH="feat/${ISSUE_NUMBER}-${SLUG}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Branch will be: $BRANCH"
+
+      - name: Generate Spec from Issue
+        id: specgen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_BODY="${{ github.event.issue.body }}"
+          SPEC_FILE="specs/active/${{ steps.branch.outputs.issue_number }}-${{ steps.branch.outputs.slug }}.md"
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
+          You are a software architect. Read the feature spec template and generate a complete spec from the GitHub Issue below.
+
+          First, read the template:
+          - specs/templates/feature-spec-template.md
+
+          Then, using the Issue information below, write a complete spec file to: ${SPEC_FILE}
+
+          GitHub Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
+
+          Issue Body:
+          ${ISSUE_BODY}
+
+          Requirements for the spec:
+          1. Fill in ALL sections of the template based on the Issue content
+          2. Make the spec concrete and implementable — define API endpoints, data models, and acceptance criteria clearly
+          3. Infer reasonable technical details from the issue (TypeScript, Next.js App Router, Prisma, SQLite)
+          4. Set 状态 to 已批准 and 关联 Issue to #${ISSUE_NUMBER}
+          5. Keep 不包含 section realistic based on the issue scope
+          6. Write in Chinese (as per the template language)
+
+          Write the spec file now.
+          PROMPT
+          )"
+
+          echo "spec_file=$SPEC_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create branch and push spec
+        run: |
+          BRANCH="${{ steps.branch.outputs.branch }}"
+
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git checkout -b "$BRANCH"
+          git add specs/active/
+
+          if git diff --cached --quiet; then
+            echo "⚠️ No spec file was generated."
+            exit 1
+          fi
+
+          git commit -m "feat: generate spec for issue #${{ github.event.issue.number }}"
+          git push origin "$BRANCH"
+          echo "✅ Branch $BRANCH created and spec pushed."
+
+      - name: Comment — 分支已创建，SDD 正在运行
+        if: success()
+        run: |
+          BRANCH="${{ steps.branch.outputs.branch }}"
+          SPEC_FILE="${{ steps.specgen.outputs.spec_file }}"
+          printf '✅ **Spec 已生成，SDD Pipeline 正在运行**\n\n- **分支**: `%s`\n- **Spec 文件**: `%s`\n\nSDD Pipeline 将自动完成：\n1. 代码生成\n2. 测试生成\n3. 质量门禁（build）\n4. 创建 PR 到 main\n\n[查看 SDD Pipeline 进度](%s/%s/actions)\n' \
+            "$BRANCH" "$SPEC_FILE" "${{ github.server_url }}" "${{ github.repository }}" \
+            > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
+
+      - name: Comment — 失败通知
+        if: failure()
+        run: |
+          printf '❌ **AI 处理失败**\n\nSpec 生成或分支创建过程中发生错误，请检查工作流日志。\n\n[查看错误详情](%s/%s/actions/runs/%s)\n' \
+            "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
+            > /tmp/comment.md
+          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
