@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - workflow-di-v2
   workflow_dispatch:
     inputs:
       run_migrate:
