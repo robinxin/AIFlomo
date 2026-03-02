@@ -49,6 +49,7 @@ jobs:
 
       - name: Rsync code to ECS
         run: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:$PATH"
           rsync -avz --delete \
             --exclude='.git' \
             --exclude='node_modules' \
