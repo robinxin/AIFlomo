@@ -3,6 +3,7 @@ name: Deploy to Aliyun ECS
 on:
   push:
     branches:
+      - main
       - workflow-di-v2
   workflow_dispatch:
     inputs:
@@ -47,11 +48,11 @@ jobs:
           script: |
             set -e
 
-            echo "── Pull branch workflow-di-v2 ────────────────────"
+            echo "── Pull branch ${{ github.ref_name }} ────────────────────"
             cd "${{ secrets.DEPLOY_PATH }}"
             git fetch origin
-            git checkout workflow-di-v2
-            git reset --hard origin/workflow-di-v2
+            git checkout ${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
 
             echo "── Install dependencies ──────────────────────────"
             cd apps/flomo
@@ -87,6 +88,6 @@ jobs:
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Server | \`${{ secrets.SSH_HOST }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Branch | \`workflow-di-v2\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
