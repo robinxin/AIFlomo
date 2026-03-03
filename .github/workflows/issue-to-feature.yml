@@ -69,11 +69,12 @@ jobs:
 
       - name: Generate slug and branch name
         id: branch
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
           ISSUE_NUMBER="${{ github.event.issue.number }}"
-          ISSUE_TITLE="${{ github.event.issue.title }}"
           # 生成 slug：小写、空格转连字符、去除特殊字符、截取前40字符
-          SLUG=$(echo "$ISSUE_TITLE" \
+          SLUG=$(printf '%s' "$ISSUE_TITLE" \
             | tr '[:upper:]' '[:lower:]' \
             | sed 's/\[feature\] //g; s/\[bug\] //g' \
             | tr -cs 'a-z0-9' '-' \
@@ -90,10 +91,10 @@ jobs:
         id: specgen
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           ISSUE_NUMBER="${{ github.event.issue.number }}"
-          ISSUE_TITLE="${{ github.event.issue.title }}"
-          ISSUE_BODY="${{ github.event.issue.body }}"
           SPEC_FILE="specs/active/${{ steps.branch.outputs.issue_number }}-${{ steps.branch.outputs.slug }}.md"
 
           claude --print \
