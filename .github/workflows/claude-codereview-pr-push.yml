@@ -28,6 +28,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       # 启动代理，剥离 context_management（与 sdd-pipeline 保持一致）
       - name: Start proxy (strip context_management)
         env:

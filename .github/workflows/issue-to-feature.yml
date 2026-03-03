@@ -11,6 +11,7 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: write
     env:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
@@ -21,6 +22,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Comment — AI 已接单
         run: |
@@ -152,6 +157,12 @@ jobs:
           git commit -m "feat: generate spec for issue #${{ github.event.issue.number }}"
           git push origin "$BRANCH"
           echo "✅ Branch $BRANCH created and spec pushed."
+
+      - name: Trigger SDD Pipeline
+        run: |
+          BRANCH="${{ steps.branch.outputs.branch }}"
+          gh workflow run claude-SDD.yml --ref "$BRANCH"
+          echo "✅ SDD Pipeline triggered on $BRANCH"
 
       - name: Comment — 分支已创建，SDD 正在运行
         if: success()

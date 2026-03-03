@@ -125,6 +125,10 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Start proxy (strip context_management)
         env:
           UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
@@ -248,6 +252,10 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Start proxy (strip context_management)
         env:
@@ -393,6 +401,10 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Start proxy (strip context_management)
         env:
