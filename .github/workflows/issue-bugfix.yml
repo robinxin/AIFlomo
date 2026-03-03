@@ -23,6 +23,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Comment — AI 正在分析
         run: |
           printf '🔍 **AI 正在分析 Bug**\n\n正在读取代码库并定位问题，请稍候...\n\n[查看工作流进度](%s/%s/actions/runs/%s)\n' \
