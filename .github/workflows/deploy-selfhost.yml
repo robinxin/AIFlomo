@@ -1,9 +1,6 @@
 name: Deploy to Aliyun ECS
 
 on:
-  push:
-    branches:
-      - workflow-di-v2
   workflow_dispatch:
     inputs:
       run_migrate:
@@ -18,7 +15,11 @@ on:
 jobs:
   deploy:
     name: Deploy to Aliyun ECS
-    if: github.ref_name == 'workflow-di-v2' || github.ref_name == 'main'
+    if: |
+      github.ref_name == 'workflow-di-v2' ||
+      github.ref_name == 'main' ||
+      startsWith(github.ref_name, 'feat/') ||
+      startsWith(github.ref_name, 'bugfix/')
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
@@ -30,13 +31,37 @@ jobs:
           [ -z "${{ secrets.SSH_HOST }}"        ] && MISSING="$MISSING SSH_HOST"
           [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
-          [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
-          [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
+          BRANCH="${{ github.ref_name }}"
+          if [[ "$BRANCH" == feat/* ]]; then
+            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"     ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
+            [ -z "${{ secrets.SYSTEMD_SERVICE_FEAT }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_FEAT"
+          elif [[ "$BRANCH" == bugfix/* ]]; then
+            [ -z "${{ secrets.DEPLOY_PATH_BUGFIX }}"     ] && MISSING="$MISSING DEPLOY_PATH_BUGFIX"
+            [ -z "${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_BUGFIX"
+          else
+            [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
+            [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
+          fi
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:$MISSING"
             exit 1
           fi
           echo "All required secrets are configured."
+
+      - name: Resolve deploy config
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          if [[ "$BRANCH" == feat/* ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"     >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}" >> $GITHUB_ENV
+          elif [[ "$BRANCH" == bugfix/* ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_BUGFIX }}"     >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"     >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}" >> $GITHUB_ENV
+          fi
+          echo "Deploy config resolved for branch: $BRANCH"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -60,7 +85,7 @@ jobs:
             -p ${{ secrets.SSH_PORT || 22 }} \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "mkdir -p ${{ secrets.DEPLOY_PATH }} && tar xzf - -C ${{ secrets.DEPLOY_PATH }}"
+            "mkdir -p ${{ env.DEPLOY_PATH }} && tar xzf - -C ${{ env.DEPLOY_PATH }}"
 
       - name: Deploy on ECS
         run: |
@@ -71,10 +96,10 @@ jobs:
           set -e
 
           echo "── Stop service ──────────────────────────────────"
-          sudo systemctl stop "${{ secrets.SYSTEMD_SERVICE }}" || true
+          sudo systemctl stop "${{ env.SYSTEMD_SERVICE }}" || true
 
           echo "── Install dependencies ──────────────────────────"
-          cd "${{ secrets.DEPLOY_PATH }}/apps/flomo"
+          cd "${{ env.DEPLOY_PATH }}/apps/flomo"
           npm ci
 
           echo "── Prisma generate ───────────────────────────────"
@@ -92,8 +117,8 @@ jobs:
           npm run build
 
           echo "── Start service ─────────────────────────────────"
-          sudo systemctl start "${{ secrets.SYSTEMD_SERVICE }}"
-          sudo systemctl is-active "${{ secrets.SYSTEMD_SERVICE }}"
+          sudo systemctl start "${{ env.SYSTEMD_SERVICE }}"
+          sudo systemctl is-active "${{ env.SYSTEMD_SERVICE }}"
 
           echo "✅ Deploy complete"
           ENDSSH
