@@ -13,13 +13,21 @@ on:
           - 'yes'
 
 jobs:
-  deploy:
-    name: Deploy to Aliyun ECS
+  approve:
+    name: Waiting for approval
     if: |
       github.ref_name == 'workflow-di-v2' ||
       github.ref_name == 'main' ||
       startsWith(github.ref_name, 'feat/') ||
       startsWith(github.ref_name, 'bugfix/')
+    environment: deploy-approval
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "Approved, starting deployment..."
+
+  deploy:
+    name: Deploy to Aliyun ECS
+    needs: approve
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
