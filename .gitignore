@@ -26,3 +26,6 @@ dist/
 
 # Coverage
 coverage/
+
+# Secrets
+.secrets
