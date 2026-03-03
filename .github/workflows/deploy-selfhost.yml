@@ -32,13 +32,10 @@ jobs:
           [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
           BRANCH="${{ github.ref_name }}"
-          if [[ "$BRANCH" == feat/* ]]; then
+          if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
             [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"     ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
             [ -z "${{ secrets.SYSTEMD_SERVICE_FEAT }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_FEAT"
-          elif [[ "$BRANCH" == bugfix/* ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH_BUGFIX }}"     ] && MISSING="$MISSING DEPLOY_PATH_BUGFIX"
-            [ -z "${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_BUGFIX"
-          else
+          elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
             [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
             [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
           fi
@@ -51,15 +48,12 @@ jobs:
       - name: Resolve deploy config
         run: |
           BRANCH="${{ github.ref_name }}"
-          if [[ "$BRANCH" == feat/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"     >> $GITHUB_ENV
+          if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"        >> $GITHUB_ENV
             echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}" >> $GITHUB_ENV
-          elif [[ "$BRANCH" == bugfix/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_BUGFIX }}"     >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" >> $GITHUB_ENV
-          else
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"     >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}" >> $GITHUB_ENV
+          elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"             >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}"      >> $GITHUB_ENV
           fi
           echo "Deploy config resolved for branch: $BRANCH"
 
