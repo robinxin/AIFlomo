@@ -59,18 +59,29 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
       # 获取 diff（PR 场景）
       - name: Get diff for PR
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           gh pr diff ${{ github.event.pull_request.number }} > /tmp/review.diff
-          echo "REVIEW_CONTEXT=PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}" >> "$GITHUB_ENV"
+          echo "REVIEW_CONTEXT=PR #${{ github.event.pull_request.number }}: ${PR_TITLE}" >> "$GITHUB_ENV"
 
       # 获取 diff（Push 场景）
       - name: Get diff for Push
         if: github.event_name == 'push'
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           BEFORE="${{ github.event.before }}"
           SHA="${{ github.sha }}"
@@ -81,7 +92,7 @@ jobs:
           else
             git diff "$BEFORE" "$SHA" > /tmp/review.diff
           fi
-          MSG=$(echo "${{ github.event.head_commit.message }}" | head -1)
+          MSG=$(printf '%s' "$COMMIT_MSG" | head -1)
           echo "REVIEW_CONTEXT=Push to ${{ github.ref_name }} by ${{ github.actor }} — ${MSG}" >> "$GITHUB_ENV"
 
       # 调用 Claude 执行代码审查
@@ -96,6 +107,11 @@ jobs:
             --allowedTools "Read,Bash(ls:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
           You are an experienced code reviewer. Review the following code diff.
           Context: ${REVIEW_CONTEXT}
 
@@ -152,23 +168,22 @@ jobs:
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           BODY="$(cat /tmp/review-result.txt)"
           if [ -z "$BODY" ]; then
             BODY="No review result returned from Claude. Check workflow logs for details."
           fi
-          cat > /tmp/issue-body.md << 'ISSUE_HEADER'
-          ### Code Review for Push Commit
-
-          **Branch**: `${{ github.ref_name }}`
-          **Commit**: `${{ github.sha }}`
-          **Author**: ${{ github.actor }}
-          **Message**: ${{ github.event.head_commit.message }}
-          **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          ---
-
-          ISSUE_HEADER
+          {
+            printf '### Code Review for Push Commit\n\n'
+            printf '**Branch**: `%s`\n' "${{ github.ref_name }}"
+            printf '**Commit**: `%s`\n' "${{ github.sha }}"
+            printf '**Author**: %s\n' "${{ github.actor }}"
+            printf '**Message**: %s\n' "$COMMIT_MSG"
+            printf '**Workflow**: %s/%s/actions/runs/%s\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+            printf '\n---\n\n'
+          } > /tmp/issue-body.md
           echo "$BODY" >> /tmp/issue-body.md
           gh issue create \
             --title "Code Review: Push to ${{ github.ref_name }} (${GITHUB_SHA::7})" \
