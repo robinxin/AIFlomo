@@ -18,7 +18,7 @@ on:
 jobs:
   deploy:
     name: Deploy to Aliyun ECS
-    if: github.ref_name == 'workflow-di-v2'
+    if: github.ref_name == 'workflow-di-v2' || github.ref_name == 'main'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
