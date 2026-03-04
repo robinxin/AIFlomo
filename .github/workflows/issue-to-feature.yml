@@ -143,15 +143,45 @@ jobs:
           git push origin "$BRANCH"
           echo "✅ Branch $BRANCH created and spec pushed."
 
-      - name: Comment — Spec 已生成，等待审批
+      - name: Write Spec to Job Summary
         if: success()
         run: |
-          BRANCH="${{ steps.branch.outputs.branch }}"
           SPEC_FILE="${{ steps.specgen.outputs.spec_file }}"
-          printf '📋 **Spec 已生成，等待人工审批**\n\n- **分支**: `%s`\n- **Spec 文件**: `%s`\n\n审批入口：[GitHub Actions → Spec Approval](%s/%s/actions/runs/%s)\n\n审批通过后将自动触发 SDD Pipeline。\n' \
-            "$BRANCH" "$SPEC_FILE" "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
-            > /tmp/comment.md
-          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
+          BRANCH="${{ steps.branch.outputs.branch }}"
+          SPEC_URL="${{ github.server_url }}/${{ github.repository }}/blob/${BRANCH}/${SPEC_FILE}"
+          {
+            echo "## Spec Preview"
+            echo ""
+            echo "> **Branch**: \`${BRANCH}\` | **File**: [\`${SPEC_FILE}\`](${SPEC_URL})"
+            echo ""
+            echo "---"
+            echo ""
+            cat "$SPEC_FILE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment — Spec 已生成，等待审批
+        if: success()
+        env:
+          SPEC_FILE: ${{ steps.specgen.outputs.spec_file }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          SPEC_URL="${SERVER_URL}/${REPO}/blob/${BRANCH}/${SPEC_FILE}"
+          {
+            printf '📋 **Spec 已生成，等待人工审批**\n\n'
+            printf '- **分支**: `%s`\n' "$BRANCH"
+            printf '- **Spec 文件**: [`%s`](%s)\n\n' "$SPEC_FILE" "$SPEC_URL"
+            printf '审批入口：[GitHub Actions → Spec Approval](%s/%s/actions/runs/%s)\n\n' \
+              "$SERVER_URL" "$REPO" "$RUN_ID"
+            printf '<details>\n<summary>📖 点击展开 Spec 全文</summary>\n\n'
+            cat "$SPEC_FILE"
+            printf '\n</details>\n\n'
+            printf '审批通过后将自动触发 SDD Pipeline。\n'
+          } > /tmp/comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment.md
 
       - name: Comment — 失败通知
         if: failure()
