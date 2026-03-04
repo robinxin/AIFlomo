@@ -22,7 +22,17 @@ ${CONSTITUTION}
 
 ---
 
+<<<<<<< Updated upstream
 你是一名高级软件工程师，负责将功能需求拆分为有序的、原子性的实现任务。
+=======
+## PROJECT GUIDE (CLAUDE.md — tech stack, directory structure, naming rules, scripts)
+
+${CLAUDE_MD}
+
+---
+
+You are a senior software engineer decomposing a feature into precise, ordered implementation tasks.
+>>>>>>> Stashed changes
 
 ## 第一步 — 读取所有输入（写任何内容之前必须全部读完）
 

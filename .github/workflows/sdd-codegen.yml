@@ -117,6 +117,14 @@ jobs:
             echo "CONSTITUTION_EOF"
           } >> "$GITHUB_ENV"
 
+      - name: Load CLAUDE.md
+        run: |
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Install app dependencies
         run: |
           if [ -f "package.json" ]; then

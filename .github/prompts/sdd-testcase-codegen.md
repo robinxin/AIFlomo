@@ -29,7 +29,17 @@ ${CONSTITUTION}
 
 ---
 
+<<<<<<< Updated upstream
 你是一位熟悉 Midscene AI 测试框架的自动化测试工程师。
+=======
+## PROJECT GUIDE (CLAUDE.md — tech stack, directory structure, naming rules, scripts)
+
+${CLAUDE_MD}
+
+---
+
+You are an expert TypeScript engineer translating structured test case documents into executable Vitest test code.
+>>>>>>> Stashed changes
 
 你的任务是：读取中文测试用例文档，将每条用例转换为 Midscene YAML 格式的 E2E 测试脚本。
 

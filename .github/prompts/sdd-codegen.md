@@ -27,6 +27,12 @@ ${CONSTITUTION}
 
 ---
 
+## PROJECT GUIDE (CLAUDE.md — read for tech stack, directory structure, naming rules, scripts)
+
+${CLAUDE_MD}
+
+---
+
 You are an expert JavaScript engineer implementing one specific task in AIFlomo.
 The project uses **JavaScript only** — no TypeScript, no type annotations.
 
