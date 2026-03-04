@@ -388,6 +388,7 @@ jobs:
               MSG="sdd: auto-generate code from spec (${{ github.sha }})"
             fi
             git commit -m "$MSG"
+            git pull --rebase origin "${BRANCH}" || true
             git push origin "HEAD:${BRANCH}"
             echo "Committed to ${BRANCH}"
           fi
