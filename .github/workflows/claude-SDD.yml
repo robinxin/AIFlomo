@@ -16,12 +16,12 @@ on:
         default: '1'
         required: true
 
-# ╔══════════════════════════════════════════════════════════════════════╗
-# ║  SDD Pipeline                                                       ║
-# ║  Detect → Validate(🔒) ─┬─ Plan → 🔒Plan → Task → 🔒Task → Codegen ║
-# ║                          └─ Testcase → 🔒Testcase → Testcase Code   ║
-# ║  两条线完成后 → 触发 Quality Gate Pipeline                           ║
-# ╚══════════════════════════════════════════════════════════════════════╝
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  SDD Pipeline                                                           ║
+# ║  Detect ─┬─ Plan → 🔒Design → Task → 🔒Task → Codegen                  ║
+# ║           └─ Testcase → 🔒Testcase → Testcase Code → 🔒Testcase Code    ║
+# ║  两条线完成后 → 触发 Quality Gate Pipeline                                ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 
 jobs:
   # ─── SDD-Detect ─────────────────────────────────────────────────
@@ -72,16 +72,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|feat/\([0-9]*\)-.*|\1|')
+          ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|.*\/\([0-9]*\)-.*|\1|')
           if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
-            echo "Not a feat/<n>-* branch — skipping Issue preview."
+            echo "Not a feat/<n>-* or bugfix/<n>-* branch — skipping Issue preview."
             exit 0
           fi
 
           SPEC_FILES="${{ steps.detect.outputs.spec_files }}"
           {
-            printf '📋 **Spec 已生成，等待人工审批（Requirements & UI Design）**\n\n'
-            printf '审批入口：[GitHub Actions → SDD-Validate](%s/%s/actions/runs/%s)\n\n' \
+            printf '📋 **SDD Pipeline 已启动**\n\n'
+            printf '[查看进度](%s/%s/actions/runs/%s)\n\n' \
               "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
             printf '<details><summary>📄 查看 Spec 全文（点击展开）</summary>\n\n```markdown\n'
             cat $SPEC_FILES 2>/dev/null || echo "spec file not found"
@@ -90,22 +90,12 @@ jobs:
 
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/spec-preview.md
 
-  # ─── SDD-Validate (Requirements & UI Design) ───────────────────
-  # 唯一的人工审批节点：审核需求和 UI 设计后，后续全自动
-  sdd-validate:
-    needs: sdd-detect
-    if: >-
-      ${{ needs.sdd-detect.outputs.spec_changed == 'true'
-          && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
-    environment: sdd-validate
-    runs-on: [self-hosted, ai-runner]
-    steps:
-      - run: echo "✅ Requirements & UI Design validated — proceeding with SDD pipeline"
-
   # ─── SDD-Plan ───────────────────────────────────────────────────
   sdd-plan:
-    needs: [sdd-detect, sdd-validate]
+    needs: [sdd-detect]
+    if: >-
+      ${{ needs.sdd-detect.outputs.spec_changed == 'true'
+          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -412,12 +402,15 @@ jobs:
 
   # ═══════════════════════════════════════════════════════════════
   # Test Flow（与 SDD-Plan/Task/Codegen 并行）
-  # Testcase → 🔒审批 → Testcase 可执行代码
+  # Testcase → 🔒Testcase → Testcase Code → 🔒Testcase Code
   # ═══════════════════════════════════════════════════════════════
 
   # ─── Testcase — 从 Spec 生成测试用例描述（与 SDD-Plan 并行）─────
   testcase:
-    needs: [sdd-detect, sdd-validate]
+    needs: [sdd-detect]
+    if: >-
+      ${{ needs.sdd-detect.outputs.spec_changed == 'true'
+          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -488,7 +481,8 @@ jobs:
           export WRITTEN_FILES="N/A — 源码尚未生成，请根据 Spec 生成测试用例规格文档"
 
           FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
-          TESTCASE_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-testcases.md/')
+          mkdir -p specs/testcases
+          TESTCASE_FILE="specs/testcases/$(basename "$FIRST_SPEC" .md)-testcases.md"
           echo "testcase_file=$TESTCASE_FILE" >> "$GITHUB_OUTPUT"
 
           PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testgen.md)
@@ -507,7 +501,7 @@ jobs:
           git remote set-url origin \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
 
-          git add specs/active/
+          git add specs/testcases/
 
           if git diff --cached --quiet; then
             echo "ℹ️ No testcase file to commit."
@@ -538,11 +532,18 @@ jobs:
           } > /tmp/testcase-comment.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/testcase-comment.md
 
-  # ─── Testcase 可执行代码（需通过 Testcase 审批后执行）───────────────
-  testcase-code:
-    needs: [sdd-detect, sdd-codegen, testcase]
-    if: needs.sdd-codegen.outputs.has_failure != 'true'
+  # ─── Testcase 审批 ──────────────────────────────────────────────
+  testcase-gate:
+    needs: testcase
     environment: testcase-approval
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "✅ Test case specifications approved — generating executable test code"
+
+  # ─── Testcase 可执行代码 ────────────────────────────────────────
+  testcase-code:
+    needs: [sdd-detect, sdd-codegen, testcase, testcase-gate]
+    if: needs.sdd-codegen.outputs.has_failure != 'true'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -645,4 +646,12 @@ jobs:
             git push origin "HEAD:${{ github.ref_name }}"
             echo "✅ Test code committed"
           fi
+
+  # ─── Testcase Code 审批 ─────────────────────────────────────────
+  testcase-code-gate:
+    needs: testcase-code
+    environment: testcase-code-approval
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "✅ Executable test code approved"
 
