@@ -160,6 +160,7 @@ AIFlomo/
 {
   "devDependencies": {
     "midscene-pc": "^1.0.4",
+    "@midscene/cli": "^1.5.2",
     "dotenv": "^16.6.1"
   },
   "scripts": {
