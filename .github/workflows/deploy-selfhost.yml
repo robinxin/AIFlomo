@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       run_migrate:
-        description: 'Run prisma migrate deploy (yes/no)'
+        description: 'Run drizzle db:migrate (yes/no)'
         required: true
         default: 'no'
         type: choice
@@ -42,11 +42,11 @@ jobs:
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
           BRANCH="${{ env.DEPLOY_BRANCH }}"
           if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"     ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
-            [ -z "${{ secrets.SYSTEMD_SERVICE_FEAT }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_FEAT"
+            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"    ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
+            [ -z "${{ secrets.PM2_APP_NAME_FEAT }}"   ] && MISSING="$MISSING PM2_APP_NAME_FEAT"
           elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
-            [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
+            [ -z "${{ secrets.DEPLOY_PATH }}"    ] && MISSING="$MISSING DEPLOY_PATH"
+            [ -z "${{ secrets.PM2_APP_NAME }}"   ] && MISSING="$MISSING PM2_APP_NAME"
           fi
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:$MISSING"
@@ -58,11 +58,11 @@ jobs:
         run: |
           BRANCH="${{ env.DEPLOY_BRANCH }}"
           if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"        >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}" >> $GITHUB_ENV
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"    >> $GITHUB_ENV
+            echo "PM2_APP_NAME=${{ secrets.PM2_APP_NAME_FEAT }}"  >> $GITHUB_ENV
           elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"             >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}"      >> $GITHUB_ENV
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"    >> $GITHUB_ENV
+            echo "PM2_APP_NAME=${{ secrets.PM2_APP_NAME }}"  >> $GITHUB_ENV
           fi
           echo "Deploy config resolved for branch: $BRANCH"
 
@@ -83,7 +83,7 @@ jobs:
           tar czf - \
             --exclude='.git' \
             --exclude='node_modules' \
-            --exclude='.next' \
+            --exclude='dist' \
             --exclude='*.db' \
             . | \
           ssh -i ~/.ssh/deploy_key \
@@ -101,29 +101,30 @@ jobs:
           set -e
 
           echo "── Stop service ──────────────────────────────────"
-          sudo systemctl stop "${{ env.SYSTEMD_SERVICE }}" || true
+          pm2 stop "${{ env.PM2_APP_NAME }}" || true
 
           echo "── Install dependencies ──────────────────────────"
-          cd "${{ env.DEPLOY_PATH }}/apps"
+          cd "${{ env.DEPLOY_PATH }}"
           npm ci
 
-          echo "── Prisma generate ───────────────────────────────"
-          npx prisma generate
+          echo "── Drizzle generate ──────────────────────────────"
+          npm run db:generate -w apps/server
 
-          echo "── Prisma migrate ────────────────────────────────"
+          echo "── Drizzle migrate ───────────────────────────────"
           if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}" = "true" ]; then
-            npx prisma migrate deploy
+            npm run db:migrate -w apps/server
             echo "Migration complete."
           else
             echo "Skipped migration."
           fi
 
           echo "── Build ─────────────────────────────────────────"
-          npm run build
+          npm run build -w apps/server
 
           echo "── Start service ─────────────────────────────────"
-          sudo systemctl start "${{ env.SYSTEMD_SERVICE }}"
-          sudo systemctl is-active "${{ env.SYSTEMD_SERVICE }}"
+          pm2 start dist/index.js --name "${{ env.PM2_APP_NAME }}" --cwd "${{ env.DEPLOY_PATH }}/apps/server" || \
+          pm2 restart "${{ env.PM2_APP_NAME }}"
+          pm2 status "${{ env.PM2_APP_NAME }}"
 
           echo "✅ Deploy complete"
           ENDSSH
