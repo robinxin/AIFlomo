@@ -3,6 +3,12 @@ name: Issue Bugfix (ai-bugfix label)
 on:
   issues:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      extra_prompt:
+        description: '额外指令（追加到 AI prompt 末尾）'
+        default: ''
+        required: false
 
 jobs:
   auto-bugfix:
@@ -11,7 +17,6 @@ jobs:
     permissions:
       contents: write
       issues: write
-      pull-requests: write
     env:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
@@ -97,185 +102,18 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          export ISSUE_NUMBER="${{ github.event.issue.number }}"
+
+          PROMPT_TEXT=$(envsubst < .github/prompts/bugfix.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \
             --model "$MODEL" \
-            "$(cat << PROMPT
-          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-          ${CONSTITUTION}
+            "$PROMPT_TEXT"
 
-          ---
-
-          You are an expert software engineer. Analyze and fix the bug described in the GitHub Issue below.
-
-          GitHub Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
-
-          Issue Body:
-          ${ISSUE_BODY}
-
-          Instructions:
-          1. Use Bash(ls) and Bash(find) to explore the codebase structure under apps/flomo/
-          2. Use Bash(grep) to search for relevant code related to the bug description
-          3. Use Read to read the relevant source files
-          4. Identify the root cause of the bug
-          5. Use Write to apply the minimal fix — do not refactor or change unrelated code
-          6. Follow project conventions: TypeScript, Next.js App Router, Prisma, no any/ts-ignore
-
-          After fixing, output a summary:
-          FIXED: <file path> — <what was changed and why>
-          ROOT_CAUSE: <brief explanation of the bug>
-          PROMPT
-          )"
-
-      - name: Install app dependencies
-        working-directory: apps/flomo
-        run: |
-          npm install --silent
-          npm run db:generate
-
-      - name: Quality gate — audit
-        id: audit-check
-        working-directory: apps/flomo
-        continue-on-error: true
-        run: |
-          if npm audit --audit-level=critical 2>&1 | tee /tmp/audit-output.txt; then
-            echo "audit_passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "audit_passed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Quality gate — build (with self-healing)
-        id: build-verify
-        working-directory: apps/flomo
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          set -o pipefail
-          MAX_FIX_ATTEMPTS=2
-          BUILD_PASSED=false
-
-          if npm run build 2>&1 | tee /tmp/build-output.txt; then
-            echo "✅ Build passed"
-            BUILD_PASSED=true
-          else
-            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-              echo "🔧 Build failed, auto-fix attempt $attempt/$MAX_FIX_ATTEMPTS..."
-              BUILD_ERR=$(tail -50 /tmp/build-output.txt)
-
-              cd "$GITHUB_WORKSPACE"
-              claude --print \
-                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-                --model "$MODEL" \
-                "Fix the build errors below.
-                 Read the failing files, understand the errors, and use Write to fix them.
-                 Do NOT rewrite files from scratch — make minimal targeted fixes.
-
-                 Errors:
-                 ${BUILD_ERR}"
-              cd apps/flomo
-
-              if npm run build 2>&1 | tee /tmp/build-output.txt; then
-                echo "✅ Build passed after fix attempt $attempt"
-                BUILD_PASSED=true
-                break
-              fi
-            done
-          fi
-
-          echo "build_passed=$BUILD_PASSED" >> "$GITHUB_OUTPUT"
-
-      - name: Quality gate — test coverage (with self-healing)
-        id: test-check
-        working-directory: apps/flomo
-        continue-on-error: true
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          set -o pipefail
-          MAX_FIX_ATTEMPTS=2
-          TEST_PASSED=false
-
-          if npm run test:coverage 2>&1 | tee /tmp/test-output.txt; then
-            echo "✅ Tests passed"
-            TEST_PASSED=true
-          else
-            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-              echo "🔧 Tests failed, auto-fix attempt $attempt/$MAX_FIX_ATTEMPTS..."
-              TEST_ERR=$(tail -50 /tmp/test-output.txt)
-
-              cd "$GITHUB_WORKSPACE"
-              claude --print \
-                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-                --model "$MODEL" \
-                "Fix the failing tests below.
-                 Read the test files and source files, understand why tests fail,
-                 and use Write to fix either the tests or the source code.
-
-                 Test errors:
-                 ${TEST_ERR}"
-              cd apps/flomo
-
-              if npm run test:coverage 2>&1 | tee /tmp/test-output.txt; then
-                echo "✅ Tests passed after fix attempt $attempt"
-                TEST_PASSED=true
-                break
-              fi
-            done
-          fi
-
-          echo "test_passed=$TEST_PASSED" >> "$GITHUB_OUTPUT"
-
-      - name: Comment — quality gate failed
-        if: steps.build-verify.outputs.build_passed == 'false'
-        run: |
-          {
-            printf '❌ **AI 修复后质量检查未通过，需要人工介入**\n\n'
-            printf '### 检查结果\n\n'
-
-            if [ "${{ steps.audit-check.outputs.audit_passed }}" = "true" ]; then
-              printf '- ✅ **Audit**: Passed\n'
-            else
-              printf '- ⚠️ **Audit**: Failed (non-blocking)\n'
-            fi
-
-            if [ "${{ steps.build-verify.outputs.build_passed }}" = "true" ]; then
-              printf '- ✅ **Build**: Passed\n'
-            else
-              printf '- ❌ **Build**: Failed\n'
-            fi
-
-            if [ "${{ steps.test-check.outputs.test_passed }}" = "true" ]; then
-              printf '- ✅ **Test**: Passed\n'
-            else
-              printf '- ⚠️ **Test**: Failed (non-blocking)\n'
-            fi
-
-            printf '\n<details><summary>Build 输出（最后 30 行）</summary>\n\n```\n'
-            tail -30 /tmp/build-output.txt
-            printf '\n```\n</details>\n\n'
-
-            if [ -f /tmp/test-output.txt ]; then
-              printf '<details><summary>Test 输出（最后 30 行）</summary>\n\n```\n'
-              tail -30 /tmp/test-output.txt
-              printf '\n```\n</details>\n\n'
-            fi
-
-            if [ -f /tmp/audit-output.txt ]; then
-              printf '<details><summary>Audit 输出（最后 30 行）</summary>\n\n```\n'
-              tail -30 /tmp/audit-output.txt
-              printf '\n```\n</details>\n\n'
-            fi
-
-            printf '[查看完整日志](%s/%s/actions/runs/%s)\n' \
-              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
-          } > /tmp/comment.md
-          gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
-          exit 1
-
-      - name: Create branch and commit fix
+      - name: Create branch and push fix
         run: |
           BRANCH="${{ steps.branch.outputs.branch }}"
 
@@ -294,37 +132,14 @@ jobs:
 
           git commit -m "fix: auto-fix for issue #${{ github.event.issue.number }}"
           git push origin "$BRANCH"
-          echo "✅ Branch $BRANCH created with fix."
+          echo "✅ Branch $BRANCH pushed — pipeline will continue automatically."
 
-      - name: Create PR
-        id: create-pr
-        env:
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-        run: |
-          BRANCH="${{ steps.branch.outputs.branch }}"
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-
-          printf '## Bug Fix\n\nCloses #%s\n\nAuto-generated fix for issue #%s. Please review the changes before merging.\n\n---\n*Generated by AI Bugfix Workflow · [Run](%s/%s/actions/runs/%s)*\n' \
-            "$ISSUE_NUMBER" "$ISSUE_NUMBER" \
-            "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
-            > /tmp/pr-body.md
-
-          PR_URL=$(gh pr create \
-            --base "main" \
-            --head "$BRANCH" \
-            --title "fix: ${ISSUE_NUMBER} - ${ISSUE_TITLE}" \
-            --body-file /tmp/pr-body.md)
-
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-          echo "PR created: $PR_URL"
-
-      - name: Comment — PR 已创建
+      - name: Comment — 分支已创建，流水线启动
         if: success()
         run: |
-          PR_URL="${{ steps.create-pr.outputs.pr_url }}"
           BRANCH="${{ steps.branch.outputs.branch }}"
-          printf '✅ **Bug 已修复，PR 待 Review**\n\n- **修复分支**: `%s`\n- **Pull Request**: %s\n\n请 Review PR 并确认修复正确后合并。\n' \
-            "$BRANCH" "$PR_URL" \
+          printf '✅ **Bug 修复已推送，流水线已启动**\n\n- **修复分支**: `%s`\n\n后续自动执行：\n1. Quality Gate（build + test）\n2. AI Code Review + 人工审批\n3. 部署验证\n4. 创建 PR 到 main\n\n[查看流水线进度](%s/%s/actions)\n' \
+            "$BRANCH" "${{ github.server_url }}" "${{ github.repository }}" \
             > /tmp/comment.md
           gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
 

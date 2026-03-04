@@ -1,0 +1,60 @@
+name: Quality Gate
+
+on:
+  # SDD codegen 完成后自动触发
+  workflow_run:
+    workflows: ["SDD Pipeline"]
+    types: [completed]
+  # feat/** / bugfix/** 分支推送时触发
+  push:
+    branches: ['feat/**', 'bugfix/**']
+    paths:
+      - 'apps/flomo/app/**'
+      - 'apps/flomo/lib/**'
+      - 'apps/flomo/tests/**'
+  # PR 到 main 时触发
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/flomo/app/**'
+      - 'apps/flomo/lib/**'
+      - 'apps/flomo/tests/**'
+  workflow_dispatch:
+
+jobs:
+  # ─── Quality Gate ────────────────────────────────────────────────────────
+  quality:
+    # workflow_run 时只在上游成功后运行
+    if: >-
+      ${{ github.event_name != 'workflow_run'
+          || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # workflow_run 时 checkout 上游分支，其他场景用默认 ref
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: apps/flomo
+        run: npm install
+
+      - name: Prisma generate
+        working-directory: apps/flomo
+        run: npm run db:generate
+
+      - name: Audit (critical only)
+        working-directory: apps/flomo
+        run: npm audit --audit-level=critical
+
+      - name: Build
+        working-directory: apps/flomo
+        run: npm run build
+
+      - name: Test (coverage gate)
+        working-directory: apps/flomo
+        run: npm run test:coverage

@@ -3,7 +3,15 @@
 **作者**: <姓名>
 **日期**: <YYYY-MM-DD>
 **状态**: 草稿 / 已批准
-**关联 Issue**: #<id>
+**关联 Issue**: #<id> 或 N/A
+
+<!-- 文件命名规范:
+  - Issue 触发:  {issue号}-{slug}.md    例: 12-memo-quick-input.md
+  - 手动创建:    {slug}.md              例: memo-quick-input.md
+  派生文件会自动生成:
+    {name}-design.md    技术设计文档
+    {name}-tasks.json   任务拆分文档
+-->
 
 ---
 

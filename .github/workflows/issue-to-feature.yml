@@ -3,11 +3,21 @@ name: Issue to Feature (ai-feature label)
 on:
   issues:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      extra_prompt:
+        description: '额外指令（追加到 AI prompt 末尾）'
+        default: ''
+        required: false
 
 jobs:
   generate-spec:
     if: github.event.label.name == 'ai-feature'
     runs-on: [self-hosted, ai-runner]
+    outputs:
+      branch: ${{ steps.branch.outputs.branch }}
+      spec_file: ${{ steps.specgen.outputs.spec_file }}
+      issue_number: ${{ steps.branch.outputs.issue_number }}
     permissions:
       contents: write
       issues: write
@@ -98,42 +108,17 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-          SPEC_FILE="specs/active/${{ steps.branch.outputs.issue_number }}-${{ steps.branch.outputs.slug }}.md"
+          export ISSUE_NUMBER="${{ github.event.issue.number }}"
+          export SPEC_FILE="specs/active/${{ steps.branch.outputs.issue_number }}-${{ steps.branch.outputs.slug }}.md"
+
+          PROMPT_TEXT=$(envsubst < .github/prompts/spec-gen.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*)" \
             --model "$MODEL" \
-            "$(cat << PROMPT
-          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-          ${CONSTITUTION}
-
-          ---
-
-          You are a software architect. Read the feature spec template and generate a complete spec from the GitHub Issue below.
-
-          First, read the template:
-          - specs/templates/feature-spec-template.md
-
-          Then, using the Issue information below, write a complete spec file to: ${SPEC_FILE}
-
-          GitHub Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
-
-          Issue Body:
-          ${ISSUE_BODY}
-
-          Requirements for the spec:
-          1. Fill in ALL sections of the template based on the Issue content
-          2. Make the spec concrete and implementable — define API endpoints, data models, and acceptance criteria clearly
-          3. Infer reasonable technical details from the issue (TypeScript, Next.js App Router, Prisma, SQLite)
-          4. Set 状态 to 已批准 and 关联 Issue to #${ISSUE_NUMBER}
-          5. Keep 不包含 section realistic based on the issue scope
-          6. Write in Chinese (as per the template language)
-
-          Write the spec file now.
-          PROMPT
-          )"
+            "$PROMPT_TEXT"
 
           echo "spec_file=$SPEC_FILE" >> "$GITHUB_OUTPUT"
 
@@ -158,19 +143,13 @@ jobs:
           git push origin "$BRANCH"
           echo "✅ Branch $BRANCH created and spec pushed."
 
-      - name: Trigger SDD Pipeline
-        run: |
-          BRANCH="${{ steps.branch.outputs.branch }}"
-          gh workflow run claude-SDD.yml --ref "$BRANCH"
-          echo "✅ SDD Pipeline triggered on $BRANCH"
-
-      - name: Comment — 分支已创建，SDD 正在运行
+      - name: Comment — Spec 已生成，等待审批
         if: success()
         run: |
           BRANCH="${{ steps.branch.outputs.branch }}"
           SPEC_FILE="${{ steps.specgen.outputs.spec_file }}"
-          printf '✅ **Spec 已生成，SDD Pipeline 正在运行**\n\n- **分支**: `%s`\n- **Spec 文件**: `%s`\n\nSDD Pipeline 将自动完成：\n1. 代码生成\n2. 测试生成\n3. 质量门禁（build）\n4. 创建 PR 到 main\n\n[查看 SDD Pipeline 进度](%s/%s/actions)\n' \
-            "$BRANCH" "$SPEC_FILE" "${{ github.server_url }}" "${{ github.repository }}" \
+          printf '📋 **Spec 已生成，等待人工审批**\n\n- **分支**: `%s`\n- **Spec 文件**: `%s`\n\n审批入口：[GitHub Actions → Spec Approval](%s/%s/actions/runs/%s)\n\n审批通过后将自动触发 SDD Pipeline。\n' \
+            "$BRANCH" "$SPEC_FILE" "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
             > /tmp/comment.md
           gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
 
@@ -181,3 +160,39 @@ jobs:
             "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
             > /tmp/comment.md
           gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
+
+  # ─── Spec 审批 ───────────────────────────────────────────────────
+  spec-approval:
+    needs: generate-spec
+    if: github.event.label.name == 'ai-feature'
+    environment: spec-approval
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "✅ Spec approved — triggering SDD Pipeline"
+
+  # ─── 触发 SDD Pipeline ──────────────────────────────────────────
+  trigger-sdd:
+    needs: [generate-spec, spec-approval]
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      issues: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger SDD Pipeline
+        run: |
+          BRANCH="${{ needs.generate-spec.outputs.branch }}"
+          gh workflow run claude-SDD.yml --ref "$BRANCH"
+          echo "✅ SDD Pipeline triggered on $BRANCH"
+
+      - name: Comment — SDD 已触发
+        run: |
+          ISSUE_NUMBER="${{ needs.generate-spec.outputs.issue_number }}"
+          BRANCH="${{ needs.generate-spec.outputs.branch }}"
+          printf '🚀 **Spec 已通过审批，SDD Pipeline 已触发**\n\n- **分支**: `%s`\n\n[查看 SDD Pipeline 进度](%s/%s/actions)\n' \
+            "$BRANCH" "${{ github.server_url }}" "${{ github.repository }}" \
+            > /tmp/comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/comment.md
