@@ -86,11 +86,12 @@ jobs:
 
       - name: Push code to ECS via tar+ssh
         run: |
-          tar czf - \
+          COPYFILE_DISABLE=1 tar czf - \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='dist' \
             --exclude='*.db' \
+            --exclude='._*' \
             . | \
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
