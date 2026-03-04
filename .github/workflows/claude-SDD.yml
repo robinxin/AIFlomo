@@ -169,12 +169,16 @@ jobs:
 
           echo "design_file=$DESIGN_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
+          if [ -f "$DESIGN_FILE" ]; then
+            echo "♻️ Design file already exists, reusing: $DESIGN_FILE"
+          else
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
+          fi
 
           {
             echo "## 📐 Technical Design Document"
@@ -301,18 +305,22 @@ jobs:
           export TASKS_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-tasks.json/')
           echo "tasks_file=$TASKS_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
+          if [ -f "$TASKS_FILE" ] && python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
+            echo "♻️ Tasks file already exists and is valid, reusing: $TASKS_FILE"
+          else
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
 
-          # Validate JSON, fallback to single task
-          if ! python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
-            echo "⚠️ Decompose output invalid or missing — falling back to single task"
-            printf '{"feature":"feature","tasks":[{"id":1,"name":"Full implementation","description":"Implement all spec requirements","target_files":[]}]}' \
-              > "$TASKS_FILE"
+            # Validate JSON, fallback to single task
+            if ! python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
+              echo "⚠️ Decompose output invalid or missing — falling back to single task"
+              printf '{"feature":"feature","tasks":[{"id":1,"name":"Full implementation","description":"Implement all spec requirements","target_files":[]}]}' \
+                > "$TASKS_FILE"
+            fi
           fi
 
           {
@@ -486,12 +494,16 @@ jobs:
           TESTCASE_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-testcases.md/')
           echo "testcase_file=$TESTCASE_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
+          if [ -f "$TESTCASE_FILE" ]; then
+            echo "♻️ Testcase file already exists, reusing: $TESTCASE_FILE"
+          else
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
+          fi
 
       - name: Commit test case specs
         env:
@@ -544,8 +556,7 @@ jobs:
 
   # ─── Testcase 可执行代码 ────────────────────────────────────────
   testcase-code:
-    needs: [sdd-detect, sdd-codegen, testcase, testcase-gate]
-    if: needs.sdd-codegen.outputs.has_failure != 'true'
+    needs: [sdd-detect, testcase, testcase-gate]
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -609,7 +620,6 @@ jobs:
           EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
           export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
-          export WRITTEN_FILES="${{ needs.sdd-codegen.outputs.written_files }}"
           export TEST_DIR="${TEST_DIR}"
           TESTCASE_FILE="${{ needs.testcase.outputs.testcase_file }}"
 
@@ -658,3 +668,32 @@ jobs:
     steps:
       - run: echo "✅ Executable test code approved"
 
+  # ─── 触发 Quality Gate（两条线全部完成后）─────────────────────
+  trigger-quality-gate:
+    needs: [sdd-codegen, testcase-code-gate]
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Trigger Quality Gate Pipeline
+        run: |
+          gh workflow run quality-gate.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}"
+          echo "✅ Quality Gate triggered on ${{ github.ref_name }}"
+
+      - name: Post comment to Issue
+        env:
+          ISSUE_NUMBER: ${{ github.ref_name }}
+        run: |
+          ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
+            echo "Not a feat/<n>-* branch — skipping comment."
+            exit 0
+          fi
+          printf '🔍 **SDD Pipeline 已完成，Quality Gate 已触发**\n\n[查看 Quality Gate 进度](%s/%s/actions)\n' \
+            "${{ github.server_url }}" "${{ github.repository }}" \
+            > /tmp/quality-comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/quality-comment.md

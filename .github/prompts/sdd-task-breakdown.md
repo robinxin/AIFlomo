@@ -83,6 +83,6 @@ Verify all of the following before calling Write:
 
 ## Output
 
-Use the Write tool to write the JSON to `/tmp/tasks.json`.
+Use the Write tool to write the JSON to `${TASKS_FILE}`.
 Output NOTHING else — no explanation, no markdown fences, no preamble.
-The file content must be valid JSON that `python3 -c "import json; json.load(open('/tmp/tasks.json'))"` can parse without error.
+The file content must be valid JSON that `python3 -c "import json; json.load(open('${TASKS_FILE}'))"` can parse without error.

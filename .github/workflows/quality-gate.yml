@@ -1,17 +1,8 @@
 name: Quality Gate
 
 on:
-  # SDD codegen 完成后自动触发
-  workflow_run:
-    workflows: ["SDD Pipeline"]
-    types: [completed]
-  # feat/** / bugfix/** 分支推送时触发
-  push:
-    branches: ['feat/**', 'bugfix/**']
-    paths:
-      - 'apps/server/**'
-      - 'apps/mobile/**'
-      - 'apps/tests/**'
+  # SDD Pipeline 完成后通过 workflow_dispatch 主动触发（见 claude-SDD.yml trigger-quality-gate job）
+  workflow_dispatch:
   # PR 到 main 时触发
   pull_request:
     branches: [main]
@@ -19,19 +10,15 @@ on:
       - 'apps/server/**'
       - 'apps/mobile/**'
       - 'apps/tests/**'
-  workflow_dispatch:
 
 jobs:
   # ─── Quality Gate ────────────────────────────────────────────────────────
   quality:
-    if: >-
-      ${{ github.event_name != 'workflow_run'
-          || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [self-hosted, ai-runner]
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-node@v4
         with:
