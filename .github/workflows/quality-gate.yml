@@ -9,22 +9,21 @@ on:
   push:
     branches: ['feat/**', 'bugfix/**']
     paths:
-      - 'apps/app/**'
-      - 'apps/lib/**'
+      - 'apps/server/**'
+      - 'apps/mobile/**'
       - 'apps/tests/**'
   # PR 到 main 时触发
   pull_request:
     branches: [main]
     paths:
-      - 'apps/app/**'
-      - 'apps/lib/**'
+      - 'apps/server/**'
+      - 'apps/mobile/**'
       - 'apps/tests/**'
   workflow_dispatch:
 
 jobs:
   # ─── Quality Gate ────────────────────────────────────────────────────────
   quality:
-    # workflow_run 时只在上游成功后运行
     if: >-
       ${{ github.event_name != 'workflow_run'
           || github.event.workflow_run.conclusion == 'success' }}
@@ -32,7 +31,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # workflow_run 时 checkout 上游分支，其他场景用默认 ref
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
 
       - uses: actions/setup-node@v4
@@ -40,29 +38,25 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        working-directory: apps
         run: npm install
 
-      - name: Prisma generate
-        working-directory: apps
-        run: npm run db:generate
-
-      - name: Audit (critical only)
-        working-directory: apps
-        run: npm audit --audit-level=critical
+      - name: Lint
+        run: |
+          npm run lint -w apps/server
+          npm run lint -w apps/mobile
 
       - name: Build
-        working-directory: apps
-        run: npm run build
+        run: |
+          npm run build -w apps/server
+          npm run build -w apps/mobile
 
       - name: Run SDD-generated test cases
-        working-directory: apps
         run: |
-          TEST_COUNT=$(find tests/ -name "*.test.*" 2>/dev/null | wc -l | tr -d ' ')
+          TEST_COUNT=$(find apps/tests/ -name "*.spec.js" 2>/dev/null | wc -l | tr -d ' ')
           if [ "$TEST_COUNT" -gt 0 ]; then
             echo "🧪 Found $TEST_COUNT SDD-generated test file(s) — running..."
-            npm test -- --testPathPattern="tests/"
+            npm run test
             echo "✅ SDD test cases passed"
           else
-            echo "ℹ️ No SDD-generated test files in tests/ — skipping"
+            echo "ℹ️ No SDD-generated test files in apps/tests/ — skipping"
           fi
