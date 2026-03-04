@@ -148,12 +148,17 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
-      - name: Load Constitution
+      - name: Load Constitution and CLAUDE.md
         run: |
           {
             echo "CONSTITUTION<<CONSTITUTION_EOF"
             cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
             echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
           } >> "$GITHUB_ENV"
 
       - name: Generate technical design document
@@ -287,12 +292,17 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
-      - name: Load Constitution
+      - name: Load Constitution and CLAUDE.md
         run: |
           {
             echo "CONSTITUTION<<CONSTITUTION_EOF"
             cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
             echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
           } >> "$GITHUB_ENV"
 
       - name: Decompose into tasks
@@ -478,12 +488,17 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
-      - name: Load Constitution
+      - name: Load Constitution and CLAUDE.md
         run: |
           {
             echo "CONSTITUTION<<CONSTITUTION_EOF"
             cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
             echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
           } >> "$GITHUB_ENV"
 
       - name: Generate test case specifications
@@ -615,12 +630,17 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
-      - name: Load Constitution
+      - name: Load Constitution and CLAUDE.md
         run: |
           {
             echo "CONSTITUTION<<CONSTITUTION_EOF"
             cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
             echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
           } >> "$GITHUB_ENV"
 
       - name: Generate executable test code

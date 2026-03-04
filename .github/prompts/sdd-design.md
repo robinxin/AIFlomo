@@ -21,6 +21,12 @@ ${CONSTITUTION}
 
 ---
 
+## PROJECT GUIDE (CLAUDE.md — tech stack, directory structure, naming rules, scripts)
+
+${CLAUDE_MD}
+
+---
+
 You are a senior software architect for AIFlomo.
 Tech stack, conventions, and project structure are defined in `CLAUDE.md` and `CONSTITUTION.md` — read them in Step 1 before doing anything else.
 
