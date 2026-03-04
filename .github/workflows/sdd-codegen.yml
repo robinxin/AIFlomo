@@ -140,15 +140,13 @@ jobs:
 
       - name: Install app dependencies
         run: |
-          if [ -f "package.json" ]; then
+          if [ ! -f "package.json" ]; then
+            echo "ℹ️ No package.json found — skipping install (fresh project)"
+          else
             npm install --silent
-          else
-            echo "ℹ️ No package.json found — skipping npm install (fresh project)"
-          fi
-          if [ -f "apps/server/package.json" ]; then
-            npm run db:generate -w apps/server
-          else
-            echo "ℹ️ apps/server not found — skipping db:generate"
+            if [ -f "apps/server/package.json" ]; then
+              npm run db:generate -w apps/server
+            fi
           fi
 
       # ── Mode: codegen ─────────────────────────────────────────────

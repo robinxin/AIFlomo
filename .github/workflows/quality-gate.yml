@@ -54,6 +54,8 @@ jobs:
     needs: quality
     if: failure() && github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, ai-runner]
+    # 不影响整体 workflow conclusion，确保 code-review.yml 的 workflow_run 能正确感知
+    continue-on-error: true
     permissions:
       actions: write
     env:
