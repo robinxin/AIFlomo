@@ -119,7 +119,7 @@ jobs:
 
           echo "── Install dependencies ──────────────────────────"
           cd "$DEPLOY_PATH"
-          npm ci
+          npm install
 
           echo "── Drizzle generate ──────────────────────────────"
           npm run db:generate -w apps/server
