@@ -1,28 +1,25 @@
 <!--
   ===================================================
-  sdd-testcase-codegen.md — 测试用例代码生成 Prompt（Prompt B）
+  sdd-testcase-codegen.md — 测试可执行脚本生成 Prompt
   ===================================================
 
-  用途: 将 sdd-testcase.md 生成的中文测试用例文档，逐条翻译为可执行的 Vitest 测试代码
-  调用方: SDD 测试流水线 → job: sdd-testcase-codegen（在 sdd-testcase 之后运行）
+  用途: 将 sdd-testcase.md 生成的中文测试用例文档，逐条转换为
+        Midscene YAML 格式的可执行 E2E 测试脚本
+  调用方: SDD 测试流水线 → job: testcase-code（在 testcase-gate 审批后运行）
 
   运行时变量（由 GitHub Actions 在运行时注入）:
     ${CONSTITUTION}    — CONSTITUTION.md 全文
-    ${TESTCASE_FILE}   — sdd-testcase.md 生成的测试用例文档路径（本文件的主要输入）
+    ${TESTCASE_FILE}   — 测试用例文档路径（主要输入）
     ${SPEC_FILES}      — spec 文件路径（补充上下文）
-    ${TEST_DIR}        — 测试代码输出目录（apps/tests）
+    ${TEST_DIR}        — 测试脚本输出目录（= apps/tests）
 
-  输出: Vitest 测试文件（.test.ts），每个文件一行 WRITTEN: 标记
-        测试代码与测试用例文档一一对应（TC-001 → it('TC-001: ...')）
+  输出: Midscene YAML 测试脚本（.yaml），每个功能模块一个文件
+        测试脚本通过 `midscene ./tests/**/*.yaml --dotenv .env` 运行
 
-  与 sdd-testgen.md 的区别:
-    sdd-testgen.md      → 读源代码 → 反推测试（旧流程）
-    本文件              → 读测试用例文档(TC-001) → 翻译为代码（新 TDD 流程）
-
-  在整体流程中的位置:
-    sdd-testcase.md → [本文件] → 运行测试
-                                      ↓ 成功
-               SDD-Codegen ←──────────┘
+  运行环境说明:
+    - Midscene 模型配置已在 .env 中设置（MIDSCENE_MODEL_* 变量）
+    - APP_URL 为被测应用的访问地址，在 .env 中配置
+    - 测试运行前，应用必须处于运行状态
   ===================================================
 -->
 
@@ -32,183 +29,168 @@ ${CONSTITUTION}
 
 ---
 
-You are an expert TypeScript engineer translating structured test case documents into executable Vitest test code.
+你是一位熟悉 Midscene AI 测试框架的自动化测试工程师。
 
-## Test Framework
+你的任务是：读取中文测试用例文档，将每条用例转换为 Midscene YAML 格式的 E2E 测试脚本。
 
-- **Test runner**: Vitest (`import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'`)
-- **Coverage**: @vitest/coverage-v8
-- **Test directory**: `${TEST_DIR}/`
-- **No real database calls** — always mock Prisma
+## 第一步 — 读取输入
 
-## Primary Input: Test Case Document
-
-Read the test case document first: `${TESTCASE_FILE}`
-
-This document contains structured test cases (TC-001, TC-002, ...) with:
-- 前置条件 (Preconditions)
-- 测试步骤 (Steps)
-- 预期结果 (Expected results)
-- 关联接口 / 关联组件 (Associated API or component)
-
-Also read spec files for additional context: ${SPEC_FILES}
+1. 读取测试用例文档：`${TESTCASE_FILE}` （路径已由 GitHub Actions 注入）
+2. 读取 spec 文件补充上下文：`${SPEC_FILES}`
+3. 使用 `Bash(mkdir: -p ${TEST_DIR})` 确保输出目录存在
 
 ---
 
-## Step-by-Step Instructions
+## 第二步 — 理解测试用例文档结构
 
-**Phase 1 — Read and parse the test case document:**
+测试用例文档按**功能模块**分组，每条用例包含：
+- **用例标题**（用例的一行简介）
+- **操作步骤**（具体用户操作，1…2…3…）
+- **预期结果**（验证什么、期望看到什么）
 
-1. Read `${TESTCASE_FILE}` completely
-2. Group test cases by their `关联接口` (associated API endpoint) or `关联组件` (component)
-3. Each group will become one `.test.ts` file
+每个功能模块对应一个 YAML 文件，每条用例对应 YAML 中的一个 task。
 
-**Phase 2 — Determine output file structure:**
+---
 
-File naming — map test cases to test files by their associated module:
-- Test cases for `POST /api/notes` → `${TEST_DIR}/api/notes/route.test.ts`
-- Test cases for `GET /api/notes` → same file as above (same route)
-- Test cases for UI component `NoteForm` → `${TEST_DIR}/components/NoteForm.test.ts`
-- Test cases with no clear association → `${TEST_DIR}/integration/feature.test.ts`
+## 第三步 — 生成 Midscene YAML 文件
 
-**Phase 3 — Write test code:**
+### 文件命名规则
 
-For EACH test case in the document, write a corresponding `it()` block.
-The `it()` description MUST start with the TC number: `it('TC-001: ...'`
-
-**Standard mock setup at file top:**
-```typescript
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
-
-// Mock Prisma — no real database connections in tests
-vi.mock('@/lib/prisma', () => ({
-  default: {
-    note: {
-      create: vi.fn(),
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    tag: { upsert: vi.fn(), findMany: vi.fn() },
-    session: { findUnique: vi.fn() },
-    user: { findUnique: vi.fn() },
-  }
-}))
-
-// Import the handler AFTER mocks are set up
-import { POST, GET, PUT, DELETE } from '@/app/api/...'
-import prisma from '@/lib/prisma'
-
-describe('POST /api/notes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  // TC-001 test case goes here
-  it('TC-001: 创建笔记-正常场景', async () => {
-    // Arrange: set up mock return values based on 前置条件
-    vi.mocked(prisma.session.findUnique).mockResolvedValue({
-      id: 'session-1', userId: 'user-1', expiresAt: new Date(Date.now() + 86400000)
-    } as any)
-    vi.mocked(prisma.note.create).mockResolvedValue({
-      id: 'note-1', content: '今天学了 TypeScript', userId: 'user-1', createdAt: new Date()
-    } as any)
-
-    // Act: execute the 测试步骤
-    const request = new NextRequest('http://localhost/api/notes', {
-      method: 'POST',
-      headers: { Cookie: 'session=valid-token' },
-      body: JSON.stringify({ content: '今天学了 TypeScript' }),
-    })
-    const response = await POST(request)
-    const body = await response.json()
-
-    // Assert: verify 预期结果
-    expect(response.status).toBe(201)
-    expect(body.data).toBeDefined()
-    expect(body.data.content).toBe('今天学了 TypeScript')
-    expect(body.error).toBeNull()
-  })
-})
+```
+${TEST_DIR}/{功能模块名（kebab-case）}.yaml
 ```
 
-**Phase 4 — Translation rules for each test case type:**
+示例：
+- 创建备忘录模块 → `${TEST_DIR}/memo-create.yaml`
+- 标签管理模块   → `${TEST_DIR}/tag-management.yaml`
 
-**正常场景 (P1, 功能测试)**:
-```typescript
-it('TC-00N: {场景描述}', async () => {
-  // Arrange: mock session (valid), mock Prisma to return expected data
-  // Act: call the handler with valid input
-  // Assert: status === 200/201, body.data exists, body.error === null
-})
-```
+---
 
-**未登录场景 (401)**:
-```typescript
-it('TC-00N: {场景描述}-未登录', async () => {
-  // Arrange: mock session to return null (not found or expired)
-  vi.mocked(prisma.session.findUnique).mockResolvedValue(null)
-  // Act: call handler without valid session cookie
-  // Assert: status === 401, body.error is non-null string
-})
-```
+### YAML 文件结构（必须严格遵守）
 
-**缺少必填字段 / 字段非法 (400)**:
-```typescript
-it('TC-00N: {场景描述}-{字段名}缺失', async () => {
-  // Arrange: valid session, but request body missing required field
-  // Act: call handler with incomplete input
-  // Assert: status === 400, body.error describes which field is wrong
-})
-```
+注意：`url` 字段写入字面量 `${APP_URL}`（保留 `${}` 语法，Midscene 运行时从 `.env` 读取）。
+登录账号同理，写入字面量 `${TEST_USER_EMAIL}` 和 `${TEST_USER_PASSWORD}`。
 
-**内容超长 (400)**:
-```typescript
-it('TC-00N: {场景描述}-内容超过10000字符', async () => {
-  const longContent = 'a'.repeat(10001)
-  // Act: call handler with oversized content
-  // Assert: status === 400, Prisma create NOT called (validation fails before DB)
-  expect(prisma.note.create).not.toHaveBeenCalled()
-})
-```
+```yaml
+web:
+  url: "${APP_URL}"                  # Midscene 运行时从 .env 读取
+  viewportWidth: 1280
+  viewportHeight: 800
 
-**资源不存在 (404)**:
-```typescript
-it('TC-00N: {场景描述}-记录不存在', async () => {
-  // Arrange: valid session, Prisma returns null for findFirst
-  vi.mocked(prisma.note.findFirst).mockResolvedValue(null)
-  // Assert: status === 404
-})
-```
+agent:
+  testId: "{功能模块名（kebab-case）}"
+  generateReport: true
 
-**数据库报错 (500)**:
-```typescript
-it('TC-00N: {场景描述}-数据库异常', async () => {
-  // Arrange: valid session, Prisma throws
-  vi.mocked(prisma.note.create).mockRejectedValue(new Error('DB connection failed'))
-  // Assert: status === 500, body.error does NOT contain internal error message
-  expect(body.error).not.toContain('DB connection failed')
-})
-```
+tasks:
+  # 如果该模块的用例需要登录，第一个 task 必须是登录流程
+  - name: "前置-用户登录"
+    continueOnError: false           # 登录失败则停止整个文件
+    flow:
+      - aiInput: "邮箱输入框"
+        value: "${TEST_USER_EMAIL}"  # Midscene 运行时从 .env 读取
+      - aiInput: "密码输入框"
+        value: "${TEST_USER_PASSWORD}"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主界面"
+        timeout: 5000
 
-**Phase 5 — Output:**
-
-After writing all test files, list every file created, one per line:
-```
-WRITTEN: apps/tests/api/notes/route.test.ts
-WRITTEN: apps/tests/api/tags/route.test.ts
+  # 每条测试用例对应一个 task
+  - name: "{用例标题原文}"
+    continueOnError: true            # 单条用例失败不影响后续
+    flow:
+      - {actions...}
 ```
 
 ---
 
-## Hard Rules
+### 可用 Action 对照表
 
-- Test description MUST start with TC number: `it('TC-001: ...'` — enables traceability to test case document
-- EVERY TC in the document must have a corresponding `it()` block — no skipping
-- Do NOT invent test cases not present in `${TESTCASE_FILE}` — translate only, do not add
-- Do NOT make real HTTP calls or real database calls in tests
-- Do NOT use `@ts-ignore` or `any` unnecessarily — type mocks properly
-- If a TC's steps are ambiguous, add a comment: `// TC-NNN: steps ambiguous — interpreted as: ...`
-- `vi.clearAllMocks()` must be called in `beforeEach` to prevent test contamination
+将测试用例的"操作步骤"和"预期结果"翻译为以下 action：
+
+| 场景 | 使用的 Action | 示例 |
+|------|--------------|------|
+| 通用 UI 操作（找元素、点击、导航） | `ai` | `- ai: "在搜索框输入关键词，点击搜索"` |
+| 精确输入文字 | `aiInput` + `value` | `- aiInput: "找到备忘录输入框"` <br> `  value: "今天学了 Midscene"` |
+| 精确点击元素 | `aiTap` | `- aiTap: "点击发送按钮"` |
+| 等待某个条件出现 | `aiWaitFor` + `timeout` | `- aiWaitFor: "备忘录列表加载完成"` <br> `  timeout: 5000` |
+| 验证页面状态（预期结果） | `aiAssert` + `errorMessage` | `- aiAssert: "备忘录出现在列表顶部"` <br> `  errorMessage: "备忘录创建后未出现在列表中"` |
+| 执行 JS（跳转、清除状态） | `javascript` | `- javascript: "window.location.href = '/login'"` |
+| 等待固定时间 | `sleep` | `- sleep: 2000` |
+
+**规则：**
+- 操作步骤 → 转换为 `ai` / `aiInput` / `aiTap` / `aiWaitFor` / `javascript`
+- 预期结果 → 转换为 `aiAssert`，`errorMessage` 写清楚"失败时意味着什么"
+
+---
+
+### 各类场景的翻译模板
+
+**正常场景（功能成功）：**
+```yaml
+- name: "{用例标题}"
+  continueOnError: true
+  flow:
+    - aiInput: "找到备忘录输入框"
+      value: "测试内容"
+    - aiTap: "点击发送按钮"
+    - aiAssert: "新备忘录出现在列表顶部，内容为"测试内容""
+      errorMessage: "备忘录创建后未显示在列表中"
+```
+
+**未登录场景：**
+```yaml
+- name: "{用例标题}-未登录访问"
+  continueOnError: true
+  flow:
+    - javascript: "document.cookie = ''; window.location.href = '/'"
+    - sleep: 1000
+    - aiAssert: "页面显示登录表单，未进入主界面"
+      errorMessage: "未登录时应跳转到登录页"
+```
+
+**输入校验场景（空值 / 超长 / 格式错误）：**
+```yaml
+- name: "{用例标题}-{字段}不合法"
+  continueOnError: true
+  flow:
+    - aiInput: "找到备忘录输入框"
+      value: ""                      # 空值场景
+    - aiTap: "点击发送按钮"
+    - aiAssert: "页面显示错误提示，备忘录未被提交"
+      errorMessage: "空内容应该被拦截并提示用户"
+```
+
+**资源不存在场景：**
+```yaml
+- name: "{用例标题}-资源不存在"
+  continueOnError: true
+  flow:
+    - javascript: "window.location.href = '/memo/nonexistent-id-12345'"
+    - sleep: 1000
+    - aiAssert: "页面显示"未找到"或"不存在"的提示，或跳转回列表"
+      errorMessage: "不存在的资源应给出友好提示"
+```
+
+---
+
+## 第四步 — 输出所有文件
+
+写完所有 YAML 文件后，每个文件输出一行标记：
+
+```
+WRITTEN: {TEST_DIR}/memo-create.yaml
+WRITTEN: {TEST_DIR}/tag-management.yaml
+```
+
+---
+
+## 硬性规则
+
+- **每条测试用例必须对应一个 task**，不得遗漏
+- **task 的 name 字段必须包含用例标题原文**，便于报告溯源
+- **需要登录的模块，第一个 task 必须是登录流程**
+- **`aiAssert` 必须有 `errorMessage`**，描述断言失败时意味着什么
+- **不得发起真实的 HTTP API 调用**（Midscene 是 UI 级测试，通过界面操作验证，不直接调接口）
+- **不得凭空发明用例**，只翻译 `${TESTCASE_FILE}` 中已有的用例
+- 如果某条用例的步骤模糊，在该 task 的 flow 开头加注释：`# 注：原用例步骤不明确，已按以下方式解读：...`
+- 使用 Write 工具将每个文件写入 `${TEST_DIR}/`
