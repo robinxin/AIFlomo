@@ -62,6 +62,12 @@ jobs:
       - name: Destroy feature pod
         env:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+          SSH_HOST:        ${{ secrets.SSH_HOST }}
+          SSH_PORT:        ${{ secrets.SSH_PORT }}
+          SSH_USER:        ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_PATH:     ${{ secrets.DEPLOY_PATH_FEAT }}
+          SYSTEMD_SERVICE: ${{ secrets.SYSTEMD_SERVICE_FEAT }}
         run: |
           echo "🗑️ Destroying pod for branch: $BRANCH_NAME"
           bash scripts/destroy-pod.sh "$BRANCH_NAME"
