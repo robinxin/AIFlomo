@@ -169,12 +169,16 @@ jobs:
 
           echo "design_file=$DESIGN_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
+          if [ -f "$DESIGN_FILE" ]; then
+            echo "♻️ Design file already exists, reusing: $DESIGN_FILE"
+          else
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
+          fi
 
           {
             echo "## 📐 Technical Design Document"
@@ -301,18 +305,22 @@ jobs:
           export TASKS_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-tasks.json/')
           echo "tasks_file=$TASKS_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
+          if [ -f "$TASKS_FILE" ] && python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
+            echo "♻️ Tasks file already exists and is valid, reusing: $TASKS_FILE"
+          else
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
 
-          # Validate JSON, fallback to single task
-          if ! python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
-            echo "⚠️ Decompose output invalid or missing — falling back to single task"
-            printf '{"feature":"feature","tasks":[{"id":1,"name":"Full implementation","description":"Implement all spec requirements","target_files":[]}]}' \
-              > "$TASKS_FILE"
+            # Validate JSON, fallback to single task
+            if ! python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
+              echo "⚠️ Decompose output invalid or missing — falling back to single task"
+              printf '{"feature":"feature","tasks":[{"id":1,"name":"Full implementation","description":"Implement all spec requirements","target_files":[]}]}' \
+                > "$TASKS_FILE"
+            fi
           fi
 
           {
@@ -486,12 +494,16 @@ jobs:
           TESTCASE_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-testcases.md/')
           echo "testcase_file=$TESTCASE_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
+          if [ -f "$TESTCASE_FILE" ]; then
+            echo "♻️ Testcase file already exists, reusing: $TESTCASE_FILE"
+          else
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
+          fi
 
       - name: Commit test case specs
         env:
