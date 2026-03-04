@@ -249,7 +249,6 @@ jobs:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
       MODEL:              'claude-sonnet-4-5-20250929'
-      CODE_DIR:           'apps/app'
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
@@ -315,10 +314,10 @@ jobs:
           export DESIGN_FILE="${{ needs.sdd-plan.outputs.design_file }}"
 
           FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
-          export TASKS_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-tasks.json/')
+          export TASKS_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-tasks.md/')
           echo "tasks_file=$TASKS_FILE" >> "$GITHUB_OUTPUT"
 
-          if [ -f "$TASKS_FILE" ] && python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
+          if [ -f "$TASKS_FILE" ] && grep -q "^- \[.\] T" "$TASKS_FILE" 2>/dev/null; then
             echo "♻️ Tasks file already exists and is valid, reusing: $TASKS_FILE"
             echo "reused=true" >> "$GITHUB_OUTPUT"
           else
@@ -330,10 +329,10 @@ jobs:
               --model "$MODEL" \
               "$PROMPT_TEXT"
 
-            # Validate JSON, fallback to single task
-            if ! python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
+            # Validate Markdown task list, fallback to single task
+            if ! grep -q "^- \[.\] T" "$TASKS_FILE" 2>/dev/null; then
               echo "⚠️ Decompose output invalid or missing — falling back to single task"
-              printf '{"feature":"feature","tasks":[{"id":1,"name":"Full implementation","description":"Implement all spec requirements","target_files":[]}]}' \
+              printf '# 任务清单: Full Implementation\n\n- [ ] T001 实现所有 Spec 需求\n' \
                 > "$TASKS_FILE"
             fi
           fi
@@ -341,18 +340,7 @@ jobs:
           {
             echo "## 📋 Task Breakdown"
             echo ""
-            python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          print(f'**Feature**: {d[\"feature\"]}')
-          print()
-          print('| # | Task | Description | Target Files |')
-          print('|---|------|-------------|--------------|')
-          for t in d['tasks']:
-              files = ', '.join(f'\`{f}\`' for f in t.get('target_files', []))
-              print(f'| {t[\"id\"]} | {t[\"name\"]} | {t[\"description\"]} | {files} |')
-          "
+            cat "$TASKS_FILE"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit & push tasks file
@@ -389,19 +377,7 @@ jobs:
             printf '📋 **任务拆分已完成，等待审批**\n\n'
             printf '审批入口：[GitHub Actions → Task Approval](%s/%s/actions/runs/%s)\n\n' \
               "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
-            printf '### 任务列表\n\n'
-            python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          print(f'**Feature**: {d[\"feature\"]}')
-          print()
-          print('| # | Task | Description | Target Files |')
-          print('|---|------|-------------|--------------|')
-          for t in d['tasks']:
-              files = ', '.join(f'\`{f}\`' for f in t.get('target_files', []))
-              print(f'| {t[\"id\"]} | {t[\"name\"]} | {t[\"description\"]} | {files} |')
-          "
+            cat "$TASKS_FILE"
           } > /tmp/tasks-comment.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/tasks-comment.md
 

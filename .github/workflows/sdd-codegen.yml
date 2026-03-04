@@ -140,15 +140,13 @@ jobs:
 
       - name: Install app dependencies
         run: |
-          if [ -f "package.json" ]; then
+          if [ ! -f "package.json" ]; then
+            echo "ℹ️ No package.json found — skipping install (fresh project)"
+          else
             npm install --silent
-          else
-            echo "ℹ️ No package.json found — skipping npm install (fresh project)"
-          fi
-          if [ -f "apps/server/package.json" ]; then
-            npm run db:generate -w apps/server
-          else
-            echo "ℹ️ apps/server not found — skipping db:generate"
+            if [ -f "apps/server/package.json" ]; then
+              npm run db:generate -w apps/server
+            fi
           fi
 
       # ── Mode: codegen ─────────────────────────────────────────────
@@ -164,11 +162,10 @@ jobs:
           TASKS_FILE="${{ inputs.tasks_file }}"
           MAX_FIX_ATTEMPTS=2
 
-          TASK_COUNT=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          print(len(d.get('tasks', [])))
+          TASK_COUNT=$(TASKS_FILE="$TASKS_FILE" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          print(len(re.findall(r'^- \[.\] T\d+', content, re.MULTILINE)))
           " 2>/dev/null || echo "1")
 
           > /tmp/written-files.txt
@@ -183,13 +180,22 @@ jobs:
 
           update_task_status() {
             local task_idx=$1 new_status=$2
-            python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          d['tasks'][$task_idx]['status'] = '$new_status'
-          with open('$TASKS_FILE', 'w') as f:
-              json.dump(d, f, indent=2, ensure_ascii=False)
+            TASKS_FILE="$TASKS_FILE" TASK_IDX="$task_idx" NEW_STATUS="$new_status" python3 -c "
+          import re, os
+          filepath = os.environ['TASKS_FILE']
+          idx = int(os.environ['TASK_IDX'])
+          status = os.environ['NEW_STATUS']
+          if status not in ('completed', 'failed'):
+              exit(0)
+          with open(filepath) as f:
+              content = f.read()
+          task_ids = re.findall(r'^- \[.\] (T\d+)', content, re.MULTILINE)
+          if idx < len(task_ids):
+              tid = re.escape(task_ids[idx])
+              new_mark = 'x' if status == 'completed' else '-'
+              content = re.sub(r'^(- )\[.\]( ' + tid + r')', r'\1[' + new_mark + r']\2', content, count=1, flags=re.MULTILINE)
+              with open(filepath, 'w') as f:
+                  f.write(content)
           "
           }
 
@@ -198,30 +204,41 @@ jobs:
           for i in $(seq 1 "$TASK_COUNT"); do
             IDX=$((i - 1))
 
-            TASK_STATUS=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          print(tasks[$IDX].get('status', 'pending') if $IDX < len(tasks) else 'pending')
+            TASK_STATUS=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          marks = re.findall(r'^- \[(.)\] T\d+', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          print('completed' if idx < len(marks) and marks[idx] == 'x' else 'pending')
           ")
-            TASK_NAME=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          print(tasks[$IDX]['name'] if $IDX < len(tasks) else 'task')
+            TASK_NAME=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          bt = chr(96)
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] (.+)$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          if idx < len(lines):
+              name = re.sub(r'\s*' + bt + '[^' + bt + ']+' + bt, '', lines[idx]).strip()
+              print(name[:80])
+          else:
+              print('task')
           ")
-            TASK_DESC=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          print(tasks[$IDX].get('description', '') if $IDX < len(tasks) else '')
+            TASK_DESC=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] .+$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          print(lines[idx] if idx < len(lines) else '')
           ")
-            TASK_FILES=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          files = tasks[$IDX].get('target_files', []) if $IDX < len(tasks) else []
-          print(' '.join(f'\`{f}\`' for f in files))
+            TASK_FILES=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          bt = chr(96)
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] .+$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          if idx < len(lines):
+              files = re.findall(bt + '([^' + bt + ']+)' + bt, lines[idx])
+              print(' '.join(bt + f + bt for f in files))
           ")
 
             if [ "$TASK_STATUS" = "completed" ]; then
