@@ -117,6 +117,9 @@ jobs:
 
           cd "$DEPLOY_PATH"
 
+          echo "── Remove macOS metadata files ───────────────────"
+          find . -name '._*' -delete 2>/dev/null || true
+
           if [ ! -f "package.json" ]; then
             echo "⚠️ No package.json found at $DEPLOY_PATH — app code not ready yet, skipping deploy."
             exit 0
