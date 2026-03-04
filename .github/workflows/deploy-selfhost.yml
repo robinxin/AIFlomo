@@ -138,8 +138,8 @@ jobs:
             echo "Skipped migration."
           fi
 
-          echo "── Build ─────────────────────────────────────────"
-          npm run build -w apps/server
+          echo "── Lint check ────────────────────────────────────"
+          npm run lint -w apps/server
 
           echo "── Start service ─────────────────────────────────"
           sudo systemctl restart "$SYSTEMD_SERVICE"
