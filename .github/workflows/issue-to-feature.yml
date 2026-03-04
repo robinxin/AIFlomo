@@ -113,7 +113,7 @@ jobs:
           export ISSUE_NUMBER="${{ github.event.issue.number }}"
           export SPEC_FILE="specs/active/${{ steps.branch.outputs.issue_number }}-${{ steps.branch.outputs.slug }}.md"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/spec-gen.md)
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/spec-gen.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*)" \

@@ -169,7 +169,7 @@ jobs:
 
           echo "design_file=$DESIGN_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-design.md)
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
@@ -300,7 +300,7 @@ jobs:
           export TASKS_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-tasks.json/')
           echo "tasks_file=$TASKS_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-task-breakdown.md)
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*)" \
@@ -484,7 +484,7 @@ jobs:
           TESTCASE_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-testcases.md/')
           echo "testcase_file=$TESTCASE_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testcase.md)
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
@@ -610,7 +610,7 @@ jobs:
           export TEST_DIR="${TEST_DIR}"
           TESTCASE_FILE="${{ needs.testcase.outputs.testcase_file }}"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testcase-codegen.md)
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \

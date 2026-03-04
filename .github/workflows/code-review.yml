@@ -104,7 +104,7 @@ jobs:
             exit 0
           fi
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/code-review.md)
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/code-review.md)
 
           RESULT=$(claude --print \
             --allowedTools "Read,Bash(ls:*)" \

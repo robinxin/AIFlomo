@@ -106,7 +106,7 @@ jobs:
         run: |
           export ISSUE_NUMBER="${{ github.event.issue.number }}"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/bugfix.md)
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/bugfix.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \

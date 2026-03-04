@@ -196,7 +196,7 @@ jobs:
             export TASK_NAME
             export TASK_DESC
             export ALREADY="${ALREADY:-none}"
-            PROMPT_TEXT=$(envsubst < .github/prompts/sdd-codegen.md)
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
 
             claude --print \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
