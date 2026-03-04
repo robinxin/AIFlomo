@@ -90,8 +90,8 @@ AIFlomo/
 │   │   │   ├── plugins/   # Fastify 插件（session、cors 等）
 │   │   │   └── lib/       # 服务层、工具函数
 │   │   └── drizzle.config.js
-│   └── tests/             # Playwright + Midscene E2E 测试
-│       └── *.spec.js
+│   └── tests/             # Midscene E2E 测试
+│       └── *.yaml
 ├── testcases/             # 测试用例描述文件
 ├── docs/                  # 详细技术文档
 │   ├── code-standards-frontend.md   # 前端代码规范
@@ -163,15 +163,15 @@ AIFlomo/
     "dotenv": "^16.6.1"
   },
   "scripts": {
-    "test": "playwright test",
-    "test:ui": "playwright test --ui",
+    "test": "npx midscene apps/tests/*.yaml",
+    "test:ui": "npx midscene apps/tests/*.yaml",
     "test:report": "playwright show-report"
   }
 }
 ```
 
 ### 测试规范
-- 测试文件放在 `apps/tests/`，命名为 `*.spec.js`
+- 测试文件放在 `apps/tests/`，命名为 `*.yaml`
 - MVP 阶段允许测试为空，但新增重要功能必须补 E2E 测试
 - CI 质量门禁顺序：`lint` → `build` → `test`
 
