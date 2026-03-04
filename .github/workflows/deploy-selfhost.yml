@@ -124,6 +124,9 @@ jobs:
           echo "── Stop service ──────────────────────────────────"
           sudo systemctl stop "$SYSTEMD_SERVICE" || true
 
+          echo "── Ensure build tools ────────────────────────────"
+          command -v g++ >/dev/null 2>&1 || sudo yum install -y gcc-c++ make
+
           echo "── Install dependencies ──────────────────────────"
           npm install
 
