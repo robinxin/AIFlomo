@@ -158,7 +158,11 @@ jobs:
           fi
 
           git commit -m "feat: generate spec for issue #${{ github.event.issue.number }}"
-          git push origin "$BRANCH"
+          if git ls-remote --exit-code origin "$BRANCH" > /dev/null 2>&1; then
+            echo "⚠️ Branch $BRANCH already exists remotely, skipping push."
+          else
+            git push origin "$BRANCH"
+          fi
           echo "✅ Branch $BRANCH created and spec pushed."
 
       - name: Write Spec to Job Summary
