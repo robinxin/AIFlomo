@@ -104,12 +104,12 @@ jobs:
             exit 0
           fi
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/code-review.md)
+          python3 .github/scripts/envsubst.py < .github/prompts/code-review.md > /tmp/prompt.txt
 
           RESULT=$(claude --print \
             --allowedTools "Read,Bash(ls:*)" \
             --model "$MODEL" \
-            "$PROMPT_TEXT")
+            < /tmp/prompt.txt)
 
           echo "$RESULT"
           echo "$RESULT" > /tmp/review-result.txt
