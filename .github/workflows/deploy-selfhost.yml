@@ -13,21 +13,8 @@ on:
           - 'yes'
 
 jobs:
-  approve:
-    name: Waiting for approval
-    if: |
-      github.ref_name == 'workflow-di-v2' ||
-      github.ref_name == 'main' ||
-      startsWith(github.ref_name, 'feat/') ||
-      startsWith(github.ref_name, 'bugfix/')
-    environment: deploy-approval
-    runs-on: [self-hosted, ai-runner]
-    steps:
-      - run: echo "Approved, starting deployment..."
-
   deploy:
     name: Deploy to Aliyun ECS
-    needs: approve
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
@@ -142,3 +129,16 @@ jobs:
           echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
+
+  approve:
+    name: Waiting for approval
+    needs: deploy
+    if: |
+      github.ref_name == 'workflow-di-v2' ||
+      github.ref_name == 'main' ||
+      startsWith(github.ref_name, 'feat/') ||
+      startsWith(github.ref_name, 'bugfix/')
+    environment: deploy-approval
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "Approved, deployment confirmed."
