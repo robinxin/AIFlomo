@@ -1,0 +1,43 @@
+web:
+  url: ${WEB_URL}
+  viewportWidth: 1280
+  viewportHeight: 960
+
+agent:
+  groupName: "001-login-page"
+  groupDescription: "Session 保持与路由保护 E2E 测试"
+
+tasks:
+  # 前置：先登录以建立 Session
+  - name: 前置 - 登录建立 Session
+    flow:
+      - aiWaitFor: 登录页面已加载
+        timeout: 10000
+      - aiInput: 用户名输入框
+        value: ${WEB_USERNAME}
+      - aiInput: 密码输入框
+        value: ${WEB_PASSWORD}
+      - aiTap: 登录按钮
+      - sleep: 2000
+      - aiAssert: 已成功进入主应用页
+        errorMessage: "前置登录失败，无法继续 Session 相关测试"
+
+  # AC#4: 刷新页面后，已登录用户保持登录状态
+  - name: AC4 - 刷新页面后 Session 持久化
+    flow:
+      - javascript: "location.reload()"
+      - sleep: 3000
+      - aiAssert: 刷新后页面仍显示主应用内容，未跳转到登录页（Session Cookie 有效）
+        errorMessage: "AC4 失败：刷新后 Session 丢失，用户被重定向到登录页"
+
+  # AC#6: 清除 Cookie 后，访问受保护路由自动跳转到 /login
+  - name: AC6 - 未登录用户访问受保护路由自动跳转登录页
+    flow:
+      - javascript: |
+          document.cookie.split(';').forEach(c => {
+            document.cookie = c.trim().split('=')[0] + '=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+          });
+      - javascript: "window.location.href = window.location.origin + '/'"
+      - sleep: 2000
+      - aiAssert: 清除 Cookie 后访问首页，页面已自动跳转到登录页，显示用户名和密码输入框
+        errorMessage: "AC6 失败：清除 Cookie 后未重定向到登录页"

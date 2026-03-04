@@ -153,29 +153,67 @@ AIFlomo/
 ## 🧪 测试要求
 
 ### 测试框架
-- **midscene-pc** — AI 驱动的 PC 端 E2E 测试，内置 Playwright，无需单独安装
+- **@midscene/cli v1.5.2** — AI 驱动的 Web E2E 自动化，YAML 脚本格式，全局安装后通过 `npx midscene` 调用
+- 无需额外 Playwright 配置，midscene 内部管理浏览器
 
-### package.json 必须包含的测试依赖
+### 环境变量加载
+- **模型配置**（`MIDSCENE_MODEL_*`）写入根目录 `.env`，midscene CLI 自动加载
+- **测试变量**（`WEB_URL`、账号密码等）写入根目录 `test.env`，通过 `--env-file` 显式传入
+- 根 `package.json` 的测试脚本示例：
 
 ```json
 {
-  "devDependencies": {
-    "midscene-pc": "^1.0.4",
-    "@midscene/cli": "^1.5.2",
-    "dotenv": "^16.6.1"
-  },
   "scripts": {
-    "test": "npx midscene apps/tests/*.yaml",
-    "test:ui": "npx midscene apps/tests/*.yaml",
-    "test:report": "playwright show-report"
+    "test": "node --env-file=.env --env-file=test.env node_modules/.bin/midscene 'apps/tests/*.yaml'",
+    "test:headed": "node --env-file=.env --env-file=test.env node_modules/.bin/midscene 'apps/tests/*.yaml' --headed",
+    "test:report": "npx playwright show-report"
   }
 }
 ```
 
+### YAML 脚本格式（`apps/tests/*.yaml`）
+
+```yaml
+# 用环境变量引用 URL 和账号
+web:
+  url: ${WEB_URL}            # 从 test.env 注入
+  viewportWidth: 1280
+  viewportHeight: 960
+
+agent:
+  groupName: "功能名称"
+
+tasks:
+  - name: 用例名称
+    flow:
+      - aiInput: 用户名输入框
+        value: ${WEB_USERNAME}
+      - aiInput: 密码输入框
+        value: ${WEB_PASSWORD}
+      - aiTap: 登录按钮
+      - sleep: 1000
+      - aiAssert: 页面已跳转到主应用，显示欢迎信息
+```
+
+### 可用 flow 操作
+
+| 操作 | 说明 |
+|------|------|
+| `ai: <prompt>` | 自然语言交互（通用） |
+| `aiTap: <prompt>` | 点击元素 |
+| `aiInput: <prompt>` + `value: <text>` | 向输入框填写内容 |
+| `aiAssert: <prompt>` | 断言（失败时测试不通过） |
+| `aiWaitFor: <prompt>` | 等待条件成立 |
+| `aiQuery: <prompt>` + `name: <key>` | 提取数据到 JSON |
+| `sleep: <ms>` | 等待毫秒数 |
+| `javascript: <code>` | 执行页面内 JS |
+
 ### 测试规范
 - 测试文件放在 `apps/tests/`，命名为 `*.yaml`
+- 环境变量通过 `${VAR_NAME}` 在 YAML 中引用，值来源于 `test.env`
 - MVP 阶段允许测试为空，但新增重要功能必须补 E2E 测试
 - CI 质量门禁顺序：`lint` → `build` → `test`
+- 运行前须确保 `WEB_URL` 指向的服务已启动
 
 ---
 
