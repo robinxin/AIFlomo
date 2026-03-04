@@ -32,15 +32,15 @@ jobs:
           HEAD="${{ github.event.pull_request.head.ref }}"
 
           mkdir -p specs/completed
-          mkdir -p apps/testcase
+          mkdir -p testcases
           MOVED=false
 
           for f in specs/active/*; do
             [ -f "$f" ] || continue
             [ "$(basename "$f")" = ".gitkeep" ] && continue
             if [[ "$(basename "$f")" == *-testcases.md ]]; then
-              echo "📦 Moving testcase: $f → apps/testcase/"
-              git mv "$f" apps/testcase/
+              echo "📦 Moving testcase: $f → testcases/"
+              git mv "$f" testcases/
             else
               echo "📦 Archiving: $f → specs/completed/"
               git mv "$f" specs/completed/
@@ -53,7 +53,7 @@ jobs:
             git config user.email "actions@github.com"
             git commit -m "chore: archive specs from $HEAD"
             git push origin main
-            echo "✅ Specs → specs/completed/，Testcases → apps/testcase/"
+            echo "✅ Specs → specs/completed/，Testcases → testcases/"
           else
             echo "ℹ️ No spec files in specs/active/ — nothing to archive."
           fi

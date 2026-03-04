@@ -40,12 +40,12 @@ ${ISSUE_BODY}
 Work through these steps systematically before touching any code:
 
 **Step 1 — Map the affected area:**
-- Use `Bash(ls)` to understand `apps/flomo/` directory structure
+- Use `Bash(ls)` to understand `apps/` directory structure
 - Based on the issue description, identify which layer is likely affected:
-  - Frontend (component, page) → `apps/flomo/app/`
-  - API route → `apps/flomo/app/api/`
-  - Business logic / utility → `apps/flomo/lib/`
-  - Database schema → `apps/flomo/prisma/schema.prisma`
+  - Frontend (component, page) → `apps/app/`
+  - API route → `apps/app/api/`
+  - Business logic / utility → `apps/lib/`
+  - Database schema → `apps/prisma/schema.prisma`
 
 **Step 2 — Locate the bug:**
 - Use `Bash(grep)` to search for the relevant route path, function name, or error message keyword

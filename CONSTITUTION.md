@@ -32,9 +32,8 @@
 - React components: `PascalCase` (`.jsx`)
 - Functions and variables: `camelCase`
 - Constants: `UPPER_SNAKE_CASE`
-- Follow Fastify plugin patterns for backend (`apps/server/src/routes/`)
-- Follow Expo Router file-based routing for frontend (`apps/mobile/app/`)
-- Follow existing Drizzle schema conventions in `apps/server/src/db/schema.js`
+- Follow Next.js App Router patterns (Server Components by default)
+- Follow existing Prisma schema conventions in `apps/prisma/schema.prisma`
 - Do NOT add comments unless the logic is genuinely non-obvious
 
 ## SCOPE DISCIPLINE

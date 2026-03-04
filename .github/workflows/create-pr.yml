@@ -180,7 +180,7 @@ jobs:
         id: merged-files
         run: |
           # 列出合并引入的所有变更文件（相对于合并前）
-          CHANGED=$(git diff --name-only HEAD~1 -- apps/flomo/ 2>/dev/null | tr '\n' ' ')
+          CHANGED=$(git diff --name-only HEAD~1 -- apps/ 2>/dev/null | tr '\n' ' ')
           echo "changed_files=$CHANGED" >> "$GITHUB_OUTPUT"
           echo "Merged files: ${CHANGED:-none}"
 
@@ -220,11 +220,11 @@ jobs:
           ${CHANGED_FILES}
 
           Instructions:
-          1. Use Read to examine changed source files under apps/flomo/app/ and apps/flomo/lib/
-          2. Use Read + Bash(ls) to examine existing tests under apps/flomo/tests/
+          1. Use Read to examine changed source files under apps/app/ and apps/lib/
+          2. Use Read + Bash(ls) to examine existing tests under apps/tests/
           3. Use Bash(git log) or Bash(git diff) to understand what changed in the merge
           4. If existing tests already cover the merged code — do nothing and report 'No new tests needed'
-          5. If gaps exist — use Write to add or update test files under apps/flomo/tests/
+          5. If gaps exist — use Write to add or update test files under apps/tests/
           6. Focus on: integration between feature code and newly merged main code, edge cases from conflict resolutions
           7. Match existing test framework and patterns, do NOT rewrite existing tests
 
@@ -238,7 +238,7 @@ jobs:
       - name: Commit supplemented tests
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
         run: |
-          git add apps/flomo/tests/
+          git add apps/tests/
           if git diff --cached --quiet; then
             echo "ℹ️ No new tests to commit."
           else
@@ -256,14 +256,14 @@ jobs:
       # ── 合并后跑测试 ──────────────────────────────────────────────────
       - name: Install app dependencies
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
-        working-directory: apps/flomo
+        working-directory: apps
         run: |
           npm install
           npm run db:generate
 
       - name: Run tests after merge
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
-        working-directory: apps/flomo
+        working-directory: apps
         run: |
           echo "🧪 Running build + tests after merge..."
           npm run build

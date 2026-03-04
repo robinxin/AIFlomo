@@ -158,7 +158,11 @@ jobs:
           fi
 
           git commit -m "feat: generate spec for issue #${{ github.event.issue.number }}"
-          git push origin "$BRANCH"
+          if git ls-remote --exit-code origin "$BRANCH" > /dev/null 2>&1; then
+            echo "⚠️ Branch $BRANCH already exists remotely, skipping push."
+          else
+            git push origin "$BRANCH"
+          fi
           echo "✅ Branch $BRANCH created and spec pushed."
 
       - name: Write Spec to Job Summary
@@ -190,8 +194,8 @@ jobs:
           SPEC_URL="${SERVER_URL}/${REPO}/blob/${BRANCH}/${SPEC_FILE}"
           {
             printf '📋 **Spec 已生成，等待人工审批**\n\n'
-            printf '- **分支**: `%s`\n' "$BRANCH"
-            printf '- **Spec 文件**: [`%s`](%s)\n\n' "$SPEC_FILE" "$SPEC_URL"
+            printf -- '- **分支**: `%s`\n' "$BRANCH"
+            printf -- '- **Spec 文件**: [`%s`](%s)\n\n' "$SPEC_FILE" "$SPEC_URL"
             printf '审批入口：[GitHub Actions → Spec Approval](%s/%s/actions/runs/%s)\n\n' \
               "$SERVER_URL" "$REPO" "$RUN_ID"
             printf '<details>\n<summary>📖 点击展开 Spec 全文</summary>\n\n'

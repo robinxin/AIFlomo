@@ -10,7 +10,7 @@
     ${CONSTITUTION}    — CONSTITUTION.md 全文
     ${TESTCASE_FILE}   — sdd-testcase.md 生成的测试用例文档路径（本文件的主要输入）
     ${SPEC_FILES}      — spec 文件路径（补充上下文）
-    ${TEST_DIR}        — 测试代码输出目录（apps/flomo/tests）
+    ${TEST_DIR}        — 测试代码输出目录（apps/tests）
 
   输出: Vitest 测试文件（.test.ts），每个文件一行 WRITTEN: 标记
         测试代码与测试用例文档一一对应（TC-001 → it('TC-001: ...')）
@@ -197,8 +197,8 @@ it('TC-00N: {场景描述}-数据库异常', async () => {
 
 After writing all test files, list every file created, one per line:
 ```
-WRITTEN: apps/flomo/tests/api/notes/route.test.ts
-WRITTEN: apps/flomo/tests/api/tags/route.test.ts
+WRITTEN: apps/tests/api/notes/route.test.ts
+WRITTEN: apps/tests/api/tags/route.test.ts
 ```
 
 ---
