@@ -177,7 +177,6 @@ jobs:
               || github.ref_name == 'main'
               || startsWith(github.ref_name, 'feat/')
               || startsWith(github.ref_name, 'bugfix/')) }}
-    environment: deploy-approval
     runs-on: [self-hosted, ai-runner]
     steps:
       - run: echo "Approved, deployment confirmed."
