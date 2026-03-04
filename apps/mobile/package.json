@@ -1,0 +1,23 @@
+{
+  "name": "aiflomo-mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "npx expo start",
+    "build": "npx expo export",
+    "lint": "eslint .",
+    "prod": "npm run build"
+  },
+  "dependencies": {
+    "expo": "^52.0.0",
+    "expo-router": "^4.0.0",
+    "react": "^18.3.1",
+    "react-native": "^0.76.0",
+    "react-native-safe-area-context": "^4.14.0",
+    "react-native-screens": "^4.4.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "eslint": "^9.19.0"
+  }
+}
