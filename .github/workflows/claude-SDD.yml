@@ -171,7 +171,9 @@ jobs:
 
           if [ -f "$DESIGN_FILE" ]; then
             echo "♻️ Design file already exists, reusing: $DESIGN_FILE"
+            echo "reused=true" >> "$GITHUB_OUTPUT"
           else
+            echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
             claude --print \
@@ -209,6 +211,7 @@ jobs:
           fi
 
       - name: Post design document to Issue
+        if: steps.design.outputs.reused != 'true'
         run: |
           ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|.*\/\([0-9]*\)-.*|\1|')
           if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
@@ -307,7 +310,9 @@ jobs:
 
           if [ -f "$TASKS_FILE" ] && python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
             echo "♻️ Tasks file already exists and is valid, reusing: $TASKS_FILE"
+            echo "reused=true" >> "$GITHUB_OUTPUT"
           else
+            echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
             claude --print \
@@ -361,6 +366,7 @@ jobs:
           fi
 
       - name: Post task breakdown to Issue
+        if: steps.decompose.outputs.reused != 'true'
         run: |
           ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|.*\/\([0-9]*\)-.*|\1|')
           if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
@@ -496,7 +502,9 @@ jobs:
 
           if [ -f "$TESTCASE_FILE" ]; then
             echo "♻️ Testcase file already exists, reusing: $TESTCASE_FILE"
+            echo "reused=true" >> "$GITHUB_OUTPUT"
           else
+            echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
             claude --print \
@@ -526,6 +534,7 @@ jobs:
           fi
 
       - name: Post test cases to Issue
+        if: steps.gen.outputs.reused != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -623,12 +632,15 @@ jobs:
           export TEST_DIR="${TEST_DIR}"
           TESTCASE_FILE="${{ needs.testcase.outputs.testcase_file }}"
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
+          if ls "${TEST_DIR}"/*.spec.js 2>/dev/null | head -1 | grep -q .; then
+            echo "♻️ Test specs already exist in ${TEST_DIR}, reusing"
+          else
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
-            --model "$MODEL" \
-            "${PROMPT_TEXT}
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+              --model "$MODEL" \
+              "${PROMPT_TEXT}
 
           ---
 
@@ -639,6 +651,7 @@ jobs:
           3. 根据测试用例文档中定义的每一个测试场景，生成对应的可执行测试代码
           4. 确保每个测试用例 ID 都有对应的 test function
           5. 测试文件放在 ${TEST_DIR}/ 目录下"
+          fi
 
       - name: Commit test code
         env:

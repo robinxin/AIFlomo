@@ -118,10 +118,9 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Install app dependencies
-        working-directory: apps
         run: |
           npm install --silent
-          npm run db:generate
+          npm run db:generate -w apps/server
 
       # ── Mode: codegen ─────────────────────────────────────────────
       - name: Generate code (task by task)
