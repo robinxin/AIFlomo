@@ -29,13 +29,11 @@ jobs:
 
       - name: Lint
         run: |
-          npm run lint -w apps/server
-          npm run lint -w apps/mobile
+          npm run lint
 
       - name: Build
         run: |
-          npm run build -w apps/server
-          npm run build -w apps/mobile
+          npm run build
 
       - name: Run SDD-generated test cases
         run: |
