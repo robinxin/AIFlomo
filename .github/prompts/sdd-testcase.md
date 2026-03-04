@@ -27,6 +27,12 @@ ${CONSTITUTION}
 
 ---
 
+## PROJECT GUIDE (CLAUDE.md — tech stack, directory structure, naming rules, scripts)
+
+${CLAUDE_MD}
+
+---
+
 # 角色
 
 你是一位资深软件测试工程师，熟悉 AIFlomo 项目技术栈：
