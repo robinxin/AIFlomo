@@ -199,6 +199,7 @@ jobs:
             echo "ℹ️ No design document to commit."
           else
             git commit -m "sdd: generate technical design document"
+            git pull --rebase origin "${{ github.ref_name }}" || true
             git push origin "HEAD:${{ github.ref_name }}"
             echo "✅ Design document committed to ${{ github.ref_name }}"
           fi
@@ -346,6 +347,7 @@ jobs:
             echo "ℹ️ No tasks file to commit."
           else
             git commit -m "sdd: generate task breakdown"
+            git pull --rebase origin "${{ github.ref_name }}" || true
             git push origin "HEAD:${{ github.ref_name }}"
             echo "✅ Tasks file committed to ${{ github.ref_name }}"
           fi
@@ -506,6 +508,7 @@ jobs:
             echo "ℹ️ No testcase file to commit."
           else
             git commit -m "sdd: generate test case specifications"
+            git pull --rebase origin "${{ github.ref_name }}" || true
             git push origin "HEAD:${{ github.ref_name }}"
             echo "✅ Testcase specs committed"
           fi
@@ -642,6 +645,7 @@ jobs:
             echo "ℹ️ No test code to commit."
           else
             git commit -m "sdd: generate executable test code"
+            git pull --rebase origin "${{ github.ref_name }}" || true
             git push origin "HEAD:${{ github.ref_name }}"
             echo "✅ Test code committed"
           fi
