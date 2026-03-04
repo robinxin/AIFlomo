@@ -1,14 +1,13 @@
 name: Deploy to Aliyun ECS
 
 on:
-  # Code Review 人工确认通过后自动触发
   workflow_run:
     workflows: ["Code Review"]
     types: [completed]
   workflow_dispatch:
     inputs:
       run_migrate:
-        description: 'Run prisma migrate deploy (yes/no)'
+        description: 'Run drizzle db:migrate (yes/no)'
         required: true
         default: 'no'
         type: choice
@@ -41,10 +40,13 @@ jobs:
           [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
           BRANCH="${{ env.DEPLOY_BRANCH }}"
-          if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
+          if [[ "$BRANCH" == feat/* ]]; then
             [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"     ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
             [ -z "${{ secrets.SYSTEMD_SERVICE_FEAT }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_FEAT"
-          elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
+          elif [[ "$BRANCH" == bugfix/* ]]; then
+            [ -z "${{ secrets.DEPLOY_PATH_BUGFIX }}"     ] && MISSING="$MISSING DEPLOY_PATH_BUGFIX"
+            [ -z "${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_BUGFIX"
+          elif [[ "$BRANCH" == 'main' ]]; then
             [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
             [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
           fi
@@ -57,14 +59,16 @@ jobs:
       - name: Resolve deploy config
         run: |
           BRANCH="${{ env.DEPLOY_BRANCH }}"
-          if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"        >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}" >> $GITHUB_ENV
-          elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"             >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}"      >> $GITHUB_ENV
+          if [[ "$BRANCH" == feat/* ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"           >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}"   >> $GITHUB_ENV
+          elif [[ "$BRANCH" == bugfix/* ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_BUGFIX }}"         >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" >> $GITHUB_ENV
+          elif [[ "$BRANCH" == 'main' ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"                >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}"        >> $GITHUB_ENV
           fi
-          echo "Deploy config resolved for branch: $BRANCH"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -78,13 +82,13 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Push code to ECS via tar+ssh
+      - name: Push code to ECS
         run: |
-          tar czf - \
+          COPYFILE_DISABLE=1 tar czf - \
             --exclude='.git' \
             --exclude='node_modules' \
-            --exclude='.next' \
             --exclude='*.db' \
+            --exclude='._*' \
             . | \
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
@@ -93,37 +97,79 @@ jobs:
             "mkdir -p ${{ env.DEPLOY_PATH }} && tar xzf - -C ${{ env.DEPLOY_PATH }}"
 
       - name: Deploy on ECS
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          SYSTEMD_SERVICE: ${{ env.SYSTEMD_SERVICE }}
+          RUN_MIGRATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
             -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            DEPLOY_PATH="$DEPLOY_PATH" \
+            SYSTEMD_SERVICE="$SYSTEMD_SERVICE" \
+            RUN_MIGRATE="$RUN_MIGRATE" \
+            SESSION_SECRET="$SESSION_SECRET" \
+            bash << 'ENDSSH'
           set -e
+          SERVER_DIR="$DEPLOY_PATH/apps/server"
 
-          echo "── Stop service ──────────────────────────────────"
-          sudo systemctl stop "${{ env.SYSTEMD_SERVICE }}" || true
+          echo "── Clean macOS metadata files ────────────────────"
+          find "$DEPLOY_PATH" -name '._*' -delete 2>/dev/null || true
 
-          echo "── Install dependencies ──────────────────────────"
-          cd "${{ env.DEPLOY_PATH }}/apps"
-          npm ci
+          echo "── Verify Node.js version (>= 20 required) ──────"
+          NODE_MAJOR=$(node --version | cut -d. -f1 | tr -d 'v')
+          if [ "$NODE_MAJOR" -lt 20 ]; then
+            echo "::error::Node.js >= 20 required, found $(node --version)"
+            exit 1
+          fi
+          echo "Node.js $(node --version) OK"
 
-          echo "── Prisma generate ───────────────────────────────"
-          npx prisma generate
+          echo "── Ensure build tools (g++ for better-sqlite3) ──"
+          command -v g++ >/dev/null 2>&1 || sudo yum install -y gcc-c++ make
 
-          echo "── Prisma migrate ────────────────────────────────"
-          if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}" = "true" ]; then
-            npx prisma migrate deploy
-            echo "Migration complete."
+          echo "── Ensure data directory ─────────────────────────"
+          mkdir -p "$SERVER_DIR/data"
+
+          echo "── Ensure .env file ──────────────────────────────"
+          ENV_FILE="$SERVER_DIR/.env"
+          if [ ! -f "$ENV_FILE" ]; then
+            SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
+            printf 'NODE_ENV=production\nPORT=3001\nSESSION_SECRET=%s\nDB_PATH=./data/aiflomo.db\nCORS_ORIGIN=*\n' "$SECRET" > "$ENV_FILE"
+            echo "Created $ENV_FILE"
           else
-            echo "Skipped migration."
+            echo ".env already exists"
           fi
 
-          echo "── Build ─────────────────────────────────────────"
-          npm run build
+          echo "── Stop service ──────────────────────────────────"
+          sudo systemctl stop "$SYSTEMD_SERVICE" || true
+
+          echo "── Install dependencies ──────────────────────────"
+          cd "$DEPLOY_PATH"
+          npm install
+
+          echo "── Drizzle generate ──────────────────────────────"
+          npm run db:generate -w apps/server
+
+          echo "── Drizzle migrate ───────────────────────────────"
+          if [ "$RUN_MIGRATE" = "true" ]; then
+            npm run db:migrate -w apps/server
+            echo "Migration complete."
+          else
+            echo "Skipped migration (pass run_migrate=yes to run)."
+          fi
+
+          echo "── Lint check ────────────────────────────────────"
+          npm run lint -w apps/server
 
           echo "── Start service ─────────────────────────────────"
-          sudo systemctl start "${{ env.SYSTEMD_SERVICE }}"
-          sudo systemctl is-active "${{ env.SYSTEMD_SERVICE }}"
+          sudo systemctl restart "$SYSTEMD_SERVICE" || {
+            echo "Service failed to start. Journal log:"
+            sudo journalctl -u "$SYSTEMD_SERVICE" -n 50 --no-pager
+            exit 1
+          }
+          sudo systemctl status "$SYSTEMD_SERVICE" --no-pager
 
           echo "✅ Deploy complete"
           ENDSSH
@@ -141,23 +187,20 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Server | \`${{ secrets.SSH_HOST }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch | \`${{ env.DEPLOY_BRANCH }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
 
   approve:
-    name: Waiting for approval
+    name: Deployment confirmed
     needs: deploy
     if: >-
       ${{ (github.event_name != 'workflow_run'
            || github.event.workflow_run.conclusion == 'success')
           && (github.event_name == 'workflow_run'
-              || github.ref_name == 'workflow-di-v2'
               || github.ref_name == 'main'
               || startsWith(github.ref_name, 'feat/')
               || startsWith(github.ref_name, 'bugfix/')) }}
-    environment: deploy-approval
     runs-on: [self-hosted, ai-runner]
     steps:
       - run: echo "Approved, deployment confirmed."
