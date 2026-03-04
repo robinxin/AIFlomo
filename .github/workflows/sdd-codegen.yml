@@ -65,7 +65,7 @@ jobs:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
       MODEL:              'claude-sonnet-4-5-20250929'
-      CODE_DIR:           'apps/app'
+      CODE_DIR:           'apps'
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
@@ -118,10 +118,17 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Install app dependencies
-        working-directory: apps
         run: |
-          npm install --silent
-          npm run db:generate
+          if [ -f "package.json" ]; then
+            npm install --silent
+          else
+            echo "ℹ️ No package.json found — skipping npm install (fresh project)"
+          fi
+          if [ -f "apps/server/package.json" ]; then
+            npm run db:generate -w apps/server
+          else
+            echo "ℹ️ apps/server not found — skipping db:generate"
+          fi
 
       # ── Mode: codegen ─────────────────────────────────────────────
       - name: Generate code (task by task)
@@ -144,6 +151,14 @@ jobs:
           " 2>/dev/null || echo "1")
 
           > /tmp/written-files.txt
+
+          # ── Initialize Step Summary ──
+          {
+            echo "## 📦 Codegen Summary"
+            echo ""
+            echo "| # | Task | Status | Target Files |"
+            echo "|---|------|--------|--------------|"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           update_task_status() {
             local task_idx=$1 new_status=$2
@@ -180,9 +195,17 @@ jobs:
               tasks = json.load(f).get('tasks', [])
           print(tasks[$IDX].get('description', '') if $IDX < len(tasks) else '')
           ")
+            TASK_FILES=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              tasks = json.load(f).get('tasks', [])
+          files = tasks[$IDX].get('target_files', []) if $IDX < len(tasks) else []
+          print(' '.join(f'\`{f}\`' for f in files))
+          ")
 
             if [ "$TASK_STATUS" = "completed" ]; then
               echo "Task $i/$TASK_COUNT: $TASK_NAME — already completed, skipping"
+              echo "| $i | $TASK_NAME | ⏭ skipped | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
 
@@ -203,27 +226,38 @@ jobs:
               --model "$MODEL" \
               "$PROMPT_TEXT"
 
-            # ── tsc verify + self-heal loop ──
+            # ── lint verify + self-heal loop ──
             TASK_PASSED=false
             for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-              if (cd apps && npx tsc --noEmit 2>&1 | tee /tmp/build-err.txt; exit ${PIPESTATUS[0]}); then
-                echo "Task $i type check passed"
+              > /tmp/build-err.txt
+              LINT_OK=true
+
+              CHANGED=$(git diff --name-only 2>/dev/null)
+              if echo "$CHANGED" | grep -q "^apps/server/" && [ -d "apps/server/node_modules" ]; then
+                npm run lint -w apps/server 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+              fi
+              if echo "$CHANGED" | grep -q "^apps/mobile/" && [ -d "apps/mobile/node_modules" ]; then
+                npm run lint -w apps/mobile 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+              fi
+
+              if [ "$LINT_OK" = "true" ]; then
+                echo "Task $i lint check passed"
                 TASK_PASSED=true
                 break
               fi
 
               if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-                echo "Task $i type check failed after $MAX_FIX_ATTEMPTS fix attempts"
+                echo "Task $i lint check failed after $MAX_FIX_ATTEMPTS fix attempts"
                 cat /tmp/build-err.txt
                 break
               fi
 
-              echo "Task $i type check failed, auto-fix attempt $attempt..."
+              echo "Task $i lint check failed, auto-fix attempt $attempt..."
               BUILD_ERR=$(tail -50 /tmp/build-err.txt)
               claude --print \
                 --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
                 --model "$MODEL" \
-                "Fix the TypeScript compilation errors below.
+                "Fix the ESLint errors below.
                  Read the failing files, understand the errors, and use Write to fix them.
                  Do NOT rewrite files from scratch — make minimal targeted fixes.
 
@@ -234,14 +268,28 @@ jobs:
             if [ "$TASK_PASSED" = true ]; then
               update_task_status $IDX "completed"
               git diff --name-only >> /tmp/written-files.txt
+              echo "| $i | $TASK_NAME | ✅ passed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
             else
               update_task_status $IDX "failed"
               FAILED_TASK="$i"
               tail -80 /tmp/build-err.txt > /tmp/failed-task-error.txt
               echo "Task $i failed — stopping at this task"
+              echo "| $i | $TASK_NAME | ❌ failed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
               break
             fi
           done
+
+          # ── Lint error details on failure ──
+          if [ -n "$FAILED_TASK" ]; then
+            {
+              echo ""
+              echo "### ❌ Lint Errors (Task $FAILED_TASK)"
+              echo ""
+              echo "\`\`\`"
+              cat /tmp/failed-task-error.txt 2>/dev/null || echo "No error details available"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           echo "has_failure=$( [ -n "$FAILED_TASK" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           echo "failed_task=$FAILED_TASK" >> "$GITHUB_OUTPUT"
@@ -283,27 +331,33 @@ jobs:
 
           ${EXTRA_PROMPT}"
 
-          # ── tsc verify + self-heal loop ──
+          # ── lint verify + self-heal loop ──
           FIX_PASSED=false
           for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-            if (cd apps && npx tsc --noEmit 2>&1 | tee /tmp/build-err.txt; exit ${PIPESTATUS[0]}); then
-              echo "Fix type check passed"
+            > /tmp/build-err.txt
+            LINT_OK=true
+
+            npm run lint -w apps/server 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+            npm run lint -w apps/mobile 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+
+            if [ "$LINT_OK" = "true" ]; then
+              echo "Fix lint check passed"
               FIX_PASSED=true
               break
             fi
 
             if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-              echo "Fix type check failed after $MAX_FIX_ATTEMPTS attempts"
+              echo "Fix lint check failed after $MAX_FIX_ATTEMPTS attempts"
               cat /tmp/build-err.txt
               break
             fi
 
-            echo "Fix type check failed, auto-fix attempt $attempt..."
+            echo "Fix lint check failed, auto-fix attempt $attempt..."
             BUILD_ERR=$(tail -50 /tmp/build-err.txt)
             claude --print \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
               --model "$MODEL" \
-              "Fix the TypeScript compilation errors below.
+              "Fix the ESLint errors below.
                Read the failing files, understand the errors, and use Write to fix them.
                Do NOT rewrite files from scratch — make minimal targeted fixes.
 
