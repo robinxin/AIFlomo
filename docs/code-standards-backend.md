@@ -391,7 +391,7 @@ reply.status(204).send();                     // 删除成功，无 body
 ## 8. 环境变量规范
 
 ```bash
-# apps/server/.env.example（提交 Git，脱敏示例）
+# 根目录 .env（统一管理，提交 Git）
 NODE_ENV=development
 PORT=3000
 DB_PATH=./data/aiflomo.db
@@ -399,5 +399,5 @@ SESSION_SECRET=replace-with-32-char-random-string-here
 CORS_ORIGIN=http://localhost:8081
 ```
 
-- `.env` 不提交 Git，`.env.example` 提交
-- 代码中通过 `process.env.VAR_NAME` 读取，禁止硬编码敏感值
+- 所有环境变量统一写入**根目录 `.env`**，提交 Git
+- 代码中通过 `process.env.VAR_NAME` 读取，禁止硬编码

@@ -22,7 +22,7 @@
 | ORM | Drizzle ORM |
 | 认证 | Session + Cookie（Session 存储于 SQLite 同库） |
 | 状态管理 | React Context + useReducer |
-| 测试 | Playwright（E2E）+ Midscene（AI 驱动 UI 测试） |
+| 测试 | midscene-pc ^1.0.4（AI 驱动 E2E，内置 Playwright） |
 | 包管理 | npm workspaces（Monorepo） |
 | 进程守护 | pm2（VPS 部署） |
 
@@ -100,6 +100,8 @@ AIFlomo/
 │   ├── templates/         # Spec 模板
 │   ├── active/            # 当前进行中 Spec
 │   └── completed/         # 已完成 Spec
+├── .env                   # 环境配置（模型 + 业务，需提交 Git）
+├── test.env               # 测试用例执行变量（WEB_URL、账号密码等，需提交 Git）
 ├── .github/               # Actions + Issue 模板
 └── CLAUDE.md              # 本文件
 ```
@@ -137,7 +139,7 @@ AIFlomo/
 
 ## 🔒 安全红线
 
-1. **严禁硬编码密钥** — 必须使用环境变量（`.env` 文件不得提交）
+1. **严禁硬编码密钥** — 必须使用环境变量，统一写入根目录 `.env`（需提交 Git）
 2. **必须校验用户输入** — 前后端都要校验
 3. **必须使用 Drizzle 参数化查询** — 不写原生 SQL 字符串拼接
 4. **内容展示必须防 XSS** — 纯文本渲染
@@ -150,16 +152,15 @@ AIFlomo/
 ## 🧪 测试要求
 
 ### 测试框架
-- **Playwright** — E2E 浏览器自动化测试
-- **Midscene** — AI 驱动的 UI 语义测试（基于 Playwright）
+- **midscene-pc** — AI 驱动的 PC 端 E2E 测试，内置 Playwright，无需单独安装
 
 ### package.json 必须包含的测试依赖
 
 ```json
 {
   "devDependencies": {
-    "@playwright/test": "^1.x",
-    "@midscene/web": "^0.x"
+    "midscene-pc": "^1.0.4",
+    "dotenv": "^16.6.1"
   },
   "scripts": {
     "test": "playwright test",
