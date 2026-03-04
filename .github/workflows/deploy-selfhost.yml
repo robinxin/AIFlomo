@@ -114,11 +114,17 @@ jobs:
             bash << 'ENDSSH'
           set -e
 
+          cd "$DEPLOY_PATH"
+
+          if [ ! -f "package.json" ]; then
+            echo "⚠️ No package.json found at $DEPLOY_PATH — app code not ready yet, skipping deploy."
+            exit 0
+          fi
+
           echo "── Stop service ──────────────────────────────────"
           sudo systemctl stop "$SYSTEMD_SERVICE" || true
 
           echo "── Install dependencies ──────────────────────────"
-          cd "$DEPLOY_PATH"
           npm install
 
           echo "── Drizzle generate ──────────────────────────────"
