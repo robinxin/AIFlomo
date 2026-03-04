@@ -86,16 +86,34 @@ jobs:
         id: branch
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           ISSUE_NUMBER="${{ github.event.issue.number }}"
-          # 生成 slug：小写、空格转连字符、去除特殊字符、截取前40字符
-          SLUG=$(printf '%s' "$ISSUE_TITLE" \
+
+          # 用 Claude 将标题翻译为英文 slug
+          RAW_SLUG=$(claude --print --model "$MODEL" \
+            "Translate the following title to a short English slug (lowercase, hyphens, no spaces, max 40 chars, no quotes, no explanation, just the slug): ${ISSUE_TITLE}" \
+            2>/dev/null || echo "")
+
+          # 清理 slug：只保留 a-z0-9 和连字符
+          SLUG=$(printf '%s' "$RAW_SLUG" \
             | tr '[:upper:]' '[:lower:]' \
-            | sed 's/\[feature\] //g; s/\[bug\] //g' \
             | tr -cs 'a-z0-9' '-' \
             | sed 's/^-//; s/-$//' \
             | cut -c1-40 \
             | sed 's/-$//')
+
+          # 兜底：如果 slug 仍为空，用纯本地逻辑
+          if [ -z "$SLUG" ]; then
+            SLUG=$(printf '%s' "$ISSUE_TITLE" \
+              | tr '[:upper:]' '[:lower:]' \
+              | sed 's/\[feature\] //g; s/\[bug\] //g' \
+              | tr -cs 'a-z0-9' '-' \
+              | sed 's/^-//; s/-$//' \
+              | cut -c1-40 \
+              | sed 's/-$//')
+          fi
+
           BRANCH="feat/${ISSUE_NUMBER}-${SLUG}"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
