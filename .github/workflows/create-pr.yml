@@ -1,0 +1,321 @@
+name: Create Release PR
+
+on:
+  # Deploy 成功后自动触发
+  workflow_run:
+    workflows: ["Deploy to Aliyun ECS"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  create-pr:
+    if: >-
+      ${{ github.event_name != 'workflow_run'
+          || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Determine branch name
+        id: branch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            HEAD="${{ github.event.workflow_run.head_branch }}"
+          else
+            HEAD="${{ github.ref_name }}"
+          fi
+          echo "head=$HEAD" >> "$GITHUB_OUTPUT"
+
+          ISSUE_NUMBER=$(echo "$HEAD" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "$HEAD" ] || [ -z "$ISSUE_NUMBER" ]; then
+            ISSUE_NUMBER=""
+          fi
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Branch: $HEAD, Issue: ${ISSUE_NUMBER:-none}"
+
+      # ── 合并主干到当前分支 ──────────────────────────────────────────────
+      - name: Merge main into branch
+        id: merge
+        run: |
+          HEAD="${{ steps.branch.outputs.head }}"
+
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git fetch origin main
+
+          # 检查是否需要合并
+          BEHIND=$(git rev-list --count HEAD..origin/main)
+          echo "behind_main=$BEHIND" >> "$GITHUB_OUTPUT"
+
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "✅ Branch is up to date with main — no merge needed."
+            echo "merge_status=up_to_date" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "ℹ️ Branch is $BEHIND commit(s) behind main — merging..."
+
+          if git merge origin/main --no-edit 2>/tmp/merge-output.txt; then
+            echo "✅ Merge succeeded without conflicts."
+            echo "merge_status=merged" >> "$GITHUB_OUTPUT"
+          else
+            echo "⚠️ Merge conflicts detected."
+            echo "merge_status=conflict" >> "$GITHUB_OUTPUT"
+            # 记录冲突文件
+            git diff --name-only --diff-filter=U > /tmp/conflict-files.txt
+            echo "Conflict files:"
+            cat /tmp/conflict-files.txt
+          fi
+
+      # ── AI 基础设施（冲突解决 + 补测试都需要） ────────────────────────
+      - name: Start proxy (strip context_management)
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load Constitution
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
+      # ── AI 解决冲突 ────────────────────────────────────────────────────
+      - name: AI resolve merge conflicts
+        if: steps.merge.outputs.merge_status == 'conflict'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          CONFLICT_FILES=$(cat /tmp/conflict-files.txt | tr '\n' ' ')
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(git diff:*),Bash(git log:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
+          You are resolving git merge conflicts after merging origin/main into the current feature branch.
+
+          Conflict files: ${CONFLICT_FILES}
+
+          Instructions:
+          1. Use Read to examine each conflict file — look for <<<<<<< / ======= / >>>>>>> markers
+          2. Use Bash(git log) to understand recent changes on both sides if needed
+          3. Resolve each conflict by choosing the correct combination of both sides
+          4. Use Write to save the resolved file (remove ALL conflict markers)
+          5. Preserve the intent of BOTH the feature branch changes and the main branch updates
+          6. Follow project conventions: TypeScript, Next.js App Router, Prisma
+
+          After resolving, list each file:
+          RESOLVED: <file path> — <resolution strategy>
+          PROMPT
+          )"
+
+          # 检查是否还有未解决的冲突标记
+          if grep -rn '<<<<<<< ' $CONFLICT_FILES 2>/dev/null; then
+            echo "❌ Conflict markers still present after AI resolution"
+            exit 1
+          fi
+
+          # 标记冲突已解决并完成合并
+          git add $CONFLICT_FILES
+          git commit --no-edit
+          echo "✅ Merge conflicts resolved by AI and committed."
+
+      # ── 合并后 AI 补充测试 ────────────────────────────────────────────
+      - name: Collect merged files
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        id: merged-files
+        run: |
+          # 列出合并引入的所有变更文件（相对于合并前）
+          CHANGED=$(git diff --name-only HEAD~1 -- apps/flomo/ 2>/dev/null | tr '\n' ' ')
+          echo "changed_files=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Merged files: ${CHANGED:-none}"
+
+      - name: AI supplement tests after merge
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          CHANGED_FILES="${{ steps.merged-files.outputs.changed_files }}"
+          MERGE_STATUS="${{ steps.merge.outputs.merge_status }}"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "ℹ️ No app files changed in merge — skipping test supplement."
+            exit 0
+          fi
+
+          if [ "$MERGE_STATUS" = "conflict" ]; then
+            MERGE_CONTEXT="Merge conflicts were resolved by AI. Pay special attention to the resolved files — verify the resolution logic is correct."
+          else
+            MERGE_CONTEXT="Merge was clean (no conflicts), but new code from main is now integrated with this feature branch."
+          fi
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(git diff:*),Bash(git log:*)" \
+            --model "$MODEL" \
+            "$(cat << PROMPT
+          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
+          ${CONSTITUTION}
+
+          ---
+
+          After merging origin/main into this feature branch, check whether existing tests still cover the merged code adequately, and supplement test cases if needed.
+
+          ${MERGE_CONTEXT}
+
+          Changed files from merge:
+          ${CHANGED_FILES}
+
+          Instructions:
+          1. Use Read to examine changed source files under apps/flomo/app/ and apps/flomo/lib/
+          2. Use Read + Bash(ls) to examine existing tests under apps/flomo/tests/
+          3. Use Bash(git log) or Bash(git diff) to understand what changed in the merge
+          4. If existing tests already cover the merged code — do nothing and report 'No new tests needed'
+          5. If gaps exist — use Write to add or update test files under apps/flomo/tests/
+          6. Focus on: integration between feature code and newly merged main code, edge cases from conflict resolutions
+          7. Match existing test framework and patterns, do NOT rewrite existing tests
+
+          After analysis, output:
+          TESTS_ADDED: <file path> — <what is covered>
+          or
+          NO_NEW_TESTS: <reason why existing tests are sufficient>
+          PROMPT
+          )"
+
+      - name: Commit supplemented tests
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        run: |
+          git add apps/flomo/tests/
+          if git diff --cached --quiet; then
+            echo "ℹ️ No new tests to commit."
+          else
+            git commit -m "test: supplement tests after merge with main"
+            echo "✅ Supplemented tests committed."
+          fi
+
+      - name: Push merge result and tests
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        run: |
+          HEAD="${{ steps.branch.outputs.head }}"
+          git push origin "HEAD:${HEAD}"
+          echo "✅ Pushed to $HEAD"
+
+      # ── 合并后跑测试 ──────────────────────────────────────────────────
+      - name: Install app dependencies
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        working-directory: apps/flomo
+        run: |
+          npm install
+          npm run db:generate
+
+      - name: Run tests after merge
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        working-directory: apps/flomo
+        run: |
+          echo "🧪 Running build + tests after merge..."
+          npm run build
+          npm run test:coverage
+          echo "✅ Build and tests passed after merge."
+
+      # ── 创建 PR ────────────────────────────────────────────────────────
+      - name: Create PR to main
+        run: |
+          HEAD="${{ steps.branch.outputs.head }}"
+          ISSUE_NUMBER="${{ steps.branch.outputs.issue_number }}"
+          MERGE_STATUS="${{ steps.merge.outputs.merge_status }}"
+
+          EXISTING=$(gh pr list \
+            --head "$HEAD" --base "main" \
+            --json number --jq '.[0].number' 2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            echo "PR already exists: #$EXISTING"
+            exit 0
+          fi
+
+          if [ -n "$ISSUE_NUMBER" ]; then
+            CLOSES_LINE="Closes #${ISSUE_NUMBER}"
+          else
+            CLOSES_LINE=""
+          fi
+
+          case "$MERGE_STATUS" in
+            up_to_date)
+              MERGE_NOTE="- Branch was already up to date with main" ;;
+            merged)
+              MERGE_NOTE="- Merged main into branch (no conflicts)" ;;
+            conflict)
+              MERGE_NOTE="- Merged main into branch (conflicts resolved by AI)" ;;
+          esac
+
+          {
+            printf '## Release PR\n\n'
+            printf '✅ Quality gate passed\n'
+            printf '✅ Code review approved\n'
+            printf '%s\n' "$MERGE_NOTE"
+            if [ "$MERGE_STATUS" != "up_to_date" ]; then
+              printf '✅ Tests passed after merge\n'
+            fi
+            printf '\n%s\n' "$CLOSES_LINE"
+          } > /tmp/pr-body.md
+
+          gh pr create \
+            --base "main" \
+            --head "$HEAD" \
+            --title "$HEAD -> main" \
+            --body-file /tmp/pr-body.md
+
+          echo "✅ PR created for $HEAD"

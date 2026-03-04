@@ -9,7 +9,8 @@ jobs:
   archive-specs:
     if: >-
       github.event.pull_request.merged == true
-      && startsWith(github.event.pull_request.head.ref, 'feat/')
+      && (startsWith(github.event.pull_request.head.ref, 'feat/')
+          || startsWith(github.event.pull_request.head.ref, 'bugfix/'))
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -24,18 +25,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           HEAD="${{ github.event.pull_request.head.ref }}"
-          ISSUE_NUMBER=$(echo "$HEAD" | sed 's|feat/\([0-9]*\)-.*|\1|')
-
-          if [ "$ISSUE_NUMBER" = "$HEAD" ] || [ -z "$ISSUE_NUMBER" ]; then
-            echo "ℹ️ Not a feat/<n>-* branch — skipping spec archive."
-            exit 0
-          fi
 
           mkdir -p specs/completed
           MOVED=false
 
-          for f in specs/active/${ISSUE_NUMBER}-*; do
+          for f in specs/active/*; do
             [ -f "$f" ] || continue
+            [ "$(basename "$f")" = ".gitkeep" ] && continue
             echo "📦 Archiving: $f → specs/completed/"
             git mv "$f" specs/completed/
             MOVED=true
@@ -44,9 +40,28 @@ jobs:
           if [ "$MOVED" = true ]; then
             git config user.name "GitHub Actions"
             git config user.email "actions@github.com"
-            git commit -m "chore: archive specs for issue #${ISSUE_NUMBER}"
+            git commit -m "chore: archive specs from $HEAD"
             git push origin main
             echo "✅ Specs archived to specs/completed/"
           else
-            echo "ℹ️ No spec files found for issue #${ISSUE_NUMBER} — nothing to archive."
+            echo "ℹ️ No spec files in specs/active/ — nothing to archive."
           fi
+
+  destroy-pod:
+    needs: archive-specs
+    if: >-
+      github.event.pull_request.merged == true
+      && (startsWith(github.event.pull_request.head.ref, 'feat/')
+          || startsWith(github.event.pull_request.head.ref, 'bugfix/'))
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Destroy feature pod
+        env:
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "🗑️ Destroying pod for branch: $BRANCH_NAME"
+          bash scripts/destroy-pod.sh "$BRANCH_NAME"

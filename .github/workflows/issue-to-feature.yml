@@ -3,6 +3,12 @@ name: Issue to Feature (ai-feature label)
 on:
   issues:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      extra_prompt:
+        description: '额外指令（追加到 AI prompt 末尾）'
+        default: ''
+        required: false
 
 jobs:
   generate-spec:
@@ -98,42 +104,17 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-          SPEC_FILE="specs/active/${{ steps.branch.outputs.issue_number }}-${{ steps.branch.outputs.slug }}.md"
+          export ISSUE_NUMBER="${{ github.event.issue.number }}"
+          export SPEC_FILE="specs/active/${{ steps.branch.outputs.issue_number }}-${{ steps.branch.outputs.slug }}.md"
+
+          PROMPT_TEXT=$(envsubst < .github/prompts/spec-gen.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*)" \
             --model "$MODEL" \
-            "$(cat << PROMPT
-          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-          ${CONSTITUTION}
-
-          ---
-
-          You are a software architect. Read the feature spec template and generate a complete spec from the GitHub Issue below.
-
-          First, read the template:
-          - specs/templates/feature-spec-template.md
-
-          Then, using the Issue information below, write a complete spec file to: ${SPEC_FILE}
-
-          GitHub Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}
-
-          Issue Body:
-          ${ISSUE_BODY}
-
-          Requirements for the spec:
-          1. Fill in ALL sections of the template based on the Issue content
-          2. Make the spec concrete and implementable — define API endpoints, data models, and acceptance criteria clearly
-          3. Infer reasonable technical details from the issue (TypeScript, Next.js App Router, Prisma, SQLite)
-          4. Set 状态 to 已批准 and 关联 Issue to #${ISSUE_NUMBER}
-          5. Keep 不包含 section realistic based on the issue scope
-          6. Write in Chinese (as per the template language)
-
-          Write the spec file now.
-          PROMPT
-          )"
+            "$PROMPT_TEXT"
 
           echo "spec_file=$SPEC_FILE" >> "$GITHUB_OUTPUT"
 
