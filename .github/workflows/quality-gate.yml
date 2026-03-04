@@ -25,23 +25,47 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          if [ ! -f "package.json" ]; then
+            echo "❌ No package.json found — SDD codegen has not generated project files yet."
+            exit 1
+          fi
+          npm install
 
       - name: Lint
-        run: |
-          npm run lint
+        run: npm run lint
 
       - name: Build
-        run: |
-          npm run build
+        run: npm run build
 
       - name: Run SDD-generated test cases
         run: |
-          TEST_COUNT=$(find apps/tests/ -name "*.spec.js" 2>/dev/null | wc -l | tr -d ' ')
+          TEST_COUNT=$(find apps/tests/ -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
           if [ "$TEST_COUNT" -gt 0 ]; then
-            echo "🧪 Found $TEST_COUNT SDD-generated test file(s) — running..."
+            echo "🧪 Found $TEST_COUNT test file(s) — running..."
             npm run test
-            echo "✅ SDD test cases passed"
+            echo "✅ Test cases passed"
           else
-            echo "ℹ️ No SDD-generated test files in apps/tests/ — skipping"
+            echo "ℹ️ No test files in apps/tests/ — skipping"
           fi
+
+  # ─── Quality 失败 → 自动触发 sdd-codegen fix 模式 ───────────────
+  auto-fix:
+    needs: quality
+    if: failure() && github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, ai-runner]
+    # 不影响整体 workflow conclusion，确保 code-review.yml 的 workflow_run 能正确感知
+    continue-on-error: true
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Trigger sdd-codegen fix mode
+        run: |
+          gh workflow run sdd-codegen.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" \
+            --field branch="${{ github.ref_name }}"
+          echo "✅ sdd-codegen fix triggered on ${{ github.ref_name }}"
+
