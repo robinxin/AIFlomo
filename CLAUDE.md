@@ -16,8 +16,8 @@
 
 | 层级 | 技术选型 |
 |------|---------|
-| 前端（跨端） | Expo (React Native) + TypeScript — Web / Android / iOS |
-| 后端 | Node.js + **Fastify** + TypeScript |
+| 前端（跨端） | Expo (React Native) + **JavaScript** — Web / Android / iOS |
+| 后端 | Node.js + **Fastify** + **JavaScript** |
 | 数据库 | SQLite（MVP 阶段） |
 | ORM | Drizzle ORM |
 | 认证 | Session + Cookie（Session 存储于 SQLite 同库） |
@@ -47,8 +47,8 @@ npm run dev -w apps/mobile           # 启动前端
 
 # ── 后端（apps/server）──
 cd apps/server
-npm run dev               # 启动 Fastify 开发服务器（tsx watch）
-npm run build             # 编译 TypeScript 到 dist/
+npm run dev               # 启动 Fastify 开发服务器（node --watch）
+npm run build             # 打包到 dist/
 npm run lint              # ESLint 检测
 npm run prod              # pm2 start dist/index.js --name aiflomo-server
 npm run db:generate       # 生成 Drizzle client
@@ -83,15 +83,19 @@ AIFlomo/
 │   │   ├── hooks/         # 自定义 Hooks
 │   │   ├── lib/           # API client、工具函数
 │   │   └── assets/        # 图片、字体等静态资源
-│   └── server/            # Node.js + Fastify 后端服务
-│       ├── src/
-│       │   ├── routes/    # API 路由（Fastify plugins）
-│       │   ├── db/        # Drizzle schema + 迁移文件
-│       │   ├── plugins/   # Fastify 插件（session、cors 等）
-│       │   └── lib/       # 服务层、工具函数
-│       └── drizzle.config.ts
-├── tests/                 # Playwright + Midscene E2E 测试
-│   └── *.spec.ts
+│   ├── server/            # Node.js + Fastify 后端服务
+│   │   ├── src/
+│   │   │   ├── routes/    # API 路由（Fastify plugins）
+│   │   │   ├── db/        # Drizzle schema + 迁移文件
+│   │   │   ├── plugins/   # Fastify 插件（session、cors 等）
+│   │   │   └── lib/       # 服务层、工具函数
+│   │   └── drizzle.config.js
+│   └── tests/             # Playwright + Midscene E2E 测试
+│       └── *.spec.js
+├── testcases/             # 测试用例描述文件
+├── docs/                  # 详细技术文档
+│   ├── code-standards-frontend.md   # 前端代码规范
+│   └── code-standards-backend.md    # 后端代码规范
 ├── specs/                 # 功能规格文档
 │   ├── templates/         # Spec 模板
 │   ├── active/            # 当前进行中 Spec
@@ -104,32 +108,30 @@ AIFlomo/
 
 ## 💻 编码规范
 
-### 命名规则
-- **文件名**: kebab-case
-- **组件名**: PascalCase
-- **函数/变量**: camelCase
-- **常量**: UPPER_SNAKE_CASE
-- **Drizzle schema 表名**: snake_case（与数据库一致）
+详细规范见独立文档（AI Agent 实现前必须阅读）：
 
-### API 规范
-- RESTful 风格，Fastify route plugin 组织
-- 统一 JSON 结构：`{ data, error, message }`
-- 使用 HTTP 状态码表达结果
-- Session 通过 `@fastify/session` + `@fastify/cookie` 管理
+- **前端**：[`docs/code-standards-frontend.md`](./docs/code-standards-frontend.md) — Expo Router、组件结构、Context、API Client
+- **后端**：[`docs/code-standards-backend.md`](./docs/code-standards-backend.md) — Fastify Plugin、路由、Drizzle Schema、错误处理、响应格式
 
-### 状态管理规范（Expo）
-- 全局状态用 React Context + useReducer，文件放在 `apps/mobile/context/`
-- Context 按业务域拆分（如 `AuthContext`、`MemoContext`），避免单一巨型 Context
-- 组件内局部状态用 `useState`，不要过度提升到全局
+### 核心命名规则（速查）
 
-### 跨端规范（Expo）
-- 优先使用 React Native 核心组件，保持三端一致
-- 平台差异代码用 `Platform.select()` 或 `.web.tsx` / `.native.tsx` 后缀隔离
-- 样式统一使用 `StyleSheet.create()`，避免内联样式
+| 类型 | 规范 | 示例 |
+|------|------|------|
+| 路由文件 | kebab-case + `.jsx` | `memo-detail.jsx` |
+| 组件文件 | PascalCase + `.jsx` | `MemoCard.jsx` |
+| Hook 文件 | `use-` + camelCase + `.js` | `use-memos.js` |
+| DB 表名 | snake_case | `memo_tags` |
+| 函数/变量 | camelCase | `fetchMemos` |
+| 常量 | UPPER_SNAKE_CASE | `MAX_CONTENT_LENGTH` |
 
-### 错误处理
-- 统一返回结构化错误
-- 生产环境不暴露堆栈
+### 统一 API 响应格式
+
+```js
+// 成功
+{ data: value, message: string }
+// 失败
+{ data: null, error: string, message: string }
+```
 
 ---
 
@@ -168,7 +170,7 @@ AIFlomo/
 ```
 
 ### 测试规范
-- 测试文件放在根目录 `tests/`，命名为 `*.spec.ts`
+- 测试文件放在 `apps/tests/`，命名为 `*.spec.js`
 - MVP 阶段允许测试为空，但新增重要功能必须补 E2E 测试
 - CI 质量门禁顺序：`lint` → `build` → `test`
 
@@ -213,8 +215,7 @@ fix: 修复标签解析中的特殊字符问题
 4. **能跑就跑** — 尽量运行构建/检查命令
 
 ### 禁止行为
-- ❌ 不要使用 `any` 类型
-- ❌ 不要使用 `@ts-ignore`
+- ❌ 不要引入 TypeScript（非必要场景）— 默认用 JavaScript
 - ❌ 不要删除已有测试
 - ❌ 不要直接操作生产数据库
 - ❌ 不要使用 Next.js / Express — 后端统一用 **Fastify**
