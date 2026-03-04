@@ -1,6 +1,10 @@
 name: Deploy to Aliyun ECS
 
 on:
+  # Code Review 人工确认通过后自动触发
+  workflow_run:
+    workflows: ["Code Review"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       run_migrate:
@@ -15,15 +19,29 @@ on:
 jobs:
   approve:
     name: Waiting for approval
-    if: |
-      github.ref_name == 'workflow-di-v2' ||
-      github.ref_name == 'main' ||
-      startsWith(github.ref_name, 'feat/') ||
-      startsWith(github.ref_name, 'bugfix/')
+    if: >-
+      ${{ (github.event_name != 'workflow_run'
+           || github.event.workflow_run.conclusion == 'success')
+          && (github.event_name == 'workflow_run'
+              || github.ref_name == 'workflow-di-v2'
+              || github.ref_name == 'main'
+              || startsWith(github.ref_name, 'feat/')
+              || startsWith(github.ref_name, 'bugfix/')) }}
     environment: deploy-approval
     runs-on: [self-hosted, ai-runner]
+    outputs:
+      deploy_branch: ${{ steps.resolve.outputs.branch }}
     steps:
-      - run: echo "Approved, starting deployment..."
+      - name: Resolve deploy branch
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
+          else
+            BRANCH="${{ github.ref_name }}"
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Deploy branch: $BRANCH"
 
   deploy:
     name: Deploy to Aliyun ECS
@@ -31,6 +49,8 @@ jobs:
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
+    env:
+      DEPLOY_BRANCH: ${{ needs.approve.outputs.deploy_branch }}
 
     steps:
       - name: Verify required secrets
@@ -39,7 +59,7 @@ jobs:
           [ -z "${{ secrets.SSH_HOST }}"        ] && MISSING="$MISSING SSH_HOST"
           [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
-          BRANCH="${{ github.ref_name }}"
+          BRANCH="${{ env.DEPLOY_BRANCH }}"
           if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
             [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"     ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
             [ -z "${{ secrets.SYSTEMD_SERVICE_FEAT }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_FEAT"
@@ -55,7 +75,7 @@ jobs:
 
       - name: Resolve deploy config
         run: |
-          BRANCH="${{ github.ref_name }}"
+          BRANCH="${{ env.DEPLOY_BRANCH }}"
           if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
             echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"        >> $GITHUB_ENV
             echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}" >> $GITHUB_ENV
@@ -67,6 +87,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_BRANCH }}
 
       - name: Setup SSH key
         run: |
@@ -139,6 +161,6 @@ jobs:
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Server | \`${{ secrets.SSH_HOST }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ env.DEPLOY_BRANCH }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY

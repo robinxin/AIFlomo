@@ -1,35 +1,31 @@
-name: SDD Pipeline (Detect -> Design -> Tasks -> Codegen -> Quality -> Release PR)
+name: SDD Pipeline
 
 on:
   push:
     branches: ['feat/**']
     paths:
       - 'specs/active/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'specs/active/**'
-      - 'apps/flomo/app/**'
-      - 'apps/flomo/lib/**'
-      - 'apps/flomo/tests/**'
   workflow_dispatch:
     inputs:
+      extra_prompt:
+        description: '额外指令（追加到 AI prompt 末尾）'
+        default: ''
+        required: false
       run_sdd:
         description: 'Run SDD (1=yes, 0=no)'
         default: '1'
         required: true
-      run_quality:
-        description: 'Run quality gate (1=yes, 0=no)'
-        default: '1'
-        required: true
-      run_release_pr:
-        description: 'Create release PR (1=yes, 0=no)'
-        default: '1'
-        required: true
+
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  SDD Pipeline                                                       ║
+# ║  Detect → Validate(🔒) ─┬─ Plan → 🔒Plan → Task → 🔒Task → Codegen ║
+# ║                          └─ Testcase → 🔒Testcase → Testcase Code   ║
+# ║  两条线完成后 → 触发 Quality Gate Pipeline                           ║
+# ╚══════════════════════════════════════════════════════════════════════╝
 
 jobs:
-  # ─── Job 1: 检测变更的 Spec 文件 ───────────────────────────────────────────
-  detect:
+  # ─── SDD-Detect ─────────────────────────────────────────────────
+  sdd-detect:
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
@@ -45,18 +41,12 @@ jobs:
       - name: Detect changed spec files
         id: detect
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            FILES=$(git diff --name-only \
-              "${{ github.event.pull_request.base.sha }}" \
-              "${{ github.event.pull_request.head.sha }}" \
-              -- specs/active/ | grep -E '\.(md|yaml|yml|json)$' || true)
-          elif [ "${{ github.event_name }}" = "push" ] \
+          if [ "${{ github.event_name }}" = "push" ] \
                && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
             FILES=$(git diff --name-only \
               "${{ github.event.before }}" "${{ github.sha }}" \
               -- specs/active/ | grep -E '\.(md|yaml|yml|json)$' || true)
           else
-            # workflow_dispatch: 取 specs/active/ 下所有文件
             FILES=$(ls specs/active/ 2>/dev/null \
               | sed 's#^#specs/active/#' \
               | grep -E '\.(md|yaml|yml|json)$' || true)
@@ -82,7 +72,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 仅 feat/<n>-* 分支（由 issue-to-feature 创建的）才关联 Issue
           ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|feat/\([0-9]*\)-.*|\1|')
           if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
             echo "Not a feat/<n>-* branch — skipping Issue preview."
@@ -91,8 +80,8 @@ jobs:
 
           SPEC_FILES="${{ steps.detect.outputs.spec_files }}"
           {
-            printf '📋 **Spec 已生成，等待人工审批后开始技术方案设计**\n\n'
-            printf '审批入口：[GitHub Actions → sdd-design job](%s/%s/actions/runs/%s)\n\n' \
+            printf '📋 **Spec 已生成，等待人工审批（Requirements & UI Design）**\n\n'
+            printf '审批入口：[GitHub Actions → SDD-Validate](%s/%s/actions/runs/%s)\n\n' \
               "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
             printf '<details><summary>📄 查看 Spec 全文（点击展开）</summary>\n\n```markdown\n'
             cat $SPEC_FILES 2>/dev/null || echo "spec file not found"
@@ -101,23 +90,33 @@ jobs:
 
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/spec-preview.md
 
-  # ─── Job 2a: SDD Design — 生成技术方案文档 ─────────────────────────────────
-  sdd-design:
-    needs: detect
+  # ─── SDD-Validate (Requirements & UI Design) ───────────────────
+  # 唯一的人工审批节点：审核需求和 UI 设计后，后续全自动
+  sdd-validate:
+    needs: sdd-detect
     if: >-
-      ${{ needs.detect.outputs.spec_changed == 'true'
+      ${{ needs.sdd-detect.outputs.spec_changed == 'true'
           && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
-    environment: spec-approval
+    environment: sdd-validate
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "✅ Requirements & UI Design validated — proceeding with SDD pipeline"
+
+  # ─── SDD-Plan ───────────────────────────────────────────────────
+  sdd-plan:
+    needs: [sdd-detect, sdd-validate]
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
+      issues: write
     outputs:
       design_file: ${{ steps.design.outputs.design_file }}
     env:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
       MODEL:              'claude-sonnet-4-5-20250929'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -171,42 +170,22 @@ jobs:
         id: design
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
-          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
+          export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
 
-          # Derive design filename from first spec file
           FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
-          DESIGN_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-design.md/')
+          export DESIGN_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-design.md/')
 
           echo "design_file=$DESIGN_FILE" >> "$GITHUB_OUTPUT"
+
+          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-design.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
             --model "$MODEL" \
-            "$(cat << PROMPT
-          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-          ${CONSTITUTION}
+            "$PROMPT_TEXT"
 
-          ---
-
-          Read these spec files: ${SPEC_FILES}
-          Also scan apps/flomo/ to understand existing code structure.
-
-          Generate a technical design document and save it to ${DESIGN_FILE} using the Write tool.
-
-          The design document MUST include these sections:
-          1. **Architecture Overview** — how this feature fits into the existing system
-          2. **Data Model Changes** — Prisma schema modifications needed
-          3. **API Endpoints** — routes, request/response shapes, error handling
-          4. **Component Structure** — UI components, pages, layout changes
-          5. **Technical Constraints** — performance, security, compatibility considerations
-          6. **Dependencies** — any new packages needed
-
-          Be specific and actionable. Reference existing file paths where changes are needed.
-          PROMPT
-          )"
-
-          # Write to step summary for reviewer visibility
           {
             echo "## 📐 Technical Design Document"
             echo ""
@@ -234,18 +213,41 @@ jobs:
             echo "✅ Design document committed to ${{ github.ref_name }}"
           fi
 
-  # ─── Job 2b: SDD Task Breakdown — 任务拆分 ────────────────────────────────
-  sdd-task-breakdown:
-    needs: [detect, sdd-design]
+      - name: Post design document to Issue
+        run: |
+          ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
+            echo "Not a feat/<n>-* or bugfix/<n>-* branch — skipping."
+            exit 0
+          fi
+
+          DESIGN_FILE="${{ steps.design.outputs.design_file }}"
+          {
+            printf '📐 **技术方案文档已生成，等待审批**\n\n'
+            printf '审批入口：[GitHub Actions → Design Approval](%s/%s/actions/runs/%s)\n\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+            printf '<details><summary>📄 查看技术方案全文（点击展开）</summary>\n\n'
+            cat "$DESIGN_FILE" 2>/dev/null || echo "⚠️ Design file not found"
+            printf '\n\n</details>\n'
+          } > /tmp/design-comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/design-comment.md
+
+  # ─── SDD-Task（需通过 Plan 审批后执行）───────────────────────────
+  sdd-task:
+    needs: [sdd-detect, sdd-plan]
     environment: design-approval
     runs-on: [self-hosted, ai-runner]
     permissions:
-      contents: read
+      contents: write
+      issues: write
+    outputs:
+      tasks_file: ${{ steps.decompose.outputs.tasks_file }}
     env:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
       MODEL:              'claude-sonnet-4-5-20250929'
       CODE_DIR:           'apps/flomo/app'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -299,62 +301,35 @@ jobs:
         id: decompose
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
-          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
-          DESIGN_FILE="${{ needs.sdd-design.outputs.design_file }}"
+          export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
+          export DESIGN_FILE="${{ needs.sdd-plan.outputs.design_file }}"
+
+          FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
+          export TASKS_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-tasks.json/')
+          echo "tasks_file=$TASKS_FILE" >> "$GITHUB_OUTPUT"
+
+          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-task-breakdown.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*)" \
             --model "$MODEL" \
-            "$(cat << PROMPT
-          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-          ${CONSTITUTION}
-
-          ---
-
-          Read these spec files: ${SPEC_FILES}
-          Read the technical design document: ${DESIGN_FILE}
-          Also scan ${CODE_DIR}/ to understand existing code structure.
-
-          Break the feature into ordered, atomic implementation tasks.
-          Write ONLY a valid JSON object to /tmp/tasks.json with this structure:
-          {
-            "feature": "<name>",
-            "tasks": [
-              {
-                "id": 1,
-                "name": "<short task name>",
-                "description": "<what to implement in this task>",
-                "target_files": ["<relative/path/to/file.ts>"]
-              }
-            ]
-          }
-
-          Ordering rules:
-          - Data model / Prisma schema changes first
-          - Then API route handlers and service layer
-          - Then UI components and pages last
-          - Maximum 5 tasks, minimum 1
-          - Each task must be independently implementable
-
-          Use the Write tool to save the JSON to /tmp/tasks.json.
-          PROMPT
-          )"
+            "$PROMPT_TEXT"
 
           # Validate JSON, fallback to single task
-          if ! python3 -c "import json; json.load(open('/tmp/tasks.json'))" 2>/dev/null; then
+          if ! python3 -c "import json; json.load(open('$TASKS_FILE'))" 2>/dev/null; then
             echo "⚠️ Decompose output invalid or missing — falling back to single task"
             printf '{"feature":"feature","tasks":[{"id":1,"name":"Full implementation","description":"Implement all spec requirements","target_files":[]}]}' \
-              > /tmp/tasks.json
+              > "$TASKS_FILE"
           fi
 
-          # Write to step summary for reviewer visibility
           {
             echo "## 📋 Task Breakdown"
             echo ""
             python3 -c "
           import json
-          with open('/tmp/tasks.json') as f:
+          with open('$TASKS_FILE') as f:
               d = json.load(f)
           print(f'**Feature**: {d[\"feature\"]}')
           print()
@@ -366,26 +341,208 @@ jobs:
           "
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "📋 Task breakdown:"
-          python3 -c "
+      - name: Commit & push tasks file
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git add specs/active/
+
+          if git diff --cached --quiet; then
+            echo "ℹ️ No tasks file to commit."
+          else
+            git commit -m "sdd: generate task breakdown"
+            git push origin "HEAD:${{ github.ref_name }}"
+            echo "✅ Tasks file committed to ${{ github.ref_name }}"
+          fi
+
+      - name: Post task breakdown to Issue
+        run: |
+          ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
+            echo "Not a feat/<n>-* or bugfix/<n>-* branch — skipping."
+            exit 0
+          fi
+
+          TASKS_FILE="${{ steps.decompose.outputs.tasks_file }}"
+          {
+            printf '📋 **任务拆分已完成，等待审批**\n\n'
+            printf '审批入口：[GitHub Actions → Task Approval](%s/%s/actions/runs/%s)\n\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+            printf '### 任务列表\n\n'
+            python3 -c "
           import json
-          with open('/tmp/tasks.json') as f:
+          with open('$TASKS_FILE') as f:
               d = json.load(f)
+          print(f'**Feature**: {d[\"feature\"]}')
+          print()
+          print('| # | Task | Description | Target Files |')
+          print('|---|------|-------------|--------------|')
           for t in d['tasks']:
-              print(f'  Task {t[\"id\"]}: {t[\"name\"]}')
+              files = ', '.join(f'\`{f}\`' for f in t.get('target_files', []))
+              print(f'| {t[\"id\"]} | {t[\"name\"]} | {t[\"description\"]} | {files} |')
           "
+          } > /tmp/tasks-comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/tasks-comment.md
 
-      - name: Upload tasks artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdd-tasks
-          path: /tmp/tasks.json
-          retention-days: 7
-
-  # ─── Job 2c: SDD Codegen — 代码生成 + 测试生成 ────────────────────────────
-  sdd-codegen:
-    needs: [detect, sdd-design, sdd-task-breakdown]
+  # ─── Task Approval Gate（轻量审批 job）─────────────────────────
+  task-gate:
+    needs: sdd-task
     environment: task-approval
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "Task breakdown approved"
+
+  # ─── SDD-Codegen（调用 Reusable Workflow）─────────────────────────
+  sdd-codegen:
+    needs: [sdd-detect, sdd-plan, sdd-task, task-gate]
+    uses: ./.github/workflows/sdd-codegen.yml
+    with:
+      mode: codegen
+      branch: ${{ github.ref_name }}
+      spec_files: ${{ needs.sdd-detect.outputs.spec_files }}
+      design_file: ${{ needs.sdd-plan.outputs.design_file }}
+      tasks_file: ${{ needs.sdd-task.outputs.tasks_file }}
+      extra_prompt: ${{ github.event.inputs.extra_prompt || '' }}
+    secrets: inherit
+
+  # ═══════════════════════════════════════════════════════════════
+  # Test Flow（与 SDD-Plan/Task/Codegen 并行）
+  # Testcase → 🔒审批 → Testcase 可执行代码
+  # ═══════════════════════════════════════════════════════════════
+
+  # ─── Testcase — 从 Spec 生成测试用例描述（与 SDD-Plan 并行）─────
+  testcase:
+    needs: [sdd-detect, sdd-validate]
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      issues: write
+    outputs:
+      testcase_file: ${{ steps.gen.outputs.testcase_file }}
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate test case specifications
+        id: gen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
+        run: |
+          export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
+          export TEST_DIR="apps/flomo/tests"
+          export WRITTEN_FILES="N/A — 源码尚未生成，请根据 Spec 生成测试用例规格文档"
+
+          FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
+          TESTCASE_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-testcases.md/')
+          echo "testcase_file=$TESTCASE_FILE" >> "$GITHUB_OUTPUT"
+
+          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testgen.md)
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+            --model "$MODEL" \
+            "$PROMPT_TEXT"
+
+      - name: Commit test case specs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git add specs/active/
+
+          if git diff --cached --quiet; then
+            echo "ℹ️ No testcase file to commit."
+          else
+            git commit -m "sdd: generate test case specifications"
+            git push origin "HEAD:${{ github.ref_name }}"
+            echo "✅ Testcase specs committed"
+          fi
+
+      - name: Post test cases to Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUMBER=$(echo "${{ github.ref_name }}" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "${{ github.ref_name }}" ] || [ -z "$ISSUE_NUMBER" ]; then
+            echo "Not a feat/<n>-* or bugfix/<n>-* branch — skipping."
+            exit 0
+          fi
+
+          TESTCASE_FILE="${{ steps.gen.outputs.testcase_file }}"
+          {
+            printf '🧪 **测试用例已生成，等待审批**\n\n'
+            printf '审批入口：[GitHub Actions → Testcase Approval](%s/%s/actions/runs/%s)\n\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+            printf '<details><summary>📄 查看测试用例全文（点击展开）</summary>\n\n'
+            cat "$TESTCASE_FILE" 2>/dev/null || echo "⚠️ Testcase file not found"
+            printf '\n\n</details>\n'
+          } > /tmp/testcase-comment.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/testcase-comment.md
+
+  # ─── Testcase 可执行代码（需通过 Testcase 审批后执行）───────────────
+  testcase-code:
+    needs: [sdd-detect, sdd-codegen, testcase]
+    if: needs.sdd-codegen.outputs.has_failure != 'true'
+    environment: testcase-approval
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -393,7 +550,6 @@ jobs:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
       MODEL:              'claude-sonnet-4-5-20250929'
-      CODE_DIR:           'apps/flomo/app'
       TEST_DIR:           'apps/flomo/tests'
 
     steps:
@@ -444,192 +600,34 @@ jobs:
             echo "CONSTITUTION_EOF"
           } >> "$GITHUB_ENV"
 
-      - name: Download tasks artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: sdd-tasks
-          path: /tmp
-
-      - name: Install app dependencies
-        working-directory: apps/flomo
-        run: |
-          npm install --silent
-          npm run db:generate
-
-      - name: Generate code (task by task)
-        id: codegen
+      - name: Generate executable test code
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
-          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
-          DESIGN_FILE="${{ needs.sdd-design.outputs.design_file }}"
-          MAX_FIX_ATTEMPTS=2
+          export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
+          export WRITTEN_FILES="${{ needs.sdd-codegen.outputs.written_files }}"
+          export TEST_DIR="${TEST_DIR}"
+          TESTCASE_FILE="${{ needs.testcase.outputs.testcase_file }}"
 
-          TASK_COUNT=$(python3 -c "
-          import json
-          with open('/tmp/tasks.json') as f:
-              d = json.load(f)
-          print(len(d.get('tasks', [])))
-          " 2>/dev/null || echo "1")
-
-          > /tmp/written-files.txt  # 初始化文件列表
-
-          for i in $(seq 1 "$TASK_COUNT"); do
-            TASK_NAME=$(python3 -c "
-          import json
-          with open('/tmp/tasks.json') as f:
-              tasks = json.load(f).get('tasks', [])
-          idx = $i - 1
-          print(tasks[idx]['name'] if idx < len(tasks) else 'task')
-          ")
-            TASK_DESC=$(python3 -c "
-          import json
-          with open('/tmp/tasks.json') as f:
-              tasks = json.load(f).get('tasks', [])
-          idx = $i - 1
-          print(tasks[idx].get('description', '') if idx < len(tasks) else '')
-          ")
-
-            echo "━━━ Task $i/$TASK_COUNT: $TASK_NAME ━━━"
-
-            ALREADY=$(git diff --name-only 2>/dev/null | tr '\n' ' ')
-
-            # ── 初始生成 ──
-            claude --print \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
-              --model "$MODEL" \
-              "$(cat << PROMPT
-          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-          ${CONSTITUTION}
-
-          ---
-
-          Spec files: ${SPEC_FILES}
-          Technical design document: ${DESIGN_FILE}
-          (Read the design document for architectural decisions and constraints)
-
-          TASK $i of $TASK_COUNT: ${TASK_NAME}
-          ${TASK_DESC}
-
-          Files already written by previous tasks (do NOT re-implement):
-          ${ALREADY:-none}
-
-          Instructions:
-          1. Use Read + Bash(ls) to understand existing code in ${CODE_DIR}/
-          2. Read the design document for architectural guidance
-          3. Implement ONLY this task's scope — nothing more
-          4. Follow existing conventions (TypeScript, Next.js App Router, Prisma)
-          5. Use Write to create/modify files under ${CODE_DIR}/
-
-          After writing, list each file:
-          WRITTEN: <full path>
-          PROMPT
-          )"
-
-            # ── 验证 + 自愈循环 ──
-            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-              if (cd apps/flomo && npx tsc --noEmit 2>&1 | tee /tmp/build-err.txt; exit ${PIPESTATUS[0]}); then
-                echo "✅ Task $i 类型检查通过"
-                break
-              fi
-
-              if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-                echo "❌ Task $i 类型检查在 $MAX_FIX_ATTEMPTS 次修复后仍失败"
-                cat /tmp/build-err.txt
-                exit 1
-              fi
-
-              echo "🔧 Task $i 类型检查失败，第 $attempt 次自动修复..."
-              BUILD_ERR=$(tail -50 /tmp/build-err.txt)
-              claude --print \
-                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-                --model "$MODEL" \
-                "Fix the TypeScript compilation errors below.
-                 Read the failing files, understand the errors, and use Write to fix them.
-                 Do NOT rewrite files from scratch — make minimal targeted fixes.
-
-                 Errors:
-                 ${BUILD_ERR}"
-            done
-
-            # 记录本 task 新增/修改的文件
-            git diff --name-only >> /tmp/written-files.txt
-          done
-
-          {
-            echo "written_files<<WRITTEN_EOF"
-            sort -u /tmp/written-files.txt
-            echo "WRITTEN_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Generate tests
-        id: testgen
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          SPEC_FILES="${{ needs.detect.outputs.spec_files }}"
-          WRITTEN_FILES="${{ steps.codegen.outputs.written_files }}"
+          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testgen.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
             --model "$MODEL" \
-            "$(cat << PROMPT
-          ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-          ${CONSTITUTION}
+            "${PROMPT_TEXT}
 
           ---
 
-          Read these spec files: ${SPEC_FILES}
+          ## 额外指令
 
-          Write tests for the following generated source files:
-          ${WRITTEN_FILES}
+          1. 首先读取测试用例规格文档：${TESTCASE_FILE}
+          2. 读取 CLAUDE.md 了解项目测试相关技术规范（测试框架、命名规范等）
+          3. 根据测试用例文档中定义的每一个测试场景，生成对应的可执行测试代码
+          4. 确保每个测试用例 ID 都有对应的 test function
+          5. 测试文件放在 ${TEST_DIR}/ 目录下"
 
-          Instructions:
-          1. Use Read to examine each file listed above — understand what was actually implemented
-          2. Use Read + Bash(ls) to understand existing tests in ${TEST_DIR}/
-          3. Use Write to create test files under ${TEST_DIR}/
-          4. Match the existing test framework and patterns
-          5. Cover: happy path, error cases, and edge cases defined in the spec
-
-          After writing all files, list them:
-          WRITTEN: <full path>
-          PROMPT
-          )"
-
-      - name: Verify tests
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        working-directory: apps/flomo
-        run: |
-          MAX_FIX_ATTEMPTS=2
-
-          for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-            if npm run test 2>&1 | tee /tmp/test-err.txt; then
-              echo "✅ 测试全部通过"
-              exit 0
-            fi
-
-            if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-              echo "⚠️ 测试在 $MAX_FIX_ATTEMPTS 次修复后仍失败，继续提交"
-              break
-            fi
-
-            echo "🔧 测试失败，第 $attempt 次自动修复..."
-            TEST_ERR=$(tail -50 /tmp/test-err.txt)
-            cd "$GITHUB_WORKSPACE"
-            claude --print \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-              --model "$MODEL" \
-              "Fix the failing tests below.
-               Read the test files and source files, understand why tests fail,
-               and use Write to fix either the tests or the source code.
-
-               Test errors:
-               ${TEST_ERR}"
-            cd apps/flomo
-          done
-
-      - name: Commit generated files
+      - name: Commit test code
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -638,98 +636,13 @@ jobs:
           git remote set-url origin \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
 
-          git add "$CODE_DIR" "$TEST_DIR"
+          git add "$TEST_DIR"
 
           if git diff --cached --quiet; then
-            echo "ℹ️ Nothing to commit."
+            echo "ℹ️ No test code to commit."
           else
-            git commit -m "sdd: auto-generate code/tests from spec (${{ github.sha }})"
+            git commit -m "sdd: generate executable test code"
             git push origin "HEAD:${{ github.ref_name }}"
-            echo "✅ Committed to ${{ github.ref_name }}"
+            echo "✅ Test code committed"
           fi
 
-  # ─── Job 3: Quality Gate ──────────────────────────────────────────────────
-  quality:
-    needs: [detect, sdd-codegen]
-    if: >-
-      ${{ always()
-          && needs.detect.result == 'success'
-          && (needs.sdd-codegen.result == 'success' || needs.sdd-codegen.result == 'skipped')
-          && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_quality == '1') }}
-    runs-on: [self-hosted, ai-runner]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        working-directory: apps/flomo
-        run: npm install
-
-      - name: Prisma generate
-        working-directory: apps/flomo
-        run: npm run db:generate
-
-      - name: Audit (critical only)
-        working-directory: apps/flomo
-        run: npm audit --audit-level=critical
-
-      - name: Build
-        working-directory: apps/flomo
-        run: npm run build
-
-      - name: Test (coverage gate)
-        working-directory: apps/flomo
-        run: npm run test:coverage
-
-  # ─── Job 4: Release PR ───────────────────────────────────────────────────
-  release-pr:
-    needs: quality
-    if: >-
-      ${{ needs.quality.result == 'success'
-          && (github.event_name == 'push'
-              || (github.event_name == 'workflow_dispatch'
-                  && github.event.inputs.run_release_pr == '1')) }}
-    runs-on: [self-hosted, ai-runner]
-    permissions:
-      contents: read
-      pull-requests: write
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create PR to main
-        run: |
-          HEAD="${{ github.ref_name }}"
-
-          EXISTING=$(gh pr list \
-            --head "$HEAD" --base "main" \
-            --json number --jq '.[0].number')
-
-          if [ -n "$EXISTING" ]; then
-            echo "PR already exists: #$EXISTING"
-            exit 0
-          fi
-
-          # 从分支名 feat/<issue-number>-<slug> 中提取 issue number
-          ISSUE_NUMBER=$(echo "$HEAD" | sed 's|feat/\([0-9]*\)-.*|\1|')
-          if [ "$ISSUE_NUMBER" = "$HEAD" ] || [ -z "$ISSUE_NUMBER" ]; then
-            # 分支名不含 issue number（如手动触发），不添加 Closes
-            CLOSES_LINE=""
-          else
-            CLOSES_LINE="Closes #${ISSUE_NUMBER}"
-          fi
-
-          printf 'Auto-created release PR from %s. Quality gate passed.\n\n%s\n' \
-            "$HEAD" "$CLOSES_LINE" > /tmp/pr-body.md
-
-          gh pr create \
-            --base "main" \
-            --head "$HEAD" \
-            --title "$HEAD -> main" \
-            --body-file /tmp/pr-body.md

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "SDD task breakdown schema — AI 生成的任务拆分文件必须符合此结构",
+  "type": "object",
+  "required": ["feature", "tasks"],
+  "properties": {
+    "feature": {
+      "type": "string",
+      "description": "功能名称"
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "description": "有序的实现任务列表",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "target_files", "status"],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "任务序号，从 1 开始"
+          },
+          "name": {
+            "type": "string",
+            "description": "简短的任务名称"
+          },
+          "description": {
+            "type": "string",
+            "description": "任务的具体实现内容"
+          },
+          "target_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "该任务涉及的目标文件（相对路径）"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "completed", "failed"],
+            "default": "pending",
+            "description": "任务状态：pending(待执行) → in_progress(执行中) → completed(完成) / failed(失败)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "_ordering_rules": [
+    "Data model / Prisma schema changes first",
+    "Then API route handlers and service layer",
+    "Then UI components and pages last",
+    "Each task must be independently implementable"
+  ]
+}
