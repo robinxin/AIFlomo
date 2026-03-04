@@ -119,8 +119,16 @@ jobs:
 
       - name: Install app dependencies
         run: |
-          npm install --silent
-          npm run db:generate -w apps/server
+          if [ -f "package.json" ]; then
+            npm install --silent
+          else
+            echo "ℹ️ No package.json found — skipping npm install (fresh project)"
+          fi
+          if [ -f "apps/server/package.json" ]; then
+            npm run db:generate -w apps/server
+          else
+            echo "ℹ️ apps/server not found — skipping db:generate"
+          fi
 
       # ── Mode: codegen ─────────────────────────────────────────────
       - name: Generate code (task by task)
@@ -225,10 +233,10 @@ jobs:
               LINT_OK=true
 
               CHANGED=$(git diff --name-only 2>/dev/null)
-              if echo "$CHANGED" | grep -q "^apps/server/"; then
+              if echo "$CHANGED" | grep -q "^apps/server/" && [ -d "apps/server/node_modules" ]; then
                 npm run lint -w apps/server 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
               fi
-              if echo "$CHANGED" | grep -q "^apps/mobile/"; then
+              if echo "$CHANGED" | grep -q "^apps/mobile/" && [ -d "apps/mobile/node_modules" ]; then
                 npm run lint -w apps/mobile 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
               fi
 
