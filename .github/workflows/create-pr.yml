@@ -277,6 +277,11 @@ jobs:
           ISSUE_NUMBER="${{ steps.branch.outputs.issue_number }}"
           MERGE_STATUS="${{ steps.merge.outputs.merge_status }}"
 
+          if [ "$HEAD" = "main" ]; then
+            echo "ℹ️ HEAD is main — skipping PR creation."
+            exit 0
+          fi
+
           EXISTING=$(gh pr list \
             --head "$HEAD" --base "main" \
             --json number --jq '.[0].number' 2>/dev/null || true)
