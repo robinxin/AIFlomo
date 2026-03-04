@@ -149,7 +149,11 @@ jobs:
           npm run lint -w apps/server
 
           echo "── Start service ─────────────────────────────────"
-          sudo systemctl restart "$SYSTEMD_SERVICE"
+          sudo systemctl restart "$SYSTEMD_SERVICE" || {
+            echo "❌ Service failed to start. Journal log:"
+            sudo journalctl -u "$SYSTEMD_SERVICE" -n 50 --no-pager
+            exit 1
+          }
           sudo systemctl status "$SYSTEMD_SERVICE" --no-pager
 
           echo "✅ Deploy complete"
