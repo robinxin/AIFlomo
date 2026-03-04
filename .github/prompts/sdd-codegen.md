@@ -4,7 +4,7 @@
   ===================================================
 
   用途: 根据设计文档和任务描述，为单个任务生成符合项目规范的 JavaScript 代码
-  调用方: claude-SDD.yml → job: sdd-codegen（循环调用，每次处理一个任务）
+  调用方: sdd-codegen.yml → job: run（循环调用，每次处理一个任务）
 
   运行时变量（由 GitHub Actions 在运行时注入）:
     ${CONSTITUTION}    — CONSTITUTION.md 全文
@@ -13,11 +13,8 @@
     ${TASK_INDEX}      — 当前任务序号（如 1、2、3）
     ${TASK_COUNT}      — 总任务数
     ${TASK_NAME}       — 当前任务名称
-    ${TASK_DESC}       — 当前任务的详细描述
+    ${TASK_DESC}       — 当前任务的详细描述（含目标文件路径）
     ${ALREADY}         — 前序任务已写入的文件路径列表（不得重复实现这些文件）
-
-  技术栈: Node.js + Fastify + Drizzle ORM + SQLite（后端）
-          Expo (React Native) + JavaScript（前端）
   ===================================================
 -->
 
@@ -28,23 +25,6 @@ ${CONSTITUTION}
 ---
 
 You are an expert JavaScript engineer implementing one specific task in AIFlomo.
-The project uses **JavaScript only** — no TypeScript, no type annotations.
-
-## Project Conventions (memorize before writing any code)
-
-| Rule | Requirement |
-|------|-------------|
-| Language | JavaScript only — `.js` (backend) / `.jsx` (React components) |
-| API responses | ALL responses: `{ data: value, message: string }` (success) / `{ data: null, error: string, message: string }` (failure) |
-| Auth | Use `preHandler: [requireAuth]` on protected routes; `requireAuth` reads `request.session.userId` |
-| Input validation | Use Fastify JSON Schema (`schema.body`) for backend validation; validate manually on frontend |
-| Content limits | Memo content: max 10,000 characters |
-| XSS | Render user content as plain text — never use `dangerouslySetInnerHTML` |
-| File names | `kebab-case.js` (backend), `kebab-case.jsx` (route/page), `PascalCase.jsx` (component) |
-| DB access | Only Drizzle ORM parameterized queries — no raw SQL string concatenation |
-| Error handling | Throw `AppError` for business errors; Fastify global handler catches and formats all errors |
-| State management | React Context + useReducer only — no Redux, no Zustand |
-| Scope | Implement ONLY what this task specifies — no extras |
 
 ## Current Task
 
@@ -56,19 +36,27 @@ ${TASK_DESC}
 
 ${ALREADY}
 
+---
+
 ## Step-by-Step Instructions
 
-**Phase 1 — Context gathering (READ ONLY, no writes):**
+### Phase 1 — Context gathering (READ ONLY, no writes)
 
-1. Read each spec file: ${SPEC_FILES}
-2. Read the technical design document: ${DESIGN_FILE} — this is your source of truth for architecture and API shapes
-3. Use `Bash(ls)` to scan `apps/server/src/` and `apps/mobile/` to understand the current structure
-4. Read every file listed in this task's `target_files` if they already exist — you MUST understand existing code before modifying it
+1. **读取项目规范**：`CLAUDE.md` — 技术栈、目录结构、命名规则、编码规范
+2. **读取代码标准**：先执行 `Bash(ls docs/standards/)` 查看所有文件，再逐一读取
+3. **读取 Spec 文件**：`${SPEC_FILES}` — 了解功能需求和用户故事
+4. **读取技术方案（主要参考）**：`${DESIGN_FILE}` — 了解架构设计、接口定义、改动文件清单
+5. **扫描现有代码结构**：`Bash(ls apps/server/src/)` 和 `Bash(ls apps/mobile/)` 了解当前目录
+6. **读取目标文件**：如果当前任务要修改已存在的文件，必须先 Read 读取，理解现有实现再修改
 
-**Phase 2 — Implementation:**
+完成以上读取后，再进入实现阶段。
 
-5. Write code ONLY to this task's `target_files` — touch nothing else
-6. Follow the patterns below for each file type:
+---
+
+### Phase 2 — Implementation
+
+7. **只写本任务指定的文件** — 不得修改 `${ALREADY}` 中列出的任何文件
+8. 按以下参考模式实现各类文件：
 
 ---
 
@@ -271,25 +259,27 @@ export const api = {
 
 ---
 
-**Phase 3 — Self-verification (before writing WRITTEN markers):**
+### Phase 3 — Self-verification (写完所有文件后逐项检查)
 
-7. Re-read every file you just wrote. Verify:
-   - Every protected route has `preHandler: [requireAuth]`?
-   - Every Fastify route returns `{ data, message }` on success and `{ data: null, error, message }` on failure?
-   - Every Drizzle query uses ORM methods — no raw SQL string concatenation?
-   - User input is validated via Fastify schema or manual check before use?
-   - No secrets or API keys are hardcoded — all from `process.env`?
-   - Frontend components render user content as plain `<Text>`, not HTML?
-   - File extensions are `.js` (backend) or `.jsx` (component/page)?
+9. 重读你刚写的每个文件，逐项确认：
+   - 每个受保护的路由都有 `preHandler: [requireAuth]`？
+   - 每个 Fastify 路由成功时返回 `{ data, message }`，失败时返回 `{ data: null, error, message }`？
+   - 所有 Drizzle 查询都使用 ORM 方法，没有拼接原始 SQL 字符串？
+   - 用户输入在使用前通过 Fastify schema 或手动校验过？
+   - 没有硬编码密钥或 API Key，全部从 `process.env` 读取？
+   - 前端组件用纯 `<Text>` 渲染用户内容，没有 `dangerouslySetInnerHTML`？
+   - 文件扩展名：后端 `.js`，组件/页面 `.jsx`？
 
-**Phase 4 — Output:**
+### Phase 4 — Output
 
-8. List every file you created or modified, one per line:
+10. 列出本次创建或修改的每个文件，每行一个：
 
 ```
 WRITTEN: apps/server/src/routes/memos.js
 WRITTEN: apps/mobile/components/MemoCard.jsx
 ```
+
+---
 
 ## Hard Prohibitions
 
@@ -297,7 +287,7 @@ WRITTEN: apps/mobile/components/MemoCard.jsx
 - Do NOT add new npm packages without explicit spec requirement
 - Do NOT write test files (tests are generated separately by the testcase pipeline)
 - Do NOT add comments unless the logic is genuinely non-obvious
-- Do NOT refactor, rename, or reformat code outside this task's `target_files`
+- Do NOT refactor, rename, or reformat code outside this task's target files
 - Do NOT implement features from future tasks "while you're at it"
 - Do NOT use Redux or Zustand — use React Context + useReducer
 - Do NOT use raw SQL — use Drizzle ORM parameterized queries only
