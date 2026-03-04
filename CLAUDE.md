@@ -75,7 +75,7 @@ npm run test:report       # playwright show-report
 ```
 AIFlomo/
 ├── package.json           # 根 package.json（npm workspaces）
-├── apps/flomo/
+├── apps/
 │   ├── mobile/            # Expo 跨端应用（Web + Android + iOS）
 │   │   ├── app/           # Expo Router 页面（文件路由）
 │   │   ├── components/    # 通用 UI 组件

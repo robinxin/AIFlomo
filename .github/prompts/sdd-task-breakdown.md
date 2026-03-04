@@ -10,7 +10,7 @@
     ${CONSTITUTION}   — CONSTITUTION.md 全文
     ${SPEC_FILES}     — 本次变更的 spec 文件路径，空格分隔
     ${DESIGN_FILE}    — 上一步生成的技术方案文档路径
-    ${CODE_DIR}       — 代码主目录（apps/flomo/app）
+    ${CODE_DIR}       — 代码主目录（apps/app）
 
   输出: 合法 JSON 对象，通过 Write 工具写入 /tmp/tasks.json
   ===================================================
@@ -45,7 +45,7 @@ Write a **valid JSON object** (and nothing else) to `/tmp/tasks.json`.
       "id": 1,
       "name": "<short task name, ≤ 8 words>",
       "description": "<specific, actionable description — include exact file paths and what to implement>",
-      "target_files": ["apps/flomo/app/api/xxx/route.ts", "apps/flomo/lib/xxx.ts"]
+      "target_files": ["apps/app/api/xxx/route.ts", "apps/lib/xxx.ts"]
     }
   ]
 }
@@ -56,8 +56,8 @@ Write a **valid JSON object** (and nothing else) to `/tmp/tasks.json`.
 Tasks MUST follow this strict sequence (skip layers that are not needed):
 
 1. **Prisma schema** — Add/modify model fields, indexes, relations in `prisma/schema.prisma`
-2. **Service / lib layer** — Business logic in `apps/flomo/lib/` (validation helpers, data access functions)
-3. **API route handlers** — Files in `apps/flomo/app/api/`
+2. **Service / lib layer** — Business logic in `apps/lib/` (validation helpers, data access functions)
+3. **API route handlers** — Files in `apps/app/api/`
 4. **Server Components** — Page-level data fetching and layout
 5. **Client Components** — Interactive UI elements (marked with `'use client'`)
 

@@ -65,7 +65,7 @@ jobs:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
       MODEL:              'claude-sonnet-4-5-20250929'
-      CODE_DIR:           'apps/flomo/app'
+      CODE_DIR:           'apps/app'
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
@@ -118,7 +118,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Install app dependencies
-        working-directory: apps/flomo
+        working-directory: apps
         run: |
           npm install --silent
           npm run db:generate
@@ -206,7 +206,7 @@ jobs:
             # ── tsc verify + self-heal loop ──
             TASK_PASSED=false
             for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-              if (cd apps/flomo && npx tsc --noEmit 2>&1 | tee /tmp/build-err.txt; exit ${PIPESTATUS[0]}); then
+              if (cd apps && npx tsc --noEmit 2>&1 | tee /tmp/build-err.txt; exit ${PIPESTATUS[0]}); then
                 echo "Task $i type check passed"
                 TASK_PASSED=true
                 break
@@ -286,7 +286,7 @@ jobs:
           # ── tsc verify + self-heal loop ──
           FIX_PASSED=false
           for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-            if (cd apps/flomo && npx tsc --noEmit 2>&1 | tee /tmp/build-err.txt; exit ${PIPESTATUS[0]}); then
+            if (cd apps && npx tsc --noEmit 2>&1 | tee /tmp/build-err.txt; exit ${PIPESTATUS[0]}); then
               echo "Fix type check passed"
               FIX_PASSED=true
               break
@@ -374,7 +374,7 @@ jobs:
           if [ "$MODE" = "codegen" ]; then
             git add "$CODE_DIR" specs/active/
           else
-            git add apps/flomo/
+            git add apps/
           fi
 
           if git diff --cached --quiet; then

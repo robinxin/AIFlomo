@@ -32,7 +32,7 @@
 - Functions and variables: `camelCase`
 - Constants: `UPPER_SNAKE_CASE`
 - Follow Next.js App Router patterns (Server Components by default)
-- Follow existing Prisma schema conventions in `apps/flomo/prisma/schema.prisma`
+- Follow existing Prisma schema conventions in `apps/prisma/schema.prisma`
 - Do NOT add comments unless the logic is genuinely non-obvious
 - Do NOT add docstrings or type annotations to code you did not change
 

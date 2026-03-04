@@ -10,7 +10,7 @@
     ${CONSTITUTION}   — CONSTITUTION.md 全文
     ${SPEC_FILES}     — 本次变更的 spec 文件路径，空格分隔
     ${DESIGN_FILE}    — 技术方案文档路径
-    ${CODE_DIR}       — 代码主目录（apps/flomo/app）
+    ${CODE_DIR}       — 代码主目录（apps/app）
     ${TASK_I}         — 当前任务序号（如 1、2、3）
     ${TASK_COUNT}     — 总任务数
     ${TASK_NAME}      — 当前任务名称
@@ -71,7 +71,7 @@ ${ALREADY}
 5. Write code ONLY to this task's `target_files` — touch nothing else
 6. For each file you create or modify, follow the patterns below:
 
-**API Route Handler pattern** (`apps/flomo/app/api/xxx/route.ts`):
+**API Route Handler pattern** (`apps/app/api/xxx/route.ts`):
 ```typescript
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
@@ -124,8 +124,8 @@ import { useState } from 'react'
 8. List every file you created or modified, one per line:
 
 ```
-WRITTEN: apps/flomo/app/api/notes/route.ts
-WRITTEN: apps/flomo/app/notes/page.tsx
+WRITTEN: apps/app/api/notes/route.ts
+WRITTEN: apps/app/notes/page.tsx
 ```
 
 ## Hard Prohibitions

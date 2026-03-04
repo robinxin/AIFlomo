@@ -47,7 +47,7 @@ body:
     attributes:
       label: 技术备注（可选）
       description: 技术限制、相关文件、实现思路等
-      placeholder: 例如：涉及 apps/flomo/lib/memo.ts，需要新增 API endpoint
+      placeholder: 例如：涉及 apps/lib/memo.ts，需要新增 API endpoint
     validations:
       required: false
 

@@ -104,7 +104,7 @@ jobs:
           sudo systemctl stop "${{ env.SYSTEMD_SERVICE }}" || true
 
           echo "── Install dependencies ──────────────────────────"
-          cd "${{ env.DEPLOY_PATH }}/apps/flomo"
+          cd "${{ env.DEPLOY_PATH }}/apps"
           npm ci
 
           echo "── Prisma generate ───────────────────────────────"

@@ -9,16 +9,16 @@ on:
   push:
     branches: ['feat/**', 'bugfix/**']
     paths:
-      - 'apps/flomo/app/**'
-      - 'apps/flomo/lib/**'
-      - 'apps/flomo/tests/**'
+      - 'apps/app/**'
+      - 'apps/lib/**'
+      - 'apps/tests/**'
   # PR 到 main 时触发
   pull_request:
     branches: [main]
     paths:
-      - 'apps/flomo/app/**'
-      - 'apps/flomo/lib/**'
-      - 'apps/flomo/tests/**'
+      - 'apps/app/**'
+      - 'apps/lib/**'
+      - 'apps/tests/**'
   workflow_dispatch:
 
 jobs:
@@ -40,23 +40,23 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        working-directory: apps/flomo
+        working-directory: apps
         run: npm install
 
       - name: Prisma generate
-        working-directory: apps/flomo
+        working-directory: apps
         run: npm run db:generate
 
       - name: Audit (critical only)
-        working-directory: apps/flomo
+        working-directory: apps
         run: npm audit --audit-level=critical
 
       - name: Build
-        working-directory: apps/flomo
+        working-directory: apps
         run: npm run build
 
       - name: Run SDD-generated test cases
-        working-directory: apps/flomo
+        working-directory: apps
         run: |
           TEST_COUNT=$(find tests/ -name "*.test.*" 2>/dev/null | wc -l | tr -d ' ')
           if [ "$TEST_COUNT" -gt 0 ]; then

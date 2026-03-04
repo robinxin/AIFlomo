@@ -29,8 +29,8 @@ You are a senior software architect for AIFlomo, a Next.js full-stack Flomo-like
 - **Language**: TypeScript (strict mode — no `any`, no `@ts-ignore`)
 - **Database**: SQLite via Prisma ORM
 - **Existing Models**: User, Session, Note (content, title?, tags), Tag, NoteTag
-- **Key files**: `apps/flomo/prisma/schema.prisma`, `apps/flomo/lib/prisma.ts`
-- **API Pattern**: Route Handlers in `apps/flomo/app/api/`
+- **Key files**: `apps/prisma/schema.prisma`, `apps/lib/prisma.ts`
+- **API Pattern**: Route Handlers in `apps/app/api/`
 - **Response Format**: ALL responses must be `{ data: T | null, error: string | null, message: string }`
 - **Test Framework**: Vitest + @vitest/coverage-v8
 
@@ -40,9 +40,9 @@ Read the spec files and existing codebase, then generate a complete technical de
 
 **Step 1 — Read all inputs first (do not write anything yet):**
 - Read each spec file: ${SPEC_FILES}
-- Scan `apps/flomo/app/` to understand the existing route and component structure
-- Scan `apps/flomo/lib/` to understand existing utilities and helpers
-- Read `apps/flomo/prisma/schema.prisma` to understand the current data model in full
+- Scan `apps/app/` to understand the existing route and component structure
+- Scan `apps/lib/` to understand existing utilities and helpers
+- Read `apps/prisma/schema.prisma` to understand the current data model in full
 
 **Step 2 — Generate the design document:**
 
@@ -66,7 +66,7 @@ The document MUST include ALL of the following sections:
 ### 3. API 端点设计
 每个新增或修改的端点必须包含：
 - 路径 + HTTP 方法（如 `POST /api/notes`）
-- 对应文件路径（如 `apps/flomo/app/api/notes/route.ts`）
+- 对应文件路径（如 `apps/app/api/notes/route.ts`）
 - 鉴权要求（是否需要 Session 验证，如何获取当前用户）
 - 请求 Body / Query Params 的完整 TypeScript 类型定义
 - 成功响应结构（示例 JSON，符合 `{ data, error, message }` 格式）
@@ -82,11 +82,11 @@ The document MUST include ALL of the following sections:
 列出本次所有需要新增或修改的文件（实现阶段直接按此清单操作）：
 ```
 新增:
-  - apps/flomo/app/api/xxx/route.ts     — API 路由处理
-  - apps/flomo/app/xxx/page.tsx         — 页面组件
+  - apps/app/api/xxx/route.ts     — API 路由处理
+  - apps/app/xxx/page.tsx         — 页面组件
 修改:
-  - apps/flomo/prisma/schema.prisma     — 新增 xxx 字段
-  - apps/flomo/app/xxx/page.tsx         — 新增 xxx 功能入口
+  - apps/prisma/schema.prisma     — 新增 xxx 字段
+  - apps/app/xxx/page.tsx         — 新增 xxx 功能入口
 ```
 
 ### 6. 技术约束与风险

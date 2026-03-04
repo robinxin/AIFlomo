@@ -52,7 +52,7 @@ ${ISSUE_BODY}
 **Step 1 — Read reference materials:**
 - Read the template: `specs/templates/feature-spec-template.md`
 - Use `Bash(ls)` to list `specs/active/` and read 1 existing spec for style reference
-- Read `apps/flomo/prisma/schema.prisma` to understand the current data model
+- Read `apps/prisma/schema.prisma` to understand the current data model
 
 **Step 2 — Write the complete spec in Chinese:**
 
