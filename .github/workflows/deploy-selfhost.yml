@@ -41,12 +41,15 @@ jobs:
           [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
           BRANCH="${{ env.DEPLOY_BRANCH }}"
-          if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"    ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
-            [ -z "${{ secrets.PM2_APP_NAME_FEAT }}"   ] && MISSING="$MISSING PM2_APP_NAME_FEAT"
-          elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH }}"    ] && MISSING="$MISSING DEPLOY_PATH"
-            [ -z "${{ secrets.PM2_APP_NAME }}"   ] && MISSING="$MISSING PM2_APP_NAME"
+          if [[ "$BRANCH" == feat/* ]]; then
+            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"       ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
+            [ -z "${{ secrets.SYSTEMD_SERVICE_FEAT }}"   ] && MISSING="$MISSING SYSTEMD_SERVICE_FEAT"
+          elif [[ "$BRANCH" == bugfix/* ]]; then
+            [ -z "${{ secrets.DEPLOY_PATH_BUGFIX }}"     ] && MISSING="$MISSING DEPLOY_PATH_BUGFIX"
+            [ -z "${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_BUGFIX"
+          elif [[ "$BRANCH" == 'main' ]]; then
+            [ -z "${{ secrets.DEPLOY_PATH }}"            ] && MISSING="$MISSING DEPLOY_PATH"
+            [ -z "${{ secrets.SYSTEMD_SERVICE }}"        ] && MISSING="$MISSING SYSTEMD_SERVICE"
           fi
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:$MISSING"
@@ -57,12 +60,15 @@ jobs:
       - name: Resolve deploy config
         run: |
           BRANCH="${{ env.DEPLOY_BRANCH }}"
-          if [[ "$BRANCH" == feat/* ]] || [[ "$BRANCH" == bugfix/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"    >> $GITHUB_ENV
-            echo "PM2_APP_NAME=${{ secrets.PM2_APP_NAME_FEAT }}"  >> $GITHUB_ENV
-          elif [[ "$BRANCH" == 'workflow-di-v2' ]] || [[ "$BRANCH" == 'main' ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"    >> $GITHUB_ENV
-            echo "PM2_APP_NAME=${{ secrets.PM2_APP_NAME }}"  >> $GITHUB_ENV
+          if [[ "$BRANCH" == feat/* ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"           >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}"   >> $GITHUB_ENV
+          elif [[ "$BRANCH" == bugfix/* ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_BUGFIX }}"         >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" >> $GITHUB_ENV
+          elif [[ "$BRANCH" == 'main' ]]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"                >> $GITHUB_ENV
+            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}"        >> $GITHUB_ENV
           fi
           echo "Deploy config resolved for branch: $BRANCH"
 
@@ -93,25 +99,33 @@ jobs:
             "mkdir -p ${{ env.DEPLOY_PATH }} && tar xzf - -C ${{ env.DEPLOY_PATH }}"
 
       - name: Deploy on ECS
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          SYSTEMD_SERVICE: ${{ env.SYSTEMD_SERVICE }}
+          RUN_MIGRATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
             -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash << 'ENDSSH'
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            DEPLOY_PATH="$DEPLOY_PATH" \
+            SYSTEMD_SERVICE="$SYSTEMD_SERVICE" \
+            RUN_MIGRATE="$RUN_MIGRATE" \
+            bash << 'ENDSSH'
           set -e
 
           echo "── Stop service ──────────────────────────────────"
-          pm2 stop "${{ env.PM2_APP_NAME }}" || true
+          sudo systemctl stop "$SYSTEMD_SERVICE" || true
 
           echo "── Install dependencies ──────────────────────────"
-          cd "${{ env.DEPLOY_PATH }}"
+          cd "$DEPLOY_PATH"
           npm ci
 
           echo "── Drizzle generate ──────────────────────────────"
           npm run db:generate -w apps/server
 
           echo "── Drizzle migrate ───────────────────────────────"
-          if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}" = "true" ]; then
+          if [ "$RUN_MIGRATE" = "true" ]; then
             npm run db:migrate -w apps/server
             echo "Migration complete."
           else
@@ -122,9 +136,8 @@ jobs:
           npm run build -w apps/server
 
           echo "── Start service ─────────────────────────────────"
-          pm2 start dist/index.js --name "${{ env.PM2_APP_NAME }}" --cwd "${{ env.DEPLOY_PATH }}/apps/server" || \
-          pm2 restart "${{ env.PM2_APP_NAME }}"
-          pm2 status "${{ env.PM2_APP_NAME }}"
+          sudo systemctl restart "$SYSTEMD_SERVICE"
+          sudo systemctl status "$SYSTEMD_SERVICE" --no-pager
 
           echo "✅ Deploy complete"
           ENDSSH
