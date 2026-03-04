@@ -223,3 +223,10 @@ fix: 修复标签解析中的特殊字符问题
 - ❌ 不要使用 Next.js / Express — 后端统一用 **Fastify**
 - ❌ 新增/修改子包时不得缺少 `dev` / `build` / `lint` / `prod` 四条标准脚本
 - ❌ 不要使用 Redux / Zustand — 状态管理统一用 **React Context + useReducer**
+
+## Active Technologies
+- JavaScript (Node.js ESM, `"type": "module"`) + React Native (Expo SDK) (001-login-page)
+- SQLite（`better-sqlite3`）via Drizzle ORM；Session 使用内存 store（MVP） (001-login-page)
+
+## Recent Changes
+- 001-login-page: Added JavaScript (Node.js ESM, `"type": "module"`) + React Native (Expo SDK)
