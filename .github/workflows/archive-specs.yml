@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: 'Branch to destroy (e.g. feat/my-feature)'
+        required: true
 
 jobs:
   archive-specs:
@@ -50,9 +55,12 @@ jobs:
   destroy-pod:
     needs: archive-specs
     if: >-
-      github.event.pull_request.merged == true
-      && (startsWith(github.event.pull_request.head.ref, 'feat/')
-          || startsWith(github.event.pull_request.head.ref, 'bugfix/'))
+      always() && (
+        github.event_name == 'workflow_dispatch'
+        || (github.event.pull_request.merged == true
+            && (startsWith(github.event.pull_request.head.ref, 'feat/')
+                || startsWith(github.event.pull_request.head.ref, 'bugfix/')))
+      )
     runs-on: [self-hosted, ai-runner]
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +69,7 @@ jobs:
 
       - name: Destroy feature pod
         env:
-          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+          BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch_name || github.event.pull_request.head.ref }}
           SSH_HOST:        ${{ secrets.SSH_HOST }}
           SSH_PORT:        ${{ secrets.SSH_PORT }}
           SSH_USER:        ${{ secrets.SSH_USER }}
