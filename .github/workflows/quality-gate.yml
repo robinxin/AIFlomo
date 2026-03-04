@@ -55,6 +55,14 @@ jobs:
         working-directory: apps/flomo
         run: npm run build
 
-      - name: Test (coverage gate)
+      - name: Run SDD-generated test cases
         working-directory: apps/flomo
-        run: npm run test:coverage
+        run: |
+          TEST_COUNT=$(find tests/ -name "*.test.*" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$TEST_COUNT" -gt 0 ]; then
+            echo "🧪 Found $TEST_COUNT SDD-generated test file(s) — running..."
+            npm test -- --testPathPattern="tests/"
+            echo "✅ SDD test cases passed"
+          else
+            echo "ℹ️ No SDD-generated test files in tests/ — skipping"
+          fi

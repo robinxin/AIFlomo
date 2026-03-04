@@ -485,7 +485,7 @@ jobs:
           TESTCASE_FILE="specs/testcases/$(basename "$FIRST_SPEC" .md)-testcases.md"
           echo "testcase_file=$TESTCASE_FILE" >> "$GITHUB_OUTPUT"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testgen.md)
+          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testcase.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
@@ -611,7 +611,7 @@ jobs:
           export TEST_DIR="${TEST_DIR}"
           TESTCASE_FILE="${{ needs.testcase.outputs.testcase_file }}"
 
-          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testgen.md)
+          PROMPT_TEXT=$(envsubst < .github/prompts/sdd-testcase-codegen.md)
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
