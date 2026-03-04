@@ -1,0 +1,17 @@
+{
+  "name": "aiflomo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "apps/mobile"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w apps/server",
+    "dev:mobile": "npm run dev -w apps/mobile",
+    "lint": "npm run lint -w apps/server && npm run lint -w apps/mobile",
+    "test": "npx midscene apps/tests/*.yaml",
+    "test:ui": "npx midscene apps/tests/*.yaml --ui",
+    "test:report": "playwright show-report"
+  }
+}

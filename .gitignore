@@ -25,3 +25,6 @@ coverage/
 
 # Secrets
 .secrets
+
+# Specs-kit
+.specify
