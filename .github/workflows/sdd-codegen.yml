@@ -51,6 +51,19 @@ on:
         description: 'Failed task number if any'
         value: ${{ jobs.run.outputs.failed_task }}
 
+  # Quality Gate 失败时直接触发 fix 模式
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to fix'
+        required: true
+        type: string
+      extra_prompt:
+        description: 'Optional extra prompt'
+        required: false
+        type: string
+        default: ''
+
 jobs:
   run:
     runs-on: [self-hosted, ai-runner]
@@ -240,13 +253,7 @@ jobs:
               > /tmp/build-err.txt
               LINT_OK=true
 
-              CHANGED=$(git diff --name-only 2>/dev/null)
-              if echo "$CHANGED" | grep -q "^apps/server/" && [ -d "apps/server/node_modules" ]; then
-                npm run lint -w apps/server 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
-              fi
-              if echo "$CHANGED" | grep -q "^apps/mobile/" && [ -d "apps/mobile/node_modules" ]; then
-                npm run lint -w apps/mobile 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
-              fi
+              npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
 
               if [ "$LINT_OK" = "true" ]; then
                 echo "Task $i lint check passed"
@@ -309,15 +316,32 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # ── Mode: fix ─────────────────────────────────────────────────
-      - name: Fix code from review feedback
-        if: inputs.mode == 'fix'
+      - name: Fix code from quality failures
+        if: inputs.mode == 'fix' || github.event_name == 'workflow_dispatch'
         id: fix
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          REVIEW_FEEDBACK: ${{ inputs.review_feedback }}
           EXTRA_PROMPT: ${{ inputs.extra_prompt }}
         run: |
           MAX_FIX_ATTEMPTS=2
+
+          # 先跑 lint/build 抓当前错误（不依赖外部传入，保证信息最新）
+          > /tmp/quality-errors.txt
+          npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
+          npm run build 2>&1 | tee -a /tmp/quality-errors.txt || true
+
+          QUALITY_ERRORS=$(cat /tmp/quality-errors.txt)
+
+          # 补充 code review 传入的额外反馈（workflow_call 场景）
+          EXTRA_FEEDBACK="${{ inputs.review_feedback }}"
+
+          if [ -z "$QUALITY_ERRORS" ] && [ -z "$EXTRA_FEEDBACK" ]; then
+            echo "ℹ️ No errors found — nothing to fix."
+            echo "has_failure=false" >> "$GITHUB_OUTPUT"
+            echo "failed_task="      >> "$GITHUB_OUTPUT"
+            { echo "written_files<<WRITTEN_EOF"; echo "WRITTEN_EOF"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           claude --print \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
@@ -327,15 +351,21 @@ jobs:
 
           ---
 
-          以下是 Code Review 发现的问题：
+          ## PROJECT GUIDE (CLAUDE.md)
+          ${CLAUDE_MD}
 
-          ${REVIEW_FEEDBACK}
+          ---
 
-          请根据以上审查意见修复代码：
+          以下是 Quality Gate 检测到的 Lint / Build 错误，请修复：
+
+          ${QUALITY_ERRORS}
+
+          ${EXTRA_FEEDBACK:+额外反馈：$EXTRA_FEEDBACK}
+
+          修复要求：
           1. Read 相关源文件，理解当前实现
-          2. 针对每个 CRITICAL 和 WARN 级别的问题进行修复
-          3. 不要重写文件，做最小化定点修复
-          4. 修复后确保 TypeScript 编译通过
+          2. 针对每个 error 进行最小化定点修复，不要重写文件
+          3. 修复后确保 ESLint 检查通过
 
           ${EXTRA_PROMPT}"
 
@@ -345,8 +375,7 @@ jobs:
             > /tmp/build-err.txt
             LINT_OK=true
 
-            npm run lint -w apps/server 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
-            npm run lint -w apps/mobile 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+            npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
 
             if [ "$LINT_OK" = "true" ]; then
               echo "Fix lint check passed"
