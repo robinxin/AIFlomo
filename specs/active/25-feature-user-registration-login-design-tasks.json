@@ -5,43 +5,73 @@
       "id": 1,
       "name": "创建 users 数据表和 Drizzle 配置",
       "description": "在 apps/server/src/db/schema.js 中定义 users 表（id, email, passwordHash, nickname, createdAt, lastLoginAt），创建 apps/server/src/db/index.js 导出 Drizzle 实例，执行 npm run db:generate 生成迁移文件，执行 npm run db:migrate 创建表",
-      "target_files": ["apps/server/src/db/schema.js", "apps/server/src/db/index.js"]
+      "target_files": [
+        "apps/server/src/db/schema.js",
+        "apps/server/src/db/index.js"
+      ],
+      "status": "completed"
     },
     {
       "id": 2,
       "name": "实现密码工具和认证中间件",
       "description": "创建 apps/server/src/lib/password.js 封装 bcrypt 的 hashPassword 和 verifyPassword 函数，创建 apps/server/src/plugins/auth.js 实现 requireAuth preHandler（验证 Session 中的 userId），创建 apps/server/src/plugins/session.js 配置 Fastify session 插件（使用 SQLite 存储，设置 httpOnly、sameSite、secure 等安全选项）",
-      "target_files": ["apps/server/src/lib/password.js", "apps/server/src/plugins/auth.js", "apps/server/src/plugins/session.js"]
+      "target_files": [
+        "apps/server/src/lib/password.js",
+        "apps/server/src/plugins/auth.js",
+        "apps/server/src/plugins/session.js"
+      ],
+      "status": "completed"
     },
     {
       "id": 3,
       "name": "实现认证 API 端点",
       "description": "在 apps/server/src/routes/auth.js 中实现四个端点：POST /api/auth/register（注册并自动登录），POST /api/auth/login（登录验证），POST /api/auth/logout（销毁 Session），GET /api/auth/me（获取当前用户信息，需 requireAuth）。包含 JSON Schema 验证、邮箱小写转换、密码哈希、Session 设置、错误处理（409 邮箱已存在、401 登录失败）",
-      "target_files": ["apps/server/src/routes/auth.js"]
+      "target_files": [
+        "apps/server/src/routes/auth.js"
+      ],
+      "status": "completed"
     },
     {
       "id": 4,
       "name": "配置后端入口和环境变量",
       "description": "创建 apps/server/src/index.js 作为 Fastify 应用入口，注册 sessionPlugin、authPlugin、authRoutes，配置全局错误处理和 CORS。在根目录 .env 中添加 SESSION_SECRET、EXPO_PUBLIC_API_URL、NODE_ENV、PORT、DB_PATH、CORS_ORIGIN 等环境变量。更新 apps/server/package.json 添加后端依赖（bcrypt、@fastify/session、@mgcrea/fastify-session-sqlite-store、@fastify/cookie、@fastify/cors 等）",
-      "target_files": ["apps/server/src/index.js", ".env", "apps/server/package.json"]
+      "target_files": [
+        "apps/server/src/index.js",
+        ".env",
+        "apps/server/package.json"
+      ],
+      "status": "completed"
     },
     {
       "id": 5,
       "name": "创建前端 AuthContext 和 API Client",
       "description": "创建 apps/mobile/context/AuthContext.jsx 实现 AuthProvider 和 useAuth Hook（管理 user、isAuthenticated、isLoading 状态，定义 LOGIN_SUCCESS、LOGOUT、CHECK_AUTH_START、CHECK_AUTH_SUCCESS、CHECK_AUTH_FAILURE 五个 action），创建 apps/mobile/lib/api-client.js 封装统一的 fetch 函数（设置 credentials: 'include'、统一错误处理、返回 data 字段）",
-      "target_files": ["apps/mobile/context/AuthContext.jsx", "apps/mobile/lib/api-client.js"]
+      "target_files": [
+        "apps/mobile/context/AuthContext.jsx",
+        "apps/mobile/lib/api-client.js"
+      ],
+      "status": "completed"
     },
     {
       "id": 6,
       "name": "实现登录和注册页面",
       "description": "创建 apps/mobile/app/(auth)/_layout.jsx 定义认证路由组 Stack 布局（headerShown: false），创建 apps/mobile/app/(auth)/login.jsx 实现登录页（邮箱、密码输入框、登录按钮、注册链接、前端校验、调用 POST /api/auth/login、成功后更新 AuthContext 并跳转 /memo），创建 apps/mobile/app/(auth)/register.jsx 实现注册页（邮箱、昵称、密码输入框、隐私协议勾选、注册按钮、登录链接、前端校验、调用 POST /api/auth/register、成功后跳转 /memo）",
-      "target_files": ["apps/mobile/app/(auth)/_layout.jsx", "apps/mobile/app/(auth)/login.jsx", "apps/mobile/app/(auth)/register.jsx"]
+      "target_files": [
+        "apps/mobile/app/(auth)/_layout.jsx",
+        "apps/mobile/app/(auth)/login.jsx",
+        "apps/mobile/app/(auth)/register.jsx"
+      ],
+      "status": "completed"
     },
     {
       "id": 7,
       "name": "集成根布局和自动登录检测",
       "description": "创建 apps/mobile/hooks/use-check-auth.js 实现 useCheckAuth Hook（调用 GET /api/auth/me 检测登录状态），创建或修改 apps/mobile/app/_layout.jsx 包裹 AuthProvider、调用 useCheckAuth、根据 isLoading 显示加载态、根据 isAuthenticated 重定向到 /login 或主应用",
-      "target_files": ["apps/mobile/hooks/use-check-auth.js", "apps/mobile/app/_layout.jsx"]
+      "target_files": [
+        "apps/mobile/hooks/use-check-auth.js",
+        "apps/mobile/app/_layout.jsx"
+      ],
+      "status": "completed"
     }
   ]
 }

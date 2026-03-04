@@ -1,0 +1,28 @@
+{
+  "name": "aiflomo-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "build": "echo 'Build not needed for JavaScript project'",
+    "lint": "eslint src/",
+    "prod": "pm2 start src/index.js --name aiflomo-server",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0",
+    "@fastify/cookie": "^10.0.0",
+    "@fastify/session": "^11.0.0",
+    "@fastify/cors": "^10.0.1",
+    "@mgcrea/fastify-session-sqlite-store": "^1.0.0",
+    "bcrypt": "^5.1.1",
+    "drizzle-orm": "^0.37.0",
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.6.1"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.28.1",
+    "eslint": "^9.19.0"
+  }
+}
