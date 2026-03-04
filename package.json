@@ -7,8 +7,7 @@
     "apps/mobile"
   ],
   "scripts": {
-    "dev:server": "npm run dev -w apps/server",
-    "dev:mobile": "npm run dev -w apps/mobile",
+    "dev": "npm run dev -w apps/server & npm run dev -w apps/mobile",
     "lint": "npm run lint -w apps/server && npm run lint -w apps/mobile",
     "test": "npx midscene apps/tests/*.yaml",
     "test:ui": "npx midscene apps/tests/*.yaml --ui",
