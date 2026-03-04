@@ -42,6 +42,7 @@
 ```bash
 # ── 根目录（Monorepo）──
 npm install                          # 安装所有子包依赖
+npm run dev                          # 同时启动后端和前端
 npm run dev -w apps/server           # 启动后端
 npm run dev -w apps/mobile           # 启动前端
 
