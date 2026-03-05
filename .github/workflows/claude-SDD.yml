@@ -638,7 +638,10 @@ jobs:
         run: |
           export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
           export TEST_DIR="${TEST_DIR}"
-          TESTCASE_FILE="${{ needs.testcase.outputs.testcase_file }}"
+          export TESTCASE_FILE="${{ needs.testcase.outputs.testcase_file }}"
+
+          FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
+          export DESIGN_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-design.md/')
 
           if ls "${TEST_DIR}"/*.spec.js 2>/dev/null | head -1 | grep -q .; then
             echo "♻️ Test specs already exist in ${TEST_DIR}, reusing"
