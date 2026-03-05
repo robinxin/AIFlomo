@@ -37,7 +37,11 @@ jobs:
             echo "❌ No package.json found — SDD codegen has not generated project files yet."
             exit 1
           fi
-          npm install
+          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+            npm install
+          else
+            echo "⏭ node_modules up to date, skipping install"
+          fi
 
       - name: Lint
         id: lint
@@ -56,23 +60,22 @@ jobs:
           npm run dev > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
           echo "Services starting (PID: $(cat /tmp/server.pid))..."
-          # Parse actual frontend URL from Expo output (e.g. "Web is waiting on http://localhost:8081")
-          FRONTEND_URL=""
+          # Expo CI mode does not print a URL — poll the fixed port directly
+          FRONTEND_URL="http://localhost:8082"
           for i in $(seq 1 30); do
-            FRONTEND_URL=$(grep -oE 'http://localhost:[0-9]+' /tmp/server-output.txt | head -1)
-            if [ -n "$FRONTEND_URL" ]; then
-              echo "✅ Frontend detected at $FRONTEND_URL"
+            if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
+              echo "✅ Frontend ready at $FRONTEND_URL"
               break
             fi
             if [ "$i" -eq 30 ]; then
-              echo "❌ Could not detect frontend URL within 60s"
+              echo "❌ Frontend did not respond within 60s"
               cat /tmp/server-output.txt
               exit 1
             fi
-            echo "Waiting for frontend URL... ($i/30)"
+            echo "Waiting for frontend... ($i/30)"
             sleep 2
           done
-          sed -i "s|^WEB_URL=.*|WEB_URL=$FRONTEND_URL|" test.env
+          sed -i.bak "s|url: \"\${WEB_URL}\"|url: \"$FRONTEND_URL\"|g" apps/tests/*.yaml && rm -f apps/tests/*.bak
 
       - name: Run SDD-generated test cases
         id: test
