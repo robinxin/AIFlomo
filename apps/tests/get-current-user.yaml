@@ -1,0 +1,44 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "get-current-user"
+  generateReport: true
+
+tasks:
+  # ========== 前置 - 用户登录 ==========
+
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主界面"
+        timeout: 5000
+
+  # ========== 正常场景 ==========
+
+  - name: "已登录用户获取信息成功"
+    continueOnError: true
+    flow:
+      # 注:假设用户已在前置任务中登录,主页面会显示用户信息
+      - aiAssert: "页面显示用户信息,如昵称'测试用户001'或邮箱'testuser001@example.com'"
+        errorMessage: "已登录用户应能在主页面看到自己的用户信息"
+
+  # ========== 异常场景 ==========
+
+  - name: "未登录时访问/api/auth/me,返回401"
+    continueOnError: true
+    flow:
+      # 注:清除Session Cookie模拟未登录状态
+      - javascript: "document.cookie = 'sessionId=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'; window.location.href = '/'"
+      - sleep: 1000
+      - aiAssert: "页面显示登录表单或跳转到登录页面,未显示用户信息"
+        errorMessage: "未登录时应无法获取用户信息,页面应提示登录"

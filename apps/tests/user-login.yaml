@@ -1,0 +1,131 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-login"
+  generateReport: true
+
+tasks:
+  # ========== 正常场景 ==========
+
+  - name: "有效邮箱和密码,登录成功"
+    continueOnError: true
+    flow:
+      # 注:假设testuser001@example.com已在user-registration.yaml中注册,密码为Pass123!
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主页面(如/memo)"
+        timeout: 5000
+      - aiAssert: "页面已跳转到主应用页面(URL包含/memo或显示备忘录列表)"
+        errorMessage: "登录成功后应跳转到主页面"
+
+  - name: "邮箱大小写混合,统一转小写比对,登录成功"
+    continueOnError: true
+    flow:
+      # 注:假设注册时存储为testuser001@example.com(小写)
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "TestUser001@Example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功"
+        timeout: 5000
+      - aiAssert: "页面跳转到主页面,大小写混合的邮箱能正常登录"
+        errorMessage: "邮箱大小写应统一转小写处理"
+
+  # ========== 异常场景 ==========
+
+  - name: "邮箱不存在,返回401"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "nonexistent@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - sleep: 2000
+      - aiAssert: "页面显示'邮箱或密码错误'或类似提示,未跳转到主页面"
+        errorMessage: "不存在的邮箱应返回统一的认证失败提示"
+
+  - name: "密码错误,返回401"
+    continueOnError: true
+    flow:
+      # 注:假设testuser001@example.com已注册,正确密码为Pass123!
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "WrongPass"
+      - aiTap: "点击登录按钮"
+      - sleep: 2000
+      - aiAssert: "页面显示'邮箱或密码错误'或类似提示"
+        errorMessage: "密码错误应返回统一的认证失败提示,不暴露具体错误"
+
+  - name: "邮箱字段为空,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: ""
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - sleep: 1000
+      - aiAssert: "页面显示'请填写完整信息'或类似提示,不发起后端请求"
+        errorMessage: "空邮箱应被前端拦截"
+
+  - name: "密码字段为空,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: ""
+      - aiTap: "点击登录按钮"
+      - sleep: 1000
+      - aiAssert: "页面显示'请填写完整信息'或类似提示"
+        errorMessage: "空密码应被前端拦截"
+
+  - name: "邮箱和密码都为空,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: ""
+      - aiInput: "找到密码输入框"
+        value: ""
+      - aiTap: "点击登录按钮"
+      - sleep: 1000
+      - aiAssert: "页面显示'请填写完整信息'或类似提示"
+        errorMessage: "邮箱和密码都为空应被前端拦截"
+
+  - name: "快速点击登录按钮多次,仅发起一次请求"
+    continueOnError: true
+    flow:
+      # 注:此用例主要验证前端防重复提交,无法直接观测网络请求数,仅验证UI行为
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - ai: "快速连续点击登录按钮2次"
+      - sleep: 2000
+      - aiAssert: "登录按钮在第一次点击后立即变为禁用状态(disabled或loading),仅登录一次"
+        errorMessage: "快速点击应被防重复提交机制拦截"

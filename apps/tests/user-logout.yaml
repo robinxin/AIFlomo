@@ -1,0 +1,51 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-logout"
+  generateReport: true
+
+tasks:
+  # ========== 前置 - 用户登录 ==========
+
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主界面"
+        timeout: 5000
+
+  # ========== 正常场景 ==========
+
+  - name: "已登录用户登出成功"
+    continueOnError: true
+    flow:
+      # 注:假设用户已在前置任务中登录
+      - ai: "找到登出按钮或用户菜单中的登出选项,点击登出"
+      - aiWaitFor: "登出成功,页面跳转到登录页面或显示未登录状态"
+        timeout: 5000
+      - aiAssert: "页面已跳转到登录页面(URL为/login)或显示未登录的UI状态"
+        errorMessage: "登出成功后应清除Session并跳转到登录页面"
+
+  # ========== 异常场景 ==========
+
+  - name: "未登录时访问登出接口,返回401"
+    continueOnError: true
+    flow:
+      # 注:该用例直接通过JS清除Cookie模拟未登录状态
+      - javascript: "document.cookie = 'sessionId=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'; window.location.href = '/login'"
+      - sleep: 1000
+      # 注:此处无法直接调用POST /api/auth/logout,Midscene是UI测试框架
+      # 改为访问主页面,验证未登录时是否被重定向到登录页
+      - javascript: "window.location.href = '/memo'"
+      - sleep: 2000
+      - aiAssert: "页面显示登录表单或跳转到登录页面,未进入主页面"
+        errorMessage: "未登录时访问受保护页面应跳转到登录页"
