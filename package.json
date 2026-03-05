@@ -1,0 +1,28 @@
+{
+  "name": "aiflomo",
+  "version": "1.0.0",
+  "description": "Flomo MVP - Web/Android/iOS note-taking app",
+  "private": true,
+  "workspaces": [
+    "apps/mobile",
+    "apps/server"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "prod": "npm run prod --workspaces --if-present",
+    "test": "npx midscene apps/tests/*.yaml",
+    "test:ui": "npx midscene apps/tests/*.yaml",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "midscene-pc": "^1.0.4",
+    "@midscene/cli": "^1.5.2",
+    "dotenv": "^16.6.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
