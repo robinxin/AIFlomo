@@ -1,10 +1,8 @@
 name: Code Review
 
 on:
-  # Quality Gate 通过后自动触发
-  workflow_run:
-    workflows: ["Quality Gate"]
-    types: [completed]
+  # 由 quality-gate.yml 的 trigger-code-review job 在 quality 通过后主动 dispatch
+  # 不再使用 workflow_run，避免 conclusion 受 continue-on-error 影响而误判
   workflow_dispatch:
     inputs:
       extra_prompt:
@@ -15,9 +13,6 @@ on:
 jobs:
   # ─── Code Review (AI 审核 + 人工确认) ────────────────────────────────────
   code-review:
-    if: >-
-      ${{ github.event_name != 'workflow_run'
-          || github.event.workflow_run.conclusion == 'success' }}
     environment: code-review-approval
     runs-on: [self-hosted, ai-runner]
     permissions:
@@ -32,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -80,11 +75,7 @@ jobs:
       - name: Generate diff against main
         id: diff
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            HEAD="${{ github.event.workflow_run.head_branch }}"
-          else
-            HEAD="${{ github.ref_name }}"
-          fi
+          HEAD="${{ github.ref_name }}"
           echo "head=$HEAD" >> "$GITHUB_OUTPUT"
 
           git diff origin/main...HEAD > /tmp/review.diff
@@ -157,3 +148,21 @@ jobs:
 
           gh pr comment "$PR_NUMBER" --body-file /tmp/pr-review-comment.md
           echo "✅ Review posted to PR #$PR_NUMBER"
+
+  # ─── Code Review 通过（含人工审批）→ 触发 Deploy ─────────────────
+  trigger-deploy:
+    needs: code-review
+    # code-review job 含 environment 审批门，success() 意味着审批已通过
+    if: success()
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Dispatch deploy
+        run: |
+          gh workflow run deploy-selfhost.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}"
+          echo "✅ Deploy triggered on ${{ github.ref_name }}"

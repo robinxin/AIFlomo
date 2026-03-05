@@ -1,9 +1,7 @@
 name: Deploy to Aliyun ECS
 
 on:
-  workflow_run:
-    workflows: ["Code Review"]
-    types: [completed]
+  # 由 code-review.yml 的 trigger-deploy job 在审批通过后主动 dispatch
   workflow_dispatch:
     inputs:
       run_migrate:
@@ -25,11 +23,7 @@ jobs:
     steps:
       - name: Resolve deploy branch
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            BRANCH="${{ github.event.workflow_run.head_branch }}"
-          else
-            BRANCH="${{ github.ref_name }}"
-          fi
+          BRANCH="${{ github.ref_name }}"
           echo "DEPLOY_BRANCH=$BRANCH" >> $GITHUB_ENV
           echo "Deploy branch: $BRANCH"
 
@@ -195,16 +189,20 @@ jobs:
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
 
-  approve:
-    name: Deployment confirmed
+  # ─── Deploy 成功 → 触发 Create Release PR ───────────────────────
+  trigger-create-pr:
     needs: deploy
-    if: >-
-      ${{ (github.event_name != 'workflow_run'
-           || github.event.workflow_run.conclusion == 'success')
-          && (github.event_name == 'workflow_run'
-              || github.ref_name == 'main'
-              || startsWith(github.ref_name, 'feat/')
-              || startsWith(github.ref_name, 'bugfix/')) }}
+    # main 分支不需要 PR；只对 feat/* 和 bugfix/* 触发
+    if: success() && (startsWith(github.ref_name, 'feat/') || startsWith(github.ref_name, 'bugfix/'))
     runs-on: [self-hosted, ai-runner]
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - run: echo "Approved, deployment confirmed."
+      - name: Dispatch create-pr
+        run: |
+          gh workflow run create-pr.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}"
+          echo "✅ Create PR triggered on ${{ github.ref_name }}"

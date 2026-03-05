@@ -1,17 +1,11 @@
 name: Create Release PR
 
 on:
-  # Deploy 成功后自动触发
-  workflow_run:
-    workflows: ["Deploy to Aliyun ECS"]
-    types: [completed]
+  # 由 deploy-selfhost.yml 的 trigger-create-pr job 在 deploy 成功后主动 dispatch
   workflow_dispatch:
 
 jobs:
   create-pr:
-    if: >-
-      ${{ github.event_name != 'workflow_run'
-          || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -26,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -36,11 +30,7 @@ jobs:
       - name: Determine branch name
         id: branch
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            HEAD="${{ github.event.workflow_run.head_branch }}"
-          else
-            HEAD="${{ github.ref_name }}"
-          fi
+          HEAD="${{ github.ref_name }}"
           if [ "$HEAD" = "main" ]; then
             echo "HEAD branch is 'main' — nothing to PR. Skipping."
             exit 0
