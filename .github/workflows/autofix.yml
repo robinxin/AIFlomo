@@ -126,10 +126,12 @@ jobs:
             exit 0
           fi
 
+          # 用随机 delimiter 避免内容与定界符冲突；printf '%s\n' 保证末尾有换行
+          DELIM="QUALITY_ERRORS_$(openssl rand -hex 8)"
           {
-            echo "QUALITY_ERRORS<<QUALITY_ERRORS_EOF"
-            printf '%s' "$FINAL_ERRORS"
-            echo "QUALITY_ERRORS_EOF"
+            echo "QUALITY_ERRORS<<${DELIM}"
+            printf '%s\n' "$FINAL_ERRORS"
+            echo "${DELIM}"
           } >> "$GITHUB_ENV"
 
           echo "no_errors=false" >> "$GITHUB_OUTPUT"
