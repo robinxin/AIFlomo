@@ -154,7 +154,6 @@ jobs:
             echo "CLAUDE_MD_EOF"
           } >> "$GITHUB_ENV"
 
-<<<<<<< HEAD
       - name: Install app dependencies
         run: |
           if [ ! -f "package.json" ]; then
@@ -169,8 +168,6 @@ jobs:
               npm run db:generate -w apps/server
             fi
           fi
-=======
->>>>>>> d393ac5096cd5503798782af3d415dffe9317a55
 
       # ── Mode: codegen ─────────────────────────────────────────────
       - name: Generate code (task by task)
