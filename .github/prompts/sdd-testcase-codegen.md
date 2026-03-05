@@ -78,7 +78,7 @@ ${TEST_DIR}/{功能模块名（kebab-case）}.yaml
 ### YAML 文件结构（必须严格遵守）
 
 注意：`url` 字段写入字面量 `${APP_URL}`（保留 `${}` 语法，Midscene 运行时从 `.env` 读取）。
-登录账号同理，写入字面量 `${TEST_USER_EMAIL}` 和 `${TEST_USER_PASSWORD}`。
+登录账号自行生成
 
 ```yaml
 web:
@@ -96,9 +96,9 @@ tasks:
     continueOnError: false           # 登录失败则停止整个文件
     flow:
       - aiInput: "邮箱输入框"
-        value: "${TEST_USER_EMAIL}"  # Midscene 运行时从 .env 读取
+        value: ""                   # 自行生成邮箱
       - aiInput: "密码输入框"
-        value: "${TEST_USER_PASSWORD}"
+        value: ""                   # 自行生成密码
       - aiTap: "点击登录按钮"
       - aiWaitFor: "登录成功，页面跳转到主界面"
         timeout: 5000
