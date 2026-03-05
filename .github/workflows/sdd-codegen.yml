@@ -141,7 +141,13 @@ jobs:
       - name: Install app dependencies
         run: |
           if [ ! -f "package.json" ]; then
-            echo "ℹ️ No package.json found — skipping install (fresh project)"
+            echo "ℹ️ No root package.json — installing workspace packages individually"
+            for dir in apps/server apps/mobile; do
+              if [ -f "$dir/package.json" ]; then
+                echo "Installing $dir..."
+                npm install --silent --prefix "$dir"
+              fi
+            done
           else
             npm install --silent
             if [ -f "apps/server/package.json" ]; then
