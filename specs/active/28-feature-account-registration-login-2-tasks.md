@@ -9,7 +9,7 @@
 
 > 所有用户故事共同依赖的底层准备，必须在所有故事前完成。
 
-- [ ] T001 [P] 定义 users 和 sessions 数据表 Schema `apps/server/src/db/schema.js`
+- [x] T001 [P] 定义 users 和 sessions 数据表 Schema `apps/server/src/db/schema.js`
 - [ ] T002 [P] 创建 Drizzle 实例导出文件 `apps/server/src/db/index.js`
 - [ ] T003 [P] 配置 Drizzle Kit `apps/server/drizzle.config.js`
 - [ ] T004 [P] 实现密码哈希工具函数（bcrypt.hash 和 bcrypt.compare） `apps/server/src/lib/password.js`
