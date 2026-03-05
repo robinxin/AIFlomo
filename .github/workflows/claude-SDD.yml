@@ -45,11 +45,14 @@ jobs:
                && git cat-file -e "${{ github.event.before }}"^{commit} 2>/dev/null; then
             FILES=$(git diff --name-only \
               "${{ github.event.before }}" "${{ github.sha }}" \
-              -- specs/active/ | grep -E '\.(md|yaml|yml|json)$' || true)
+              -- specs/active/ \
+              | grep -E '\.md$' \
+              | grep -vE '(-design|-tasks|-testcases)\.md$' || true)
           else
             FILES=$(ls specs/active/ 2>/dev/null \
-              | sed 's#^#specs/active/#' \
-              | grep -E '\.(md|yaml|yml|json)$' || true)
+              | grep -E '\.md$' \
+              | grep -vE '(-design|-tasks|-testcases)\.md$' \
+              | sed 's#^#specs/active/#' || true)
           fi
 
           if [ -n "$FILES" ]; then
