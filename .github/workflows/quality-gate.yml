@@ -22,6 +22,7 @@ jobs:
     runs-on: [self-hosted, ai-runner]
     outputs:
       error_summary: ${{ steps.collect-errors.outputs.error_summary }}
+      test_errors: ${{ steps.collect-errors.outputs.test_errors }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -106,8 +107,16 @@ jobs:
             echo "error_summary<<ERROR_EOF"
             [ -s /tmp/lint-output.txt ]  && echo "=== Lint Errors ===" && tail -100 /tmp/lint-output.txt
             [ -s /tmp/build-output.txt ] && echo "=== Build Errors ===" && tail -100 /tmp/build-output.txt
-            [ -s /tmp/test-output.txt ]  && echo "=== Test Errors ===" && tail -50 /tmp/test-output.txt
+            [ -s /tmp/test-output.txt ]  && echo "=== Test Errors ===" && tail -200 /tmp/test-output.txt
             echo "ERROR_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # 单独输出完整 test_errors，随机 delimiter 避免内容冲突
+          DELIM="TEST_ERRORS_$(openssl rand -hex 8)"
+          {
+            echo "test_errors<<${DELIM}"
+            [ -s /tmp/test-output.txt ] && cat /tmp/test-output.txt || true
+            echo "${DELIM}"
           } >> "$GITHUB_OUTPUT"
 
   # ─── Quality 通过 → 触发 Code Review ────────────────────────────
@@ -144,6 +153,7 @@ jobs:
         # 否则 error_summary 里的单引号/换行会破坏 heredoc / shell 解析
         env:
           ERROR_SUMMARY: ${{ needs.quality.outputs.error_summary }}
+          TEST_ERRORS: ${{ needs.quality.outputs.test_errors }}
         run: |
           FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
 
@@ -164,13 +174,15 @@ jobs:
 
           # 写到临时文件，用 jq --rawfile 构建 JSON，避免任何引号/换行转义问题
           printf '%s' "$ERROR_SUMMARY" > /tmp/dispatch-errors.txt
+          printf '%s' "$TEST_ERRORS"   > /tmp/dispatch-test-errors.txt
 
           jq -n \
             --arg ref "${{ github.ref_name }}" \
             --arg branch "${{ github.ref_name }}" \
             --rawfile quality_errors /tmp/dispatch-errors.txt \
+            --rawfile test_errors /tmp/dispatch-test-errors.txt \
             --arg fix_attempt "$NEXT_ATTEMPT" \
-            '{ref: $ref, inputs: {branch: $branch, quality_errors: $quality_errors, extra_feedback: "", fix_attempt: $fix_attempt}}' \
+            '{ref: $ref, inputs: {branch: $branch, quality_errors: $quality_errors, test_errors: $test_errors, extra_feedback: "", fix_attempt: $fix_attempt}}' \
           | gh api "repos/${{ github.repository }}/actions/workflows/autofix.yml/dispatches" \
               -X POST --input -
 
