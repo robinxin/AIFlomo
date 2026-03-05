@@ -1,5 +1,5 @@
 web:
-  url: ${WEB_URL}
+  url: https://v.flomoapp.com/login/
   viewportWidth: 1280
   viewportHeight: 960
 
@@ -14,9 +14,9 @@ tasks:
       - aiWaitFor: 登录页面已加载
         timeout: 10000
       - aiInput: 用户名输入框
-        value: ${WEB_USERNAME}
+        value: 17896095893
       - aiInput: 密码输入框
-        value: ${WEB_PASSWORD}
+        value: 123456
       - aiTap: 登录按钮
       - sleep: 2000
       - aiAssert: 已成功进入主应用页

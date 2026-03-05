@@ -28,3 +28,6 @@ coverage/
 
 # Specs-kit
 .specify
+
+# Midscene
+midscene_run/

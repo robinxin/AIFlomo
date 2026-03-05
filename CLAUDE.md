@@ -157,15 +157,16 @@ AIFlomo/
 - 无需额外 Playwright 配置，midscene 内部管理浏览器
 
 ### 环境变量加载
-- **模型配置**（`MIDSCENE_MODEL_*`）写入根目录 `.env`，midscene CLI 自动加载
-- **测试变量**（`WEB_URL`、账号密码等）写入根目录 `test.env`，通过 `--env-file` 显式传入
-- 根 `package.json` 的测试脚本示例：
+- **所有变量**（模型配置 `MIDSCENE_MODEL_*` + 测试变量 `WEB_URL` 等）统一写入根目录 `.env`
+- midscene CLI 自动从运行目录的 `.env` 加载，无需额外配置
+- `test.env` 仅作文档备份，不参与实际运行
+- 根 `package.json` 的测试脚本：
 
 ```json
 {
   "scripts": {
-    "test": "node --env-file=.env --env-file=test.env node_modules/.bin/midscene 'apps/tests/*.yaml'",
-    "test:headed": "node --env-file=.env --env-file=test.env node_modules/.bin/midscene 'apps/tests/*.yaml' --headed",
+    "test": "npx midscene apps/tests/*.yaml",
+    "test:headed": "npx midscene apps/tests/*.yaml --headed",
     "test:report": "npx playwright show-report"
   }
 }
@@ -174,9 +175,8 @@ AIFlomo/
 ### YAML 脚本格式（`apps/tests/*.yaml`）
 
 ```yaml
-# 用环境变量引用 URL 和账号
 web:
-  url: ${WEB_URL}            # 从 test.env 注入
+  url: http://127.0.0.1/
   viewportWidth: 1280
   viewportHeight: 960
 
@@ -187,9 +187,9 @@ tasks:
   - name: 用例名称
     flow:
       - aiInput: 用户名输入框
-        value: ${WEB_USERNAME}
+        value: 17810538147
       - aiInput: 密码输入框
-        value: ${WEB_PASSWORD}
+        value: 123456
       - aiTap: 登录按钮
       - sleep: 1000
       - aiAssert: 页面已跳转到主应用，显示欢迎信息

@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "npm run dev -w apps/server & npm run dev -w apps/mobile",
     "lint": "npm run lint -w apps/server && npm run lint -w apps/mobile",
-    "test": "node --env-file=.env --env-file=test.env -e \"require('child_process').execFileSync('npx',['midscene','apps/tests/*.yaml'],{stdio:'inherit',env:process.env})\"",
-    "test:headed": "node --env-file=.env --env-file=test.env -e \"require('child_process').execFileSync('npx',['midscene','apps/tests/*.yaml','--headed'],{stdio:'inherit',env:process.env})\"",
+    "test": "npx midscene apps/tests/*.yaml",
+    "test:headed": "npx midscene apps/tests/*.yaml --headed",
     "test:report": "npx playwright show-report"
   }
 }
