@@ -3,6 +3,11 @@ name: Quality Gate
 on:
   # SDD Pipeline 完成后通过 workflow_dispatch 主动触发（见 claude-SDD.yml trigger-quality-gate job）
   workflow_dispatch:
+    inputs:
+      fix_attempt:
+        description: 'Auto-fix 已执行次数（由流水线自动管理）'
+        default: '0'
+        required: false
   # PR 到 main 时触发
   pull_request:
     branches: [main]
@@ -15,6 +20,8 @@ jobs:
   # ─── Quality Gate ────────────────────────────────────────────────────────
   quality:
     runs-on: [self-hosted, ai-runner]
+    outputs:
+      error_summary: ${{ steps.collect-errors.outputs.error_summary }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,21 +40,55 @@ jobs:
           npm install
 
       - name: Lint
-        run: npm run lint
+        id: lint
+        run: npm run lint 2>&1 | tee /tmp/lint-output.txt
+        continue-on-error: true
 
       - name: Build
-        run: npm run build
+        id: build
+        run: npm run build 2>&1 | tee /tmp/build-output.txt
+        continue-on-error: true
 
       - name: Run SDD-generated test cases
+        id: test
         run: |
           TEST_COUNT=$(find apps/tests/ -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
           if [ "$TEST_COUNT" -gt 0 ]; then
             echo "🧪 Found $TEST_COUNT test file(s) — running..."
-            npm run test
+            npm run test 2>&1 | tee /tmp/test-output.txt
             echo "✅ Test cases passed"
           else
             echo "ℹ️ No test files in apps/tests/ — skipping"
           fi
+        continue-on-error: true
+
+      - name: Collect errors
+        id: collect-errors
+        if: always()
+        run: |
+          {
+            echo "error_summary<<ERROR_EOF"
+            if [ "${{ steps.lint.outcome }}" = "failure" ]; then
+              echo "=== Lint Errors ==="
+              tail -100 /tmp/lint-output.txt 2>/dev/null
+            fi
+            if [ "${{ steps.build.outcome }}" = "failure" ]; then
+              echo "=== Build Errors ==="
+              tail -100 /tmp/build-output.txt 2>/dev/null
+            fi
+            if [ "${{ steps.test.outcome }}" = "failure" ]; then
+              echo "=== Test Errors ==="
+              tail -50 /tmp/test-output.txt 2>/dev/null
+            fi
+            echo "ERROR_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Fail if quality checks failed
+        if: >
+          steps.lint.outcome == 'failure' ||
+          steps.build.outcome == 'failure' ||
+          steps.test.outcome == 'failure'
+        run: exit 1
 
   # ─── Quality 失败 → 自动触发 sdd-codegen fix 模式 ───────────────
   auto-fix:
@@ -60,12 +101,42 @@ jobs:
       actions: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MAX_FIX_ROUNDS: 5
     steps:
       - name: Trigger sdd-codegen fix mode
         run: |
-          gh workflow run sdd-codegen.yml \
-            --repo "${{ github.repository }}" \
-            --ref "${{ github.ref_name }}" \
-            --field branch="${{ github.ref_name }}"
-          echo "✅ sdd-codegen fix triggered on ${{ github.ref_name }}"
+          FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
 
+          if [ "$FIX_ATTEMPT" -ge "$MAX_FIX_ROUNDS" ]; then
+            echo "⚠️ Auto-fix 已达上限（$FIX_ATTEMPT/$MAX_FIX_ROUNDS 次），停止自动修复，请人工介入。"
+            BRANCH="${{ github.ref_name }}"
+            ISSUE_NUMBER=$(echo "$BRANCH" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+            if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$BRANCH" ]; then
+              gh issue comment "$ISSUE_NUMBER" \
+                --body "❌ **Auto-fix 已达到上限（${MAX_FIX_ROUNDS} 次），Quality Gate 仍未通过，请人工介入修复后重新触发流水线。**" \
+                --repo "${{ github.repository }}"
+            fi
+            exit 0
+          fi
+
+          NEXT_ATTEMPT=$(( FIX_ATTEMPT + 1 ))
+          echo "🔄 Auto-fix 第 $NEXT_ATTEMPT/$MAX_FIX_ROUNDS 次，branch: ${{ github.ref_name }}"
+
+          ERROR_MSG=$(cat << 'ERRMSG'
+          ${{ needs.quality.outputs.error_summary }}
+          ERRMSG
+          )
+
+          gh api "repos/${{ github.repository }}/actions/workflows/sdd-codegen.yml/dispatches" \
+            -X POST \
+            --input - << EOF
+          {
+            "ref": "${{ github.ref_name }}",
+            "inputs": {
+              "branch": "${{ github.ref_name }}",
+              "review_feedback": $(echo "$ERROR_MSG" | jq -Rs .),
+              "fix_attempt": "$NEXT_ATTEMPT"
+            }
+          }
+          EOF
+          echo "✅ sdd-codegen fix triggered（attempt $NEXT_ATTEMPT）on ${{ github.ref_name }}"

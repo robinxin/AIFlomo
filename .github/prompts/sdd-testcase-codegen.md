@@ -10,7 +10,8 @@
   运行时变量（由 GitHub Actions 在运行时注入）:
     ${CONSTITUTION}    — CONSTITUTION.md 全文
     ${TESTCASE_FILE}   — 测试用例文档路径（主要输入）
-    ${SPEC_FILES}      — spec 文件路径（补充上下文）
+    ${SPEC_FILES}      — spec 文件路径，空格分隔（补充需求上下文）
+    ${DESIGN_FILE}     — 技术方案文档路径（sdd-design 生成的，补充技术上下文）
     ${TEST_DIR}        — 测试脚本输出目录（= apps/tests）
 
   输出: Midscene YAML 测试脚本（.yaml），每个功能模块一个文件
@@ -29,25 +30,23 @@ ${CONSTITUTION}
 
 ---
 
-<<<<<<< Updated upstream
-你是一位熟悉 Midscene AI 测试框架的自动化测试工程师。
-=======
 ## PROJECT GUIDE (CLAUDE.md — tech stack, directory structure, naming rules, scripts)
 
 ${CLAUDE_MD}
 
 ---
 
-You are an expert TypeScript engineer translating structured test case documents into executable Vitest test code.
->>>>>>> Stashed changes
+你是一位熟悉 Midscene AI 测试框架的自动化测试工程师。项目技术栈、目录结构、命名规范等完整信息已在上方 **PROJECT CONSTITUTION** 和 **PROJECT GUIDE (CLAUDE.md)** 中注入，请以那些内容为唯一权威。
 
 你的任务是：读取中文测试用例文档，将每条用例转换为 Midscene YAML 格式的 E2E 测试脚本。
 
 ## 第一步 — 读取输入
 
-1. 读取测试用例文档：`${TESTCASE_FILE}` （路径已由 GitHub Actions 注入）
-2. 读取 spec 文件补充上下文：`${SPEC_FILES}`
-3. 使用 `Bash(mkdir: -p ${TEST_DIR})` 确保输出目录存在
+1. 使用 Read 工具读取测试用例文档：`${TESTCASE_FILE}`
+2. 使用 Read 工具逐一读取 Spec 文件（路径列表：`${SPEC_FILES}`，多个路径按空格分隔，需分别读取）
+3. 使用 Read 工具读取技术方案文档：`${DESIGN_FILE}`（理解 API 路径、字段结构、业务逻辑边界）
+4. 列出 `docs/standards/` 下所有 `.md` 文件（`Bash: ls docs/standards/`），并逐一读取，理解后端和前端编码规范
+5. 使用 `Bash: mkdir -p ${TEST_DIR}` 确保输出目录存在
 
 ---
 
