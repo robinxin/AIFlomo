@@ -25,5 +25,20 @@ export function useAuthActions() {
     [dispatch]
   );
 
-  return { register };
+  const login = useCallback(
+    async (email, password) => {
+      dispatch({ type: 'LOGIN_START' });
+      try {
+        const data = await api.post('/api/auth/login', { email, password });
+        dispatch({ type: 'LOGIN_SUCCESS', payload: data });
+        return { success: true, data };
+      } catch (err) {
+        dispatch({ type: 'LOGIN_ERROR', payload: err.message });
+        return { success: false, error: err.message };
+      }
+    },
+    [dispatch]
+  );
+
+  return { login, register };
 }
