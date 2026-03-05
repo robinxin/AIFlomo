@@ -270,7 +270,8 @@ jobs:
               > /tmp/build-err.txt
               LINT_OK=true
 
-              npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+              npm run lint 2>&1 | tee -a /tmp/build-err.txt
+              [ "${PIPESTATUS[0]}" -eq 0 ] || LINT_OK=false
 
               if [ "$LINT_OK" = "true" ]; then
                 echo "Task $i lint check passed"
@@ -392,7 +393,8 @@ jobs:
             > /tmp/build-err.txt
             LINT_OK=true
 
-            npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+            npm run lint 2>&1 | tee -a /tmp/build-err.txt
+            [ "${PIPESTATUS[0]}" -eq 0 ] || LINT_OK=false
 
             if [ "$LINT_OK" = "true" ]; then
               echo "Fix lint check passed"
@@ -482,7 +484,7 @@ jobs:
           if [ "$MODE" = "codegen" ]; then
             git add "$CODE_DIR" specs/active/
           else
-            git add apps/
+            git add -A
           fi
 
           if git diff --cached --quiet; then
