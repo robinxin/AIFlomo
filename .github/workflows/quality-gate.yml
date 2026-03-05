@@ -39,7 +39,7 @@ jobs:
 
       - name: Run SDD-generated test cases
         run: |
-          TEST_COUNT=$(find apps/tests/ -name "*.spec.js" 2>/dev/null | wc -l | tr -d ' ')
+          TEST_COUNT=$(find apps/tests/ -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
           if [ "$TEST_COUNT" -gt 0 ]; then
             echo "🧪 Found $TEST_COUNT SDD-generated test file(s) — running..."
             npm run test
