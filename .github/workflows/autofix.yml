@@ -101,20 +101,23 @@ jobs:
 
       - name: Collect current quality errors
         id: collect-errors
+        # 注意：多行输入必须通过 env: 传入，不能用 ${{ inputs.xxx }} 内联展开
+        # 直接展开会把换行/引号/特殊字符注入 bash 脚本，导致 exit 127
+        env:
+          PASSED_QUALITY_ERRORS: ${{ inputs.quality_errors }}
         run: |
           > /tmp/quality-errors.txt
 
           npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
           npm run build 2>&1 | tee -a /tmp/quality-errors.txt || true
 
-          # 合并：优先使用实时错误，fallback 到 workflow_dispatch 传入的错误
+          # 优先使用本地实时 lint/build 错误；若本地无错，则用 dispatch 传入的错误
           LIVE_ERRORS=$(cat /tmp/quality-errors.txt)
-          PASSED_ERRORS="${{ inputs.quality_errors }}"
 
           if [ -n "$LIVE_ERRORS" ]; then
             FINAL_ERRORS="$LIVE_ERRORS"
           else
-            FINAL_ERRORS="$PASSED_ERRORS"
+            FINAL_ERRORS="$PASSED_QUALITY_ERRORS"
           fi
 
           if [ -z "$FINAL_ERRORS" ]; then
