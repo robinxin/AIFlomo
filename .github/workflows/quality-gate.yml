@@ -110,13 +110,29 @@ jobs:
             echo "ERROR_EOF"
           } >> "$GITHUB_OUTPUT"
 
+  # ─── Quality 通过 → 触发 Code Review ────────────────────────────
+  trigger-code-review:
+    needs: quality
+    # 只在 quality job 真正通过时触发，不依赖 workflow_run.conclusion（该值受 continue-on-error 影响不可靠）
+    if: success() && github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Dispatch code-review
+        run: |
+          gh workflow run code-review.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}"
+          echo "✅ Code Review triggered on ${{ github.ref_name }}"
+
   # ─── Quality 失败 → 自动触发 autofix workflow ────────────────────
   auto-fix:
     needs: quality
     if: failure() && github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, ai-runner]
-    # 不影响整体 workflow conclusion，确保 code-review.yml 的 workflow_run 能正确感知
-    continue-on-error: true
     permissions:
       actions: write
     env:
