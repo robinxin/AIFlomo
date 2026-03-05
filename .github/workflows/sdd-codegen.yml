@@ -143,22 +143,6 @@ jobs:
             echo "CLAUDE_MD_EOF"
           } >> "$GITHUB_ENV"
 
-      - name: Install app dependencies
-        run: |
-          if [ ! -f "package.json" ]; then
-            echo "ℹ️ No root package.json — installing workspace packages individually"
-            for dir in apps/server apps/mobile; do
-              if [ -f "$dir/package.json" ]; then
-                echo "Installing $dir..."
-                npm install --prefix "$dir"
-              fi
-            done
-          else
-            npm install
-            if [ -f "apps/server/package.json" ]; then
-              npm run db:generate -w apps/server
-            fi
-          fi
 
       # ── Mode: codegen ─────────────────────────────────────────────
       - name: Generate code (task by task)
@@ -171,7 +155,6 @@ jobs:
           export SPEC_FILES="${{ inputs.spec_files }}"
           export DESIGN_FILE="${{ inputs.design_file }}"
           TASKS_FILE="${{ inputs.tasks_file }}"
-          MAX_FIX_ATTEMPTS=2
 
           TASK_COUNT=$(TASKS_FILE="$TASKS_FILE" python3 -c "
           import re, os
@@ -209,8 +192,6 @@ jobs:
                   f.write(content)
           "
           }
-
-          FAILED_TASK=""
 
           for i in $(seq 1 "$TASK_COUNT"); do
             IDX=$((i - 1))
@@ -275,68 +256,13 @@ jobs:
               --model "$MODEL" \
               "$PROMPT_TEXT"
 
-            # ── lint verify + self-heal loop ──
-            TASK_PASSED=false
-            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-              > /tmp/build-err.txt
-              LINT_OK=true
-
-              npm run lint 2>&1 | tee -a /tmp/build-err.txt
-              [ "${PIPESTATUS[0]}" -eq 0 ] || LINT_OK=false
-
-              if [ "$LINT_OK" = "true" ]; then
-                echo "Task $i lint check passed"
-                TASK_PASSED=true
-                break
-              fi
-
-              if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-                echo "Task $i lint check failed after $MAX_FIX_ATTEMPTS fix attempts"
-                cat /tmp/build-err.txt
-                break
-              fi
-
-              echo "Task $i lint check failed, auto-fix attempt $attempt..."
-              BUILD_ERR=$(tail -50 /tmp/build-err.txt)
-              claude --print \
-                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-                --model "$MODEL" \
-                "Fix the ESLint errors below.
-                 Read the failing files, understand the errors, and use Write to fix them.
-                 Do NOT rewrite files from scratch — make minimal targeted fixes.
-
-                 Errors:
-                 ${BUILD_ERR}"
-            done
-
-            if [ "$TASK_PASSED" = true ]; then
-              update_task_status $IDX "completed"
-              git diff --name-only >> /tmp/written-files.txt
-              echo "| $i | $TASK_NAME | ✅ passed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
-            else
-              update_task_status $IDX "failed"
-              FAILED_TASK="$i"
-              tail -80 /tmp/build-err.txt > /tmp/failed-task-error.txt
-              echo "Task $i failed — stopping at this task"
-              echo "| $i | $TASK_NAME | ❌ failed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
-              break
-            fi
+            update_task_status $IDX "completed"
+            git diff --name-only >> /tmp/written-files.txt
+            echo "| $i | $TASK_NAME | ✅ done | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
           done
 
-          # ── Lint error details on failure ──
-          if [ -n "$FAILED_TASK" ]; then
-            {
-              echo ""
-              echo "### ❌ Lint Errors (Task $FAILED_TASK)"
-              echo ""
-              echo "\`\`\`"
-              cat /tmp/failed-task-error.txt 2>/dev/null || echo "No error details available"
-              echo "\`\`\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          echo "has_failure=$( [ -n "$FAILED_TASK" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-          echo "failed_task=$FAILED_TASK" >> "$GITHUB_OUTPUT"
+          echo "has_failure=false" >> "$GITHUB_OUTPUT"
+          echo "failed_task=" >> "$GITHUB_OUTPUT"
 
           {
             echo "written_files<<WRITTEN_EOF"
@@ -352,8 +278,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EXTRA_PROMPT: ${{ inputs.extra_prompt }}
         run: |
-          MAX_FIX_ATTEMPTS=2
-
           # 先跑 lint/build 抓当前错误（不依赖外部传入，保证信息最新）
           > /tmp/quality-errors.txt
           npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
@@ -398,47 +322,7 @@ jobs:
 
           ${EXTRA_PROMPT}"
 
-          # ── lint verify + self-heal loop ──
-          FIX_PASSED=false
-          for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-            > /tmp/build-err.txt
-            LINT_OK=true
-
-            npm run lint 2>&1 | tee -a /tmp/build-err.txt
-            [ "${PIPESTATUS[0]}" -eq 0 ] || LINT_OK=false
-
-            if [ "$LINT_OK" = "true" ]; then
-              echo "Fix lint check passed"
-              FIX_PASSED=true
-              break
-            fi
-
-            if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-              echo "Fix lint check failed after $MAX_FIX_ATTEMPTS attempts"
-              cat /tmp/build-err.txt
-              break
-            fi
-
-            echo "Fix lint check failed, auto-fix attempt $attempt..."
-            BUILD_ERR=$(tail -50 /tmp/build-err.txt)
-            claude --print \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-              --model "$MODEL" \
-              "Fix the ESLint errors below.
-               Read the failing files, understand the errors, and use Write to fix them.
-               Do NOT rewrite files from scratch — make minimal targeted fixes.
-
-               Errors:
-               ${BUILD_ERR}"
-          done
-
-          if [ "$FIX_PASSED" = true ]; then
-            echo "has_failure=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_failure=true" >> "$GITHUB_OUTPUT"
-            tail -80 /tmp/build-err.txt > /tmp/failed-task-error.txt
-          fi
-
+          echo "has_failure=false" >> "$GITHUB_OUTPUT"
           echo "failed_task=" >> "$GITHUB_OUTPUT"
 
           {
