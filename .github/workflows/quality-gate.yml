@@ -41,26 +41,56 @@ jobs:
 
       - name: Lint
         id: lint
-        run: npm run lint 2>&1 | tee /tmp/lint-output.txt
-        continue-on-error: true
+        run: |
+          npm run lint 2>&1 | tee /tmp/lint-output.txt
+          exit ${PIPESTATUS[0]}
 
       - name: Build
         id: build
-        run: npm run build 2>&1 | tee /tmp/build-output.txt
-        continue-on-error: true
+        run: |
+          npm run build 2>&1 | tee /tmp/build-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Start server for testing
+        run: |
+          SERVER_PORT=3000
+          npm run dev -w apps/server > /tmp/server-output.txt 2>&1 &
+          echo $! > /tmp/server.pid
+          echo "Server PID: $(cat /tmp/server.pid), waiting for port $SERVER_PORT..."
+          for i in $(seq 1 15); do
+            if curl -sf "http://localhost:$SERVER_PORT" > /dev/null 2>&1; then
+              echo "✅ Server is ready on port $SERVER_PORT"
+              break
+            fi
+            if [ "$i" -eq 15 ]; then
+              echo "❌ Server failed to start within 30s"
+              cat /tmp/server-output.txt
+              exit 1
+            fi
+            echo "Waiting... ($i/15)"
+            sleep 2
+          done
+          # Override WEB_URL in test.env to point to local server
+          sed -i "s|^WEB_URL=.*|WEB_URL=http://localhost:$SERVER_PORT|" test.env
 
       - name: Run SDD-generated test cases
         id: test
         run: |
-          TEST_COUNT=$(find apps/tests/ -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$TEST_COUNT" -gt 0 ]; then
-            echo "🧪 Found $TEST_COUNT test file(s) — running..."
+          if find apps/tests/ -name "*.yaml" -quit 2>/dev/null | grep -q .; then
+            echo "Running test cases..."
             npm run test 2>&1 | tee /tmp/test-output.txt
-            echo "✅ Test cases passed"
+            exit ${PIPESTATUS[0]}
           else
             echo "ℹ️ No test files in apps/tests/ — skipping"
           fi
-        continue-on-error: true
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f /tmp/server.pid ]; then
+            kill "$(cat /tmp/server.pid)" 2>/dev/null || true
+            echo "Server stopped"
+          fi
 
       - name: Collect errors
         id: collect-errors
@@ -68,27 +98,11 @@ jobs:
         run: |
           {
             echo "error_summary<<ERROR_EOF"
-            if [ "${{ steps.lint.outcome }}" = "failure" ]; then
-              echo "=== Lint Errors ==="
-              tail -100 /tmp/lint-output.txt 2>/dev/null
-            fi
-            if [ "${{ steps.build.outcome }}" = "failure" ]; then
-              echo "=== Build Errors ==="
-              tail -100 /tmp/build-output.txt 2>/dev/null
-            fi
-            if [ "${{ steps.test.outcome }}" = "failure" ]; then
-              echo "=== Test Errors ==="
-              tail -50 /tmp/test-output.txt 2>/dev/null
-            fi
+            [ -s /tmp/lint-output.txt ]  && echo "=== Lint Errors ===" && tail -100 /tmp/lint-output.txt
+            [ -s /tmp/build-output.txt ] && echo "=== Build Errors ===" && tail -100 /tmp/build-output.txt
+            [ -s /tmp/test-output.txt ]  && echo "=== Test Errors ===" && tail -50 /tmp/test-output.txt
             echo "ERROR_EOF"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Fail if quality checks failed
-        if: >
-          steps.lint.outcome == 'failure' ||
-          steps.build.outcome == 'failure' ||
-          steps.test.outcome == 'failure'
-        run: exit 1
 
   # ─── Quality 失败 → 自动触发 sdd-codegen fix 模式 ───────────────
   auto-fix:
