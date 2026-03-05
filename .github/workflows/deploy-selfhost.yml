@@ -19,6 +19,7 @@ jobs:
   deploy:
     name: Deploy to Aliyun ECS
     runs-on: [self-hosted, ai-runner]
+    environment: deploy-approval
     permissions:
       contents: read
 
