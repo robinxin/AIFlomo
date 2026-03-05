@@ -80,7 +80,7 @@ jobs:
       - name: Run SDD-generated test cases
         id: test
         run: |
-          if find apps/tests/ -name "*.yaml" -quit 2>/dev/null | grep -q .; then
+          if find apps/tests/ -name "*.yaml" -print -quit 2>/dev/null | grep -q .; then
             echo "Running test cases..."
             npm run test 2>&1 | tee /tmp/test-output.txt
             exit ${PIPESTATUS[0]}
