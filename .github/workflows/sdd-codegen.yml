@@ -145,11 +145,11 @@ jobs:
             for dir in apps/server apps/mobile; do
               if [ -f "$dir/package.json" ]; then
                 echo "Installing $dir..."
-                npm install --silent --prefix "$dir"
+                npm install --prefix "$dir"
               fi
             done
           else
-            npm install --silent
+            npm install
             if [ -f "apps/server/package.json" ]; then
               npm run db:generate -w apps/server
             fi
