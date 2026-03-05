@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "AIFlomo mobile app (Expo - Web/Android/iOS)",
   "main": "expo-router",
-  "type": "module",
   "scripts": {
     "dev": "expo start --web  --port 8082",
     "build": "expo export -p web",
@@ -25,6 +24,8 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "babel-preset-expo": "^55.0.10",
     "eslint": "^9.18.0",
     "eslint-plugin-react": "^7.37.5"
   },
