@@ -1,0 +1,221 @@
+name: Autofix (Quality Gate Failures)
+
+# 专用自动修复 workflow：当 Quality Gate 失败时触发，使用独立的 autofix.md 提示词驱动 Claude 修复代码
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '需要修复的分支名'
+        required: true
+        type: string
+      quality_errors:
+        description: 'Quality Gate 错误信息（lint / build / test 输出）'
+        required: false
+        type: string
+        default: ''
+      extra_feedback:
+        description: '额外补充反馈（如 code review 意见）'
+        required: false
+        type: string
+        default: ''
+      fix_attempt:
+        description: '当前是第几次自动修复（由流水线自动管理）'
+        required: false
+        type: string
+        default: '1'
+
+jobs:
+  autofix:
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      issues: write
+      actions: write
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      MAX_FIX_ROUNDS:     5
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Load CLAUDE.md
+        run: |
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
+      # ── 安装依赖，运行 lint/build 抓取最新错误 ─────────────────────────
+      - name: Install dependencies
+        run: npm install
+
+      - name: Collect current quality errors
+        id: collect-errors
+        run: |
+          > /tmp/quality-errors.txt
+
+          npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
+          npm run build 2>&1 | tee -a /tmp/quality-errors.txt || true
+
+          # 合并：优先使用实时错误，fallback 到 workflow_dispatch 传入的错误
+          LIVE_ERRORS=$(cat /tmp/quality-errors.txt)
+          PASSED_ERRORS="${{ inputs.quality_errors }}"
+
+          if [ -n "$LIVE_ERRORS" ]; then
+            FINAL_ERRORS="$LIVE_ERRORS"
+          else
+            FINAL_ERRORS="$PASSED_ERRORS"
+          fi
+
+          if [ -z "$FINAL_ERRORS" ]; then
+            echo "✅ No errors detected — nothing to fix."
+            echo "no_errors=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "QUALITY_ERRORS<<QUALITY_ERRORS_EOF"
+            printf '%s' "$FINAL_ERRORS"
+            echo "QUALITY_ERRORS_EOF"
+          } >> "$GITHUB_ENV"
+
+          echo "no_errors=false" >> "$GITHUB_OUTPUT"
+
+      # ── 调用 Claude，使用 autofix.md 专属提示词 ─────────────────────────
+      - name: Run autofix
+        id: autofix
+        if: steps.collect-errors.outputs.no_errors != 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRANCH: ${{ inputs.branch }}
+          FIX_ATTEMPT: ${{ inputs.fix_attempt }}
+          EXTRA_FEEDBACK: ${{ inputs.extra_feedback }}
+        run: |
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/autofix.md)
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \
+            --model "$MODEL" \
+            "$PROMPT_TEXT"
+
+      # ── 将修复提交并推送到原分支 ────────────────────────────────────────
+      - name: Commit and push fixes
+        if: steps.collect-errors.outputs.no_errors != 'true'
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          FIX_ATTEMPT="${{ inputs.fix_attempt }}"
+
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git add apps/
+
+          if git diff --cached --quiet; then
+            echo "⚠️ No files were modified by Claude — no commit needed."
+          else
+            git commit -m "fix: autofix attempt #${FIX_ATTEMPT} on ${BRANCH}"
+            git pull --rebase origin "${BRANCH}" || true
+            git push origin "HEAD:${BRANCH}"
+            echo "✅ Fixes committed and pushed to ${BRANCH}."
+          fi
+
+      # ── 输出修复摘要到 Step Summary ──────────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          FIX_ATTEMPT="${{ inputs.fix_attempt }}"
+          BRANCH="${{ inputs.branch }}"
+          {
+            echo "## 🔧 Autofix — 第 ${FIX_ATTEMPT} 次修复"
+            echo ""
+            echo "- **分支**: \`${BRANCH}\`"
+            echo "- **触发方式**: workflow_dispatch"
+            echo ""
+            echo "### 错误输入"
+            echo '```'
+            cat /tmp/quality-errors.txt 2>/dev/null || echo "(无本地错误，使用传入的错误信息)"
+            echo '```'
+            echo ""
+            printf '\n---\n*由 Autofix workflow 自动生成 · [查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── 修复完成后重新触发 Quality Gate ─────────────────────────────────
+      - name: Re-trigger Quality Gate
+        if: steps.collect-errors.outputs.no_errors != 'true'
+        run: |
+          FIX_ATTEMPT="${{ inputs.fix_attempt }}"
+          BRANCH="${{ inputs.branch }}"
+
+          gh workflow run quality-gate.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$BRANCH" \
+            --field fix_attempt="$FIX_ATTEMPT"
+
+          echo "✅ Quality Gate re-triggered on ${BRANCH} (fix_attempt=${FIX_ATTEMPT})"
+
+      # ── 已无错误：通知并退出 ─────────────────────────────────────────────
+      - name: Notify — no errors
+        if: steps.collect-errors.outputs.no_errors == 'true'
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          ISSUE_NUMBER=$(echo "$BRANCH" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+
+          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$BRANCH" ]; then
+            gh issue comment "$ISSUE_NUMBER" \
+              --body "✅ **Autofix 完成**：Quality Gate 重新运行后未发现错误，无需修复。" \
+              --repo "${{ github.repository }}" || true
+          fi
+          echo "✅ No errors — autofix skipped."
