@@ -58,6 +58,11 @@ on:
         description: 'Branch to fix'
         required: true
         type: string
+      review_feedback:
+        description: 'Error details from quality gate'
+        required: false
+        type: string
+        default: ''
       extra_prompt:
         description: 'Optional extra prompt'
         required: false
