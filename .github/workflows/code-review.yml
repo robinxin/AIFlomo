@@ -96,20 +96,24 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
-          export DIFF=$(cat /tmp/review.diff)
-
-          if [ -z "$DIFF" ]; then
+          if [ ! -s /tmp/review.diff ]; then
             echo "ℹ️ No diff against main — skipping review."
             echo "No changes to review." > /tmp/review-result.txt
             exit 0
           fi
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/code-review.md)
+          # Truncate diff to 150KB to stay within OS argument limits
+          export DIFF=$(head -c 150000 /tmp/review.diff)
+
+          python3 .github/scripts/envsubst.py < .github/prompts/code-review.md > /tmp/prompt.txt
+
+          # Unset large env var before spawning claude
+          unset DIFF
 
           RESULT=$(claude --print \
             --allowedTools "Read,Bash(ls:*)" \
             --model "$MODEL" \
-            "$PROMPT_TEXT")
+            "$(cat /tmp/prompt.txt)")
 
           echo "$RESULT"
           echo "$RESULT" > /tmp/review-result.txt
