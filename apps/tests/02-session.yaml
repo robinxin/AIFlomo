@@ -1,5 +1,5 @@
 web:
-  url: https://v.flomoapp.com/login/
+  url: http://localhost:8081/login
   viewportWidth: 1280
   viewportHeight: 960
 
