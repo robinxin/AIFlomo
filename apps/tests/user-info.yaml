@@ -1,0 +1,53 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-info"
+  generateReport: true
+
+tasks:
+  # 前置条件：注册并登录
+  - name: "前置-注册并登录测试账号"
+    continueOnError: false
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "userinfo@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "用户信息测试"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "注册成功并进入主页面或登录页面"
+        timeout: 5000
+      # 如果跳转到登录页，则登录
+      - javascript: "if (window.location.pathname === '/login') { null; }"
+      - sleep: 500
+      - aiInput: "如果在登录页，找到邮箱输入框"
+        value: "userinfo@example.com"
+      - aiInput: "如果在登录页，找到密码输入框"
+        value: "Pass123"
+      - aiTap: "如果在登录页，点击登录按钮"
+      - aiWaitFor: "进入主页面，用户已登录"
+        timeout: 5000
+
+  # 正常场景
+  - name: "已登录用户获取信息成功"
+    continueOnError: true
+    flow:
+      - ai: "在主页面查看用户信息区域或个人中心"
+      - aiAssert: "页面显示用户昵称为'用户信息测试'，邮箱为'userinfo@example.com'，不显示密码"
+        errorMessage: "已登录用户应该能看到自己的信息，且不包含密码"
+
+  # 异常场景
+  - name: "未登录时访问用户信息，返回401"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/'"
+      - sleep: 1000
+      - aiAssert: "未登录状态下，页面显示登录表单或跳转到登录页，无法查看用户信息"
+        errorMessage: "未登录时应无法访问用户信息页面"
