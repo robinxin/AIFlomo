@@ -107,7 +107,7 @@ jobs:
             echo "ERROR_EOF"
           } >> "$GITHUB_OUTPUT"
 
-  # ─── Quality 失败 → 自动触发 sdd-codegen fix 模式 ───────────────
+  # ─── Quality 失败 → 自动触发 autofix workflow ────────────────────
   auto-fix:
     needs: quality
     if: failure() && github.event_name == 'workflow_dispatch'
@@ -120,7 +120,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MAX_FIX_ROUNDS: 5
     steps:
-      - name: Trigger sdd-codegen fix mode
+      - name: Trigger autofix workflow
         run: |
           FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
 
@@ -137,23 +137,24 @@ jobs:
           fi
 
           NEXT_ATTEMPT=$(( FIX_ATTEMPT + 1 ))
-          echo "🔄 Auto-fix 第 $NEXT_ATTEMPT/$MAX_FIX_ROUNDS 次，branch: ${{ github.ref_name }}"
+          echo "🔄 Autofix 第 $NEXT_ATTEMPT/$MAX_FIX_ROUNDS 次，branch: ${{ github.ref_name }}"
 
           ERROR_MSG=$(cat << 'ERRMSG'
           ${{ needs.quality.outputs.error_summary }}
           ERRMSG
           )
 
-          gh api "repos/${{ github.repository }}/actions/workflows/sdd-codegen.yml/dispatches" \
+          gh api "repos/${{ github.repository }}/actions/workflows/autofix.yml/dispatches" \
             -X POST \
             --input - << EOF
           {
             "ref": "${{ github.ref_name }}",
             "inputs": {
               "branch": "${{ github.ref_name }}",
-              "review_feedback": $(echo "$ERROR_MSG" | jq -Rs .),
+              "quality_errors": $(echo "$ERROR_MSG" | jq -Rs .),
+              "extra_feedback": "",
               "fix_attempt": "$NEXT_ATTEMPT"
             }
           }
           EOF
-          echo "✅ sdd-codegen fix triggered（attempt $NEXT_ATTEMPT）on ${{ github.ref_name }}"
+          echo "✅ Autofix workflow triggered（attempt $NEXT_ATTEMPT）on ${{ github.ref_name }}"
