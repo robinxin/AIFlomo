@@ -40,6 +40,11 @@ on:
         required: false
         type: string
         default: ''
+      fix_attempt:
+        description: 'Current fix attempt number (for loop limiting)'
+        required: false
+        type: string
+        default: '0'
     outputs:
       written_files:
         description: 'Files written during codegen'
@@ -58,11 +63,21 @@ on:
         description: 'Branch to fix'
         required: true
         type: string
+      review_feedback:
+        description: 'Error details from quality gate'
+        required: false
+        type: string
+        default: ''
       extra_prompt:
         description: 'Optional extra prompt'
         required: false
         type: string
         default: ''
+      fix_attempt:
+        description: 'Current fix attempt number (managed by pipeline)'
+        required: false
+        type: string
+        default: '0'
 
 jobs:
   run:
@@ -70,6 +85,7 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: write
     outputs:
       written_files: ${{ steps.result.outputs.written_files }}
       has_failure:   ${{ steps.result.outputs.has_failure }}
@@ -143,7 +159,11 @@ jobs:
           if [ ! -f "package.json" ]; then
             echo "ℹ️ No package.json found — skipping install (fresh project)"
           else
-            npm install --silent
+            if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+              npm install --silent
+            else
+              echo "⏭ node_modules up to date, skipping install"
+            fi
             if [ -f "apps/server/package.json" ]; then
               npm run db:generate -w apps/server
             fi
@@ -160,13 +180,11 @@ jobs:
           export SPEC_FILES="${{ inputs.spec_files }}"
           export DESIGN_FILE="${{ inputs.design_file }}"
           TASKS_FILE="${{ inputs.tasks_file }}"
-          MAX_FIX_ATTEMPTS=2
 
-          TASK_COUNT=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          print(len(d.get('tasks', [])))
+          TASK_COUNT=$(TASKS_FILE="$TASKS_FILE" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          print(len(re.findall(r'^- \[.\] T\d+', content, re.MULTILINE)))
           " 2>/dev/null || echo "1")
 
           > /tmp/written-files.txt
@@ -181,45 +199,63 @@ jobs:
 
           update_task_status() {
             local task_idx=$1 new_status=$2
-            python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          d['tasks'][$task_idx]['status'] = '$new_status'
-          with open('$TASKS_FILE', 'w') as f:
-              json.dump(d, f, indent=2, ensure_ascii=False)
+            TASKS_FILE="$TASKS_FILE" TASK_IDX="$task_idx" NEW_STATUS="$new_status" python3 -c "
+          import re, os
+          filepath = os.environ['TASKS_FILE']
+          idx = int(os.environ['TASK_IDX'])
+          status = os.environ['NEW_STATUS']
+          if status not in ('completed', 'failed'):
+              exit(0)
+          with open(filepath) as f:
+              content = f.read()
+          task_ids = re.findall(r'^- \[.\] (T\d+)', content, re.MULTILINE)
+          if idx < len(task_ids):
+              tid = re.escape(task_ids[idx])
+              new_mark = 'x' if status == 'completed' else '-'
+              content = re.sub(r'^(- )\[.\]( ' + tid + r')', r'\1[' + new_mark + r']\2', content, count=1, flags=re.MULTILINE)
+              with open(filepath, 'w') as f:
+                  f.write(content)
           "
           }
-
-          FAILED_TASK=""
 
           for i in $(seq 1 "$TASK_COUNT"); do
             IDX=$((i - 1))
 
-            TASK_STATUS=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          print(tasks[$IDX].get('status', 'pending') if $IDX < len(tasks) else 'pending')
+            TASK_STATUS=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          marks = re.findall(r'^- \[(.)\] T\d+', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          print('completed' if idx < len(marks) and marks[idx] == 'x' else 'pending')
           ")
-            TASK_NAME=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          print(tasks[$IDX]['name'] if $IDX < len(tasks) else 'task')
+            TASK_NAME=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          bt = chr(96)
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] (.+)$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          if idx < len(lines):
+              name = re.sub(r'\s*' + bt + '[^' + bt + ']+' + bt, '', lines[idx]).strip()
+              print(name[:80])
+          else:
+              print('task')
           ")
-            TASK_DESC=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          print(tasks[$IDX].get('description', '') if $IDX < len(tasks) else '')
+            TASK_DESC=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] .+$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          print(lines[idx] if idx < len(lines) else '')
           ")
-            TASK_FILES=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              tasks = json.load(f).get('tasks', [])
-          files = tasks[$IDX].get('target_files', []) if $IDX < len(tasks) else []
-          print(' '.join(f'\`{f}\`' for f in files))
+            TASK_FILES=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          bt = chr(96)
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] .+$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          if idx < len(lines):
+              files = re.findall(bt + '([^' + bt + ']+)' + bt, lines[idx])
+              print(' '.join(bt + f + bt for f in files))
           ")
 
             if [ "$TASK_STATUS" = "completed" ]; then
@@ -245,67 +281,13 @@ jobs:
               --model "$MODEL" \
               "$PROMPT_TEXT"
 
-            # ── lint verify + self-heal loop ──
-            TASK_PASSED=false
-            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-              > /tmp/build-err.txt
-              LINT_OK=true
-
-              npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
-
-              if [ "$LINT_OK" = "true" ]; then
-                echo "Task $i lint check passed"
-                TASK_PASSED=true
-                break
-              fi
-
-              if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-                echo "Task $i lint check failed after $MAX_FIX_ATTEMPTS fix attempts"
-                cat /tmp/build-err.txt
-                break
-              fi
-
-              echo "Task $i lint check failed, auto-fix attempt $attempt..."
-              BUILD_ERR=$(tail -50 /tmp/build-err.txt)
-              claude --print \
-                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-                --model "$MODEL" \
-                "Fix the ESLint errors below.
-                 Read the failing files, understand the errors, and use Write to fix them.
-                 Do NOT rewrite files from scratch — make minimal targeted fixes.
-
-                 Errors:
-                 ${BUILD_ERR}"
-            done
-
-            if [ "$TASK_PASSED" = true ]; then
-              update_task_status $IDX "completed"
-              git diff --name-only >> /tmp/written-files.txt
-              echo "| $i | $TASK_NAME | ✅ passed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
-            else
-              update_task_status $IDX "failed"
-              FAILED_TASK="$i"
-              tail -80 /tmp/build-err.txt > /tmp/failed-task-error.txt
-              echo "Task $i failed — stopping at this task"
-              echo "| $i | $TASK_NAME | ❌ failed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
-              break
-            fi
+            update_task_status $IDX "completed"
+            git diff --name-only >> /tmp/written-files.txt
+            echo "| $i | $TASK_NAME | ✅ done | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
           done
 
-          # ── Lint error details on failure ──
-          if [ -n "$FAILED_TASK" ]; then
-            {
-              echo ""
-              echo "### ❌ Lint Errors (Task $FAILED_TASK)"
-              echo ""
-              echo "\`\`\`"
-              cat /tmp/failed-task-error.txt 2>/dev/null || echo "No error details available"
-              echo "\`\`\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          echo "has_failure=$( [ -n "$FAILED_TASK" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
-          echo "failed_task=$FAILED_TASK" >> "$GITHUB_OUTPUT"
+          echo "has_failure=false" >> "$GITHUB_OUTPUT"
+          echo "failed_task=" >> "$GITHUB_OUTPUT"
 
           {
             echo "written_files<<WRITTEN_EOF"
@@ -314,7 +296,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # ── Mode: codegen-team ────────────────────────────────────────
-      - name: Generate code (agent team — parallel workers)
+      - name: Generate code (Claude Code agent team — parallel workers)
         if: inputs.mode == 'codegen-team'
         id: codegen_team
         env:
@@ -329,33 +311,14 @@ jobs:
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen-team.md)
 
           claude --print \
-            --allowedTools "Read,Write,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(npm run lint*),Bash(python3:*)" \
+            --allowedTools "Read,Write,Task,TeamCreate,SendMessage,TaskCreate,TaskList,TaskUpdate,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(npm run lint*),Bash(python3:*)" \
             --model "$MODEL" \
             "$PROMPT_TEXT"
 
-          # Collect written files from git diff
           git diff --name-only > /tmp/written-files.txt
 
-          # Determine failure from tasks file
-          HAS_FAILURE=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          failed = [str(t['id']) for t in d.get('tasks', []) if t.get('status') == 'failed']
-          print('true' if failed else 'false')
-          " 2>/dev/null || echo "false")
-
-          FAILED_TASK=$(python3 -c "
-          import json
-          with open('$TASKS_FILE') as f:
-              d = json.load(f)
-          failed = [str(t['id']) for t in d.get('tasks', []) if t.get('status') == 'failed']
-          print(failed[0] if failed else '')
-          " 2>/dev/null || echo "")
-
-          echo "has_failure=${HAS_FAILURE}" >> "$GITHUB_OUTPUT"
-          echo "failed_task=${FAILED_TASK}"  >> "$GITHUB_OUTPUT"
-
+          echo "has_failure=false" >> "$GITHUB_OUTPUT"
+          echo "failed_task="      >> "$GITHUB_OUTPUT"
           {
             echo "written_files<<WRITTEN_EOF"
             sort -u /tmp/written-files.txt
@@ -370,8 +333,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EXTRA_PROMPT: ${{ inputs.extra_prompt }}
         run: |
-          MAX_FIX_ATTEMPTS=2
-
           # 先跑 lint/build 抓当前错误（不依赖外部传入，保证信息最新）
           > /tmp/quality-errors.txt
           npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
@@ -416,46 +377,7 @@ jobs:
 
           ${EXTRA_PROMPT}"
 
-          # ── lint verify + self-heal loop ──
-          FIX_PASSED=false
-          for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
-            > /tmp/build-err.txt
-            LINT_OK=true
-
-            npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
-
-            if [ "$LINT_OK" = "true" ]; then
-              echo "Fix lint check passed"
-              FIX_PASSED=true
-              break
-            fi
-
-            if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
-              echo "Fix lint check failed after $MAX_FIX_ATTEMPTS attempts"
-              cat /tmp/build-err.txt
-              break
-            fi
-
-            echo "Fix lint check failed, auto-fix attempt $attempt..."
-            BUILD_ERR=$(tail -50 /tmp/build-err.txt)
-            claude --print \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-              --model "$MODEL" \
-              "Fix the ESLint errors below.
-               Read the failing files, understand the errors, and use Write to fix them.
-               Do NOT rewrite files from scratch — make minimal targeted fixes.
-
-               Errors:
-               ${BUILD_ERR}"
-          done
-
-          if [ "$FIX_PASSED" = true ]; then
-            echo "has_failure=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_failure=true" >> "$GITHUB_OUTPUT"
-            tail -80 /tmp/build-err.txt > /tmp/failed-task-error.txt
-          fi
-
+          echo "has_failure=false" >> "$GITHUB_OUTPUT"
           echo "failed_task=" >> "$GITHUB_OUTPUT"
 
           {
@@ -474,7 +396,6 @@ jobs:
           CODEGEN_FAILED_TASK: ${{ steps.codegen.outputs.failed_task }}
           CODEGEN_WRITTEN: ${{ steps.codegen.outputs.written_files }}
           CODEGEN_TEAM_HAS_FAILURE: ${{ steps.codegen_team.outputs.has_failure }}
-          CODEGEN_TEAM_FAILED_TASK: ${{ steps.codegen_team.outputs.failed_task }}
           CODEGEN_TEAM_WRITTEN: ${{ steps.codegen_team.outputs.written_files }}
           FIX_HAS_FAILURE: ${{ steps.fix.outputs.has_failure }}
           FIX_WRITTEN: ${{ steps.fix.outputs.written_files }}
@@ -489,7 +410,7 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           elif [ "$MODE" = "codegen-team" ]; then
             echo "has_failure=${CODEGEN_TEAM_HAS_FAILURE:-false}" >> "$GITHUB_OUTPUT"
-            echo "failed_task=${CODEGEN_TEAM_FAILED_TASK}" >> "$GITHUB_OUTPUT"
+            echo "failed_task=" >> "$GITHUB_OUTPUT"
             {
               echo "written_files<<WRITTEN_EOF"
               echo "$CODEGEN_TEAM_WRITTEN"
@@ -523,7 +444,7 @@ jobs:
           if [ "$MODE" = "codegen" ] || [ "$MODE" = "codegen-team" ]; then
             git add "$CODE_DIR" specs/active/
           else
-            git add apps/
+            git add -A
           fi
 
           if git diff --cached --quiet; then
@@ -531,10 +452,10 @@ jobs:
           else
             if [ "$MODE" = "fix" ]; then
               MSG="sdd: auto-fix from code review"
-            elif [ "$HAS_FAILURE" = "true" ]; then
-              MSG="sdd: partial codegen (task ${FAILED_TASK} failed)"
             elif [ "$MODE" = "codegen-team" ]; then
               MSG="sdd: auto-generate code via agent team (${{ github.sha }})"
+            elif [ "$HAS_FAILURE" = "true" ]; then
+              MSG="sdd: partial codegen (task ${FAILED_TASK} failed)"
             else
               MSG="sdd: auto-generate code from spec (${{ github.sha }})"
             fi
@@ -583,6 +504,20 @@ jobs:
           } > /tmp/failure-comment.md
 
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/failure-comment.md
+
+      - name: Re-trigger Quality Gate after successful fix
+        if: >-
+          always() &&
+          steps.result.outputs.has_failure != 'true' &&
+          (inputs.mode == 'fix' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run quality-gate.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ inputs.branch }}" \
+            --field fix_attempt="${{ inputs.fix_attempt }}"
+          echo "✅ Quality Gate re-triggered on ${{ inputs.branch }} (fix_attempt=${{ inputs.fix_attempt }})"
 
       - name: Fail job if there were failures
         if: always() && steps.result.outputs.has_failure == 'true'
