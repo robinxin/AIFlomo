@@ -75,6 +75,7 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: write
     outputs:
       written_files: ${{ steps.result.outputs.written_files }}
       has_failure:   ${{ steps.result.outputs.has_failure }}
@@ -437,6 +438,19 @@ jobs:
           } > /tmp/failure-comment.md
 
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/failure-comment.md
+
+      - name: Re-trigger Quality Gate after successful fix
+        if: >-
+          always() &&
+          steps.result.outputs.has_failure != 'true' &&
+          (inputs.mode == 'fix' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run quality-gate.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ inputs.branch }}"
+          echo "✅ Quality Gate re-triggered on ${{ inputs.branch }}"
 
       - name: Fail job if there were failures
         if: always() && steps.result.outputs.has_failure == 'true'
