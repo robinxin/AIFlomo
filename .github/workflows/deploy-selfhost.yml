@@ -19,7 +19,6 @@ jobs:
   deploy:
     name: Deploy to Aliyun ECS
     runs-on: [self-hosted, ai-runner]
-    environment: deploy-approval
     permissions:
       contents: read
 
@@ -203,5 +202,6 @@ jobs:
               || startsWith(github.ref_name, 'feat/')
               || startsWith(github.ref_name, 'bugfix/')) }}
     runs-on: [self-hosted, ai-runner]
+    environment: deploy-approval
     steps:
-      - run: echo "Approved, deployment confirmed."
+      - run: echo "Deployment approved, triggering PR creation."
