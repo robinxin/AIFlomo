@@ -419,7 +419,7 @@ jobs:
 
   # ─── Testcase — 从 Spec 生成测试用例描述（Plan 审批后执行）─────
   testcase:
-    needs: [sdd-detect, design-gate]
+    needs: [sdd-detect, sdd-plan, design-gate]
     if: >-
       ${{ needs.sdd-detect.outputs.spec_changed == 'true'
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
@@ -494,6 +494,8 @@ jobs:
           EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
         run: |
           export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
+          export DESIGN_FILE="${{ needs.sdd-plan.outputs.design_file }}"
+          
           export TEST_DIR="apps/tests"
           export WRITTEN_FILES="N/A — 源码尚未生成，请根据 Spec 生成测试用例规格文档"
 

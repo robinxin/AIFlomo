@@ -3,6 +3,11 @@ name: Quality Gate
 on:
   # SDD Pipeline 完成后通过 workflow_dispatch 主动触发（见 claude-SDD.yml trigger-quality-gate job）
   workflow_dispatch:
+    inputs:
+      fix_attempt:
+        description: 'Auto-fix 已执行次数（由流水线自动管理）'
+        default: '0'
+        required: false
   # PR 到 main 时触发
   pull_request:
     branches: [main]
@@ -96,9 +101,27 @@ jobs:
       actions: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MAX_FIX_ROUNDS: 5
     steps:
       - name: Trigger sdd-codegen fix mode
         run: |
+          FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
+
+          if [ "$FIX_ATTEMPT" -ge "$MAX_FIX_ROUNDS" ]; then
+            echo "⚠️ Auto-fix 已达上限（$FIX_ATTEMPT/$MAX_FIX_ROUNDS 次），停止自动修复，请人工介入。"
+            BRANCH="${{ github.ref_name }}"
+            ISSUE_NUMBER=$(echo "$BRANCH" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+            if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$BRANCH" ]; then
+              gh issue comment "$ISSUE_NUMBER" \
+                --body "❌ **Auto-fix 已达到上限（${MAX_FIX_ROUNDS} 次），Quality Gate 仍未通过，请人工介入修复后重新触发流水线。**" \
+                --repo "${{ github.repository }}"
+            fi
+            exit 0
+          fi
+
+          NEXT_ATTEMPT=$(( FIX_ATTEMPT + 1 ))
+          echo "🔄 Auto-fix 第 $NEXT_ATTEMPT/$MAX_FIX_ROUNDS 次，branch: ${{ github.ref_name }}"
+
           ERROR_MSG=$(cat << 'ERRMSG'
           ${{ needs.quality.outputs.error_summary }}
           ERRMSG
@@ -111,8 +134,9 @@ jobs:
             "ref": "${{ github.ref_name }}",
             "inputs": {
               "branch": "${{ github.ref_name }}",
-              "review_feedback": $(echo "$ERROR_MSG" | jq -Rs .)
+              "review_feedback": $(echo "$ERROR_MSG" | jq -Rs .),
+              "fix_attempt": "$NEXT_ATTEMPT"
             }
           }
           EOF
-          echo "✅ sdd-codegen fix triggered on ${{ github.ref_name }}"
+          echo "✅ sdd-codegen fix triggered（attempt $NEXT_ATTEMPT）on ${{ github.ref_name }}"
