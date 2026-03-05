@@ -1,0 +1,50 @@
+{
+  "feature": "账号注册与登录",
+  "tasks": [
+    {
+      "id": 1,
+      "name": "数据库 Schema - users 表",
+      "description": "在 apps/server/src/db/schema.js 中新增 users 表定义。字段：id (UUID主键，crypto.randomUUID())、email (text, unique, notNull)、passwordHash (text, notNull)、nickname (text, notNull, 1-20字符)、createdAt (CURRENT_TIMESTAMP)、lastLoginAt (text, nullable)。邮箱字段添加唯一索引，确保不重复注册。",
+      "target_files": [
+        "apps/server/src/db/schema.js"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": 2,
+      "name": "后端工具 - 密码加密",
+      "description": "创建 apps/server/src/lib/password.js，封装 bcrypt 密码处理逻辑。导出 hashPassword(password) 函数（使用 bcrypt.hash，salt rounds=10）和 verifyPassword(password, hash) 函数（使用 bcrypt.compare）。供注册和登录路由调用。",
+      "target_files": [
+        "apps/server/src/lib/password.js"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": 3,
+      "name": "后端路由 - 用户注册 POST /api/auth/register",
+      "description": "在 apps/server/src/routes/auth.js 中实现注册端点。JSON Schema 验证：email (format: email)、password (8-20位，含字母+数字，正则pattern)、nickname (1-20字符)、agreePrivacy (必须为true)。业务逻辑：邮箱转小写、密码 bcrypt 哈希、插入 users 表并 returning、自动创建 Session (request.session.userId)、捕获 SQLITE_CONSTRAINT 返回 409 EMAIL_EXISTS。成功返回 201 + 用户数据（不含 passwordHash）。",
+      "target_files": [
+        "apps/server/src/routes/auth.js"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": 4,
+      "name": "后端路由 - 用户登录 POST /api/auth/login + 登出/me",
+      "description": "在 apps/server/src/routes/auth.js 中实现三个端点：1) POST /api/auth/login - JSON Schema 验证 email+password，邮箱转小写查询用户，bcrypt 验证密码，成功后更新 lastLoginAt、创建 Session、返回 200 + 用户数据，失败统一返回 401 INVALID_CREDENTIALS；2) POST /api/auth/logout - preHandler requireAuth，销毁 Session，返回 204；3) GET /api/auth/me - preHandler requireAuth，查询当前用户返回 200。",
+      "target_files": [
+        "apps/server/src/routes/auth.js"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": 5,
+      "name": "前端状态管理 - AuthContext",
+      "description": "创建 apps/mobile/context/AuthContext.jsx，使用 React Context + useReducer。初始状态：{user: null, isAuthenticated: false, isLoading: true}。Reducer actions: LOGIN_SUCCESS (设置user+isAuthenticated)、LOGOUT (清空user)、CHECK_AUTH_START/SUCCESS/FAILURE (应用启动检测Session)。导出 AuthProvider 组件和 useAuth() Hook。",
+      "target_files": [
+        "apps/mobile/context/AuthContext.jsx"
+      ],
+      "status": "completed"
+    }
+  ]
+}
