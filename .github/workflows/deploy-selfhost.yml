@@ -147,7 +147,11 @@ jobs:
 
           echo "── Install dependencies ──────────────────────────"
           cd "$DEPLOY_PATH"
-          npm install
+          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+            npm install
+          else
+            echo "⏭ node_modules up to date, skipping install"
+          fi
 
           echo "── Drizzle generate ──────────────────────────────"
           npm run db:generate -w apps/server

@@ -37,7 +37,11 @@ jobs:
             echo "❌ No package.json found — SDD codegen has not generated project files yet."
             exit 1
           fi
-          npm install
+          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+            npm install
+          else
+            echo "⏭ node_modules up to date, skipping install"
+          fi
 
       - name: Lint
         id: lint
@@ -72,7 +76,7 @@ jobs:
             echo "Waiting for frontend URL... ($i/30)"
             sleep 2
           done
-          sed -i "s|^WEB_URL=.*|WEB_URL=$FRONTEND_URL|" test.env
+          sed -i.bak "s|url: \"\${WEB_URL}\"|url: \"$FRONTEND_URL\"|g" apps/tests/*.yaml && rm -f apps/tests/*.bak
 
       - name: Run SDD-generated test cases
         id: test
