@@ -238,10 +238,17 @@ jobs:
           } > /tmp/design-comment.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/design-comment.md
 
+  # ─── Design Approval Gate（轻量审批 job）───────────────────────
+  design-gate:
+    needs: sdd-plan
+    environment: design-approval
+    runs-on: [self-hosted, ai-runner]
+    steps:
+      - run: echo "Design document approved"
+
   # ─── SDD-Task（需通过 Plan 审批后执行）───────────────────────────
   sdd-task:
-    needs: [sdd-detect, sdd-plan]
-    environment: design-approval
+    needs: [sdd-detect, sdd-plan, design-gate]
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -410,9 +417,9 @@ jobs:
   # Testcase → 🔒Testcase → Testcase Code → 🔒Testcase Code
   # ═══════════════════════════════════════════════════════════════
 
-  # ─── Testcase — 从 Spec 生成测试用例描述（与 SDD-Plan 并行）─────
+  # ─── Testcase — 从 Spec 生成测试用例描述（Plan 审批后执行）─────
   testcase:
-    needs: [sdd-detect]
+    needs: [sdd-detect, design-gate]
     if: >-
       ${{ needs.sdd-detect.outputs.spec_changed == 'true'
           && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_sdd == '1') }}
