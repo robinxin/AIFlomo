@@ -1,0 +1,753 @@
+{
+  "feature": "账号注册与登录",
+  "spec_file": "specs/active/25-feature-user-registration-login.md",
+  "design_file": "specs/active/25-feature-user-registration-login-design.md",
+  "created_date": "2026-03-05",
+  "status": "已完成",
+  "tech_stack": {
+    "backend": "Node.js + Fastify + Drizzle ORM + SQLite + JavaScript",
+    "frontend": "Expo (React Native) + JavaScript + React Context",
+    "auth": "Session + Cookie (存储于 SQLite)"
+  },
+
+  "phases": [
+    {
+      "phase_id": 1,
+      "phase_name": "阶段一：基础准备（数据库 & 公共模块）",
+      "description": "所有用户故事共同依赖的底层准备，必须在所有故事前完成",
+      "priority": "P0",
+      "tasks": [
+        {
+          "task_id": "T001",
+          "title": "扩展 Drizzle Schema，新增 users 表定义",
+          "file_path": "apps/server/src/db/schema.js",
+          "type": "backend",
+          "parallel": true,
+          "status": "completed",
+          "description": "在 schema.js 中定义 users 表，包含 id, email, passwordHash, nickname, createdAt, lastLoginAt 字段",
+          "acceptance_criteria": [
+            "users 表包含所有必需字段",
+            "email 字段设置 unique() 约束",
+            "id 使用 UUID 主键",
+            "createdAt 使用 CURRENT_TIMESTAMP 默认值"
+          ],
+          "dependencies": []
+        },
+        {
+          "task_id": "T002",
+          "title": "创建密码工具函数，封装 bcrypt 哈希和验证逻辑",
+          "file_path": "apps/server/src/lib/password.js",
+          "type": "backend",
+          "parallel": true,
+          "status": "completed",
+          "description": "创建 hashPassword 和 verifyPassword 函数，使用 bcrypt (salt rounds = 10)",
+          "acceptance_criteria": [
+            "hashPassword 函数接受密码字符串，返回 bcrypt 哈希值",
+            "verifyPassword 函数接受密码和哈希，返回布尔值",
+            "salt rounds 设置为 10"
+          ],
+          "dependencies": []
+        },
+        {
+          "task_id": "T003",
+          "title": "实现 Fastify session 插件配置，集成 SQLite session store",
+          "file_path": "apps/server/src/plugins/session.js",
+          "type": "backend",
+          "parallel": true,
+          "status": "completed",
+          "description": "配置 @fastify/session + @mgcrea/fastify-session-sqlite-store，设置 Cookie 安全选项",
+          "acceptance_criteria": [
+            "Session 存储在 SQLite 数据库",
+            "Cookie 设置 httpOnly: true, sameSite: 'strict'",
+            "生产环境 secure: true",
+            "maxAge 设置为 7 天",
+            "SESSION_SECRET 从环境变量读取"
+          ],
+          "dependencies": []
+        },
+        {
+          "task_id": "T004",
+          "title": "创建 requireAuth preHandler，用于保护需登录的路由",
+          "file_path": "apps/server/src/plugins/auth.js",
+          "type": "backend",
+          "parallel": false,
+          "status": "completed",
+          "description": "实现 requireAuth 中间件，检查 request.session.userId 是否存在",
+          "acceptance_criteria": [
+            "未登录时返回 401 状态码",
+            "错误响应包含 error: 'Unauthorized', message: '请先登录'",
+            "已登录时放行请求"
+          ],
+          "dependencies": ["T003"]
+        }
+      ]
+    },
+
+    {
+      "phase_id": 2,
+      "phase_name": "阶段二：用户故事 1 - 邮箱密码登录（优先级：P1）",
+      "description": "用户可通过邮箱和密码登录，验证成功后创建 Session 并跳转到主应用",
+      "priority": "P1",
+      "user_story": "用户访问应用时，可以通过输入邮箱和密码完成登录，进入主应用界面",
+      "tasks": [
+        {
+          "task_id": "T005",
+          "title": "实现 POST /api/auth/login 路由",
+          "file_path": "apps/server/src/routes/auth.js",
+          "type": "backend",
+          "parallel": true,
+          "status": "completed",
+          "description": "实现登录端点，包含 JSON Schema 验证、bcrypt 密码验证、Session 创建、lastLoginAt 更新",
+          "acceptance_criteria": [
+            "使用 JSON Schema 验证邮箱和密码格式",
+            "邮箱统一转为小写",
+            "使用 bcrypt.compare 验证密码",
+            "验证成功后更新 lastLoginAt",
+            "创建 Session (request.session.userId = user.id)",
+            "返回用户信息（不包含 passwordHash）",
+            "邮箱不存在或密码错误统一返回 401"
+          ],
+          "dependencies": ["T001", "T002", "T003", "T004"]
+        },
+        {
+          "task_id": "T006",
+          "title": "实现 POST /api/auth/logout 路由",
+          "file_path": "apps/server/src/routes/auth.js",
+          "type": "backend",
+          "parallel": true,
+          "status": "completed",
+          "description": "实现登出端点，销毁 Session 并返回 204",
+          "acceptance_criteria": [
+            "使用 preHandler: [requireAuth]",
+            "调用 request.session.destroy()",
+            "返回 204 No Content"
+          ],
+          "dependencies": ["T004"]
+        },
+        {
+          "task_id": "T007",
+          "title": "实现 GET /api/auth/me 路由",
+          "file_path": "apps/server/src/routes/auth.js",
+          "type": "backend",
+          "parallel": true,
+          "status": "completed",
+          "description": "实现获取当前用户信息端点",
+          "acceptance_criteria": [
+            "使用 preHandler: [requireAuth]",
+            "从 Session 获取 userId",
+            "查询用户信息并返回（不包含 passwordHash）",
+            "用户不存在时返回 401"
+          ],
+          "dependencies": ["T001", "T004"]
+        },
+        {
+          "task_id": "T008",
+          "title": "创建 AuthContext，使用 useReducer 管理登录状态",
+          "file_path": "apps/mobile/context/AuthContext.jsx",
+          "type": "frontend",
+          "parallel": false,
+          "status": "completed",
+          "description": "创建认证 Context，管理 user, isAuthenticated, isLoading 状态",
+          "acceptance_criteria": [
+            "定义 initialState: { user: null, isAuthenticated: false, isLoading: true }",
+            "实现 Reducer 处理 LOGIN_SUCCESS, LOGOUT, CHECK_AUTH_START, CHECK_AUTH_SUCCESS, CHECK_AUTH_FAILURE",
+            "导出 useAuth Hook",
+            "AuthProvider 包裹 children"
+          ],
+          "dependencies": []
+        },
+        {
+          "task_id": "T009",
+          "title": "创建 useCheckAuth Hook，应用启动时检测登录状态",
+          "file_path": "apps/mobile/hooks/use-check-auth.js",
+          "type": "frontend",
+          "parallel": false,
+          "status": "completed",
+          "description": "实现启动时调用 GET /api/auth/me 检测登录状态的 Hook",
+          "acceptance_criteria": [
+            "调用 GET /api/auth/me",
+            "成功时 dispatch CHECK_AUTH_SUCCESS",
+            "失败时 dispatch CHECK_AUTH_FAILURE",
+            "使用 useEffect 自动执行"
+          ],
+          "dependencies": ["T008"]
+        },
+        {
+          "task_id": "T010",
+          "title": "创建登录页面",
+          "file_path": "apps/mobile/app/(auth)/login.jsx",
+          "type": "frontend",
+          "parallel": false,
+          "status": "completed",
+          "description": "实现登录页面，包含邮箱密码输入框、前端校验、调用登录 API、跳转逻辑",
+          "acceptance_criteria": [
+            "邮箱输入框 (keyboardType='email-address')",
+            "密码输入框 (secureTextEntry={true})",
+            "前端校验：邮箱格式、密码非空",
+            "调用 POST /api/auth/login",
+            "成功后 dispatch LOGIN_SUCCESS 并 router.replace('/memo')",
+            "错误时显示错误提示",
+            "使用 StyleSheet.create 定义样式"
+          ],
+          "dependencies": ["T008"]
+        },
+        {
+          "task_id": "T011",
+          "title": "创建认证路由组布局",
+          "file_path": "apps/mobile/app/(auth)/_layout.jsx",
+          "type": "frontend",
+          "parallel": true,
+          "status": "completed",
+          "description": "创建认证路由组布局，使用 Stack 模式（无 Tab 导航）",
+          "acceptance_criteria": [
+            "使用 Stack 组件",
+            "screenOptions={{ headerShown: false }}",
+            "注册 login 和 register Screen"
+          ],
+          "dependencies": []
+        },
+        {
+          "task_id": "T012",
+          "title": "修改根布局，集成 AuthProvider、调用 useCheckAuth",
+          "file_path": "apps/mobile/app/_layout.jsx",
+          "type": "frontend",
+          "parallel": false,
+          "status": "completed",
+          "description": "在根布局中集成认证逻辑，根据登录状态控制路由重定向",
+          "acceptance_criteria": [
+            "包裹 <AuthProvider>",
+            "调用 useCheckAuth()",
+            "isLoading 时显示加载界面",
+            "未登录时重定向到 /login",
+            "已登录时显示主应用"
+          ],
+          "dependencies": ["T008", "T009"]
+        }
+      ]
+    },
+
+    {
+      "phase_id": 3,
+      "phase_name": "阶段三：用户故事 2 - 新用户注册（优先级：P2）",
+      "description": "新用户可注册账号并自动登录进入主应用",
+      "priority": "P2",
+      "user_story": "新用户可以通过输入邮箱、昵称、密码并勾选隐私协议完成账号注册，注册成功后自动登录",
+      "tasks": [
+        {
+          "task_id": "T013",
+          "title": "实现 POST /api/auth/register 路由",
+          "file_path": "apps/server/src/routes/auth.js",
+          "type": "backend",
+          "parallel": false,
+          "status": "completed",
+          "description": "实现注册端点，包含 JSON Schema 验证、邮箱唯一性校验、密码哈希、自动登录",
+          "acceptance_criteria": [
+            "JSON Schema 验证：email (format: email), password (8-20位，含字母数字), nickname (1-20字符), agreePrivacy (const: true)",
+            "邮箱统一转为小写",
+            "使用 bcrypt 哈希密码",
+            "插入 users 表",
+            "捕获 SQLITE_CONSTRAINT 错误，返回 409",
+            "成功后自动登录 (request.session.userId = newUser.id)",
+            "返回 201 和用户信息（不包含 passwordHash）"
+          ],
+          "dependencies": ["T001", "T002", "T003"]
+        },
+        {
+          "task_id": "T014",
+          "title": "创建注册页面",
+          "file_path": "apps/mobile/app/(auth)/register.jsx",
+          "type": "frontend",
+          "parallel": false,
+          "status": "completed",
+          "description": "实现注册页面，包含邮箱昵称密码输入框、隐私协议勾选框、前端校验、调用注册 API",
+          "acceptance_criteria": [
+            "邮箱输入框 (keyboardType='email-address')",
+            "昵称输入框 (maxLength=20)",
+            "密码输入框 (secureTextEntry={true})",
+            "隐私协议勾选框（未勾选时禁用按钮）",
+            "前端校验：邮箱格式、密码 8-20 位且含字母数字、昵称 1-20 字符",
+            "调用 POST /api/auth/register",
+            "成功后自动跳转到 /memo（无需再次登录）",
+            "错误时显示错误提示"
+          ],
+          "dependencies": ["T008"]
+        }
+      ]
+    },
+
+    {
+      "phase_id": 4,
+      "phase_name": "阶段四：用户故事 3 - 页面间跳转（优先级：P3）",
+      "description": "用户可在登录页和注册页之间自由切换",
+      "priority": "P3",
+      "user_story": "用户可以在登录页和注册页之间自由切换",
+      "tasks": [
+        {
+          "task_id": "T015",
+          "title": "在登录页添加"立即注册"链接",
+          "file_path": "apps/mobile/app/(auth)/login.jsx",
+          "type": "frontend",
+          "parallel": true,
+          "status": "completed",
+          "description": "添加跳转到注册页的链接",
+          "acceptance_criteria": [
+            "使用 <Link href='/register'>",
+            "显示"立即注册"文本",
+            "点击后跳转到注册页"
+          ],
+          "dependencies": ["T010"]
+        },
+        {
+          "task_id": "T016",
+          "title": "在注册页添加"返回登录"链接",
+          "file_path": "apps/mobile/app/(auth)/register.jsx",
+          "type": "frontend",
+          "parallel": true,
+          "status": "completed",
+          "description": "添加跳转到登录页的链接",
+          "acceptance_criteria": [
+            "使用 <Link href='/login'>",
+            "显示"返回登录"或"已有账号？立即登录"文本",
+            "点击后跳转到登录页"
+          ],
+          "dependencies": ["T014"]
+        }
+      ]
+    },
+
+    {
+      "phase_id": 5,
+      "phase_name": "阶段五：集成与配置",
+      "description": "完成后端插件注册、环境变量配置、数据库迁移",
+      "priority": "P0",
+      "tasks": [
+        {
+          "task_id": "T017",
+          "title": "在 Fastify 主文件中注册 sessionPlugin 和 authRoutes",
+          "file_path": "apps/server/src/index.js",
+          "type": "backend",
+          "parallel": false,
+          "status": "completed",
+          "description": "注册 session 插件和认证路由，确保正确加载顺序",
+          "acceptance_criteria": [
+            "先注册 sessionPlugin",
+            "再注册 authRoutes，prefix: '/api/auth'",
+            "全局错误处理器能正确处理认证错误"
+          ],
+          "dependencies": ["T003", "T005", "T006", "T007", "T013"]
+        },
+        {
+          "task_id": "T018",
+          "title": "修改 API Client，确保所有请求携带 credentials: 'include'",
+          "file_path": "apps/mobile/lib/api-client.js",
+          "type": "frontend",
+          "parallel": true,
+          "status": "completed",
+          "description": "确保所有 API 请求携带 Session Cookie",
+          "acceptance_criteria": [
+            "fetch 配置中添加 credentials: 'include'",
+            "Content-Type 设置为 application/json",
+            "正确处理 HTTP 错误响应"
+          ],
+          "dependencies": []
+        },
+        {
+          "task_id": "T019",
+          "title": "执行数据库迁移命令生成 users 表",
+          "file_path": null,
+          "type": "devops",
+          "parallel": true,
+          "status": "completed",
+          "description": "运行 Drizzle 迁移命令创建 users 表",
+          "acceptance_criteria": [
+            "执行 npm run db:generate",
+            "执行 npm run db:migrate",
+            "users 表在数据库中成功创建",
+            "email 字段有唯一索引"
+          ],
+          "dependencies": ["T001"],
+          "commands": [
+            "cd apps/server",
+            "npm run db:generate",
+            "npm run db:migrate"
+          ]
+        },
+        {
+          "task_id": "T020",
+          "title": "在 .env 中添加 SESSION_SECRET 环境变量",
+          "file_path": ".env",
+          "type": "devops",
+          "parallel": true,
+          "status": "completed",
+          "description": "生成并配置 Session 密钥",
+          "acceptance_criteria": [
+            "SESSION_SECRET 至少 32 字符",
+            "使用 crypto.randomBytes(32).toString('hex') 生成",
+            "添加到根目录 .env 文件"
+          ],
+          "dependencies": [],
+          "example": "SESSION_SECRET=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6"
+        }
+      ]
+    }
+  ],
+
+  "dependency_graph": {
+    "阶段一（T001-T004）": "必须全部完成才能开始阶段二和阶段三",
+    "阶段二（T005-T012）和阶段三（T013-T014）": "可并行开发",
+    "阶段四（T015-T016）": "依赖阶段二和阶段三的页面文件",
+    "阶段五（T017-T020）": "依赖所有前序阶段，作为最终验证"
+  },
+
+  "security_checklist": [
+    {
+      "item": "密码必须使用 bcrypt 哈希存储 (salt rounds = 10)",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/lib/password.js"
+    },
+    {
+      "item": "Session Cookie 必须设置 httpOnly: true",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/plugins/session.js"
+    },
+    {
+      "item": "Session Cookie 必须设置 sameSite: 'strict'",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/plugins/session.js"
+    },
+    {
+      "item": "生产环境 Session Cookie 必须设置 secure: true",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/plugins/session.js"
+    },
+    {
+      "item": "邮箱必须统一转为小写存储",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/routes/auth.js"
+    },
+    {
+      "item": "使用 Drizzle ORM 参数化查询，禁止 SQL 字符串拼接",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/routes/auth.js"
+    },
+    {
+      "item": "登录失败不暴露"邮箱不存在"，统一提示"邮箱或密码错误"",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/routes/auth.js"
+    },
+    {
+      "item": "返回用户信息时必须排除 passwordHash 字段",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/routes/auth.js"
+    },
+    {
+      "item": "前后端都必须校验邮箱格式、密码强度、昵称长度",
+      "status": "✅ 已实现",
+      "files": ["apps/server/src/routes/auth.js", "apps/mobile/app/(auth)/login.jsx", "apps/mobile/app/(auth)/register.jsx"]
+    },
+    {
+      "item": "SESSION_SECRET 必须从环境变量读取，禁止硬编码",
+      "status": "✅ 已实现",
+      "file": "apps/server/src/plugins/session.js"
+    }
+  ],
+
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "auth_required": false,
+      "file": "apps/server/src/routes/auth.js",
+      "description": "用户注册",
+      "request_body": {
+        "email": "string (email format)",
+        "password": "string (8-20 chars, letters + numbers)",
+        "nickname": "string (1-20 chars)",
+        "agreePrivacy": "boolean (must be true)"
+      },
+      "success_response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "id": "uuid",
+            "email": "user@example.com",
+            "nickname": "小明",
+            "createdAt": "2026-03-04T08:30:00.000Z"
+          },
+          "message": "注册成功"
+        }
+      },
+      "error_responses": [
+        {
+          "status": 400,
+          "error": "VALIDATION_ERROR",
+          "message": "请求参数不合法"
+        },
+        {
+          "status": 409,
+          "error": "EMAIL_EXISTS",
+          "message": "该邮箱已注册,请直接登录"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "auth_required": false,
+      "file": "apps/server/src/routes/auth.js",
+      "description": "用户登录",
+      "request_body": {
+        "email": "string (email format)",
+        "password": "string"
+      },
+      "success_response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": "uuid",
+            "email": "user@example.com",
+            "nickname": "小明",
+            "lastLoginAt": "2026-03-04T09:15:00.000Z"
+          },
+          "message": "登录成功"
+        }
+      },
+      "error_responses": [
+        {
+          "status": 400,
+          "error": "VALIDATION_ERROR",
+          "message": "请求参数不合法"
+        },
+        {
+          "status": 401,
+          "error": "INVALID_CREDENTIALS",
+          "message": "邮箱或密码错误"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "auth_required": true,
+      "file": "apps/server/src/routes/auth.js",
+      "description": "用户登出",
+      "request_body": null,
+      "success_response": {
+        "status": 204,
+        "body": null
+      },
+      "error_responses": [
+        {
+          "status": 401,
+          "error": "Unauthorized",
+          "message": "请先登录"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "auth_required": true,
+      "file": "apps/server/src/routes/auth.js",
+      "description": "获取当前用户信息",
+      "request_body": null,
+      "success_response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "id": "uuid",
+            "email": "user@example.com",
+            "nickname": "小明",
+            "createdAt": "2026-03-04T08:30:00.000Z",
+            "lastLoginAt": "2026-03-04T09:15:00.000Z"
+          },
+          "message": "ok"
+        }
+      },
+      "error_responses": [
+        {
+          "status": 401,
+          "error": "Unauthorized",
+          "message": "请先登录"
+        }
+      ]
+    }
+  ],
+
+  "files_modified": {
+    "backend": [
+      {
+        "file": "apps/server/src/db/schema.js",
+        "change_type": "新增",
+        "description": "新增 users 表定义"
+      },
+      {
+        "file": "apps/server/src/routes/auth.js",
+        "change_type": "新增",
+        "description": "新增认证路由（register, login, logout, me）"
+      },
+      {
+        "file": "apps/server/src/plugins/session.js",
+        "change_type": "新增",
+        "description": "新增 Fastify session 插件配置"
+      },
+      {
+        "file": "apps/server/src/plugins/auth.js",
+        "change_type": "新增",
+        "description": "新增 requireAuth preHandler"
+      },
+      {
+        "file": "apps/server/src/lib/password.js",
+        "change_type": "新增",
+        "description": "新增密码工具函数（bcrypt 封装）"
+      },
+      {
+        "file": "apps/server/src/index.js",
+        "change_type": "修改",
+        "description": "注册 sessionPlugin 和 authRoutes"
+      }
+    ],
+    "frontend": [
+      {
+        "file": "apps/mobile/app/(auth)/_layout.jsx",
+        "change_type": "新增",
+        "description": "认证路由组布局（Stack 模式）"
+      },
+      {
+        "file": "apps/mobile/app/(auth)/login.jsx",
+        "change_type": "新增",
+        "description": "登录页"
+      },
+      {
+        "file": "apps/mobile/app/(auth)/register.jsx",
+        "change_type": "新增",
+        "description": "注册页"
+      },
+      {
+        "file": "apps/mobile/context/AuthContext.jsx",
+        "change_type": "新增",
+        "description": "认证状态管理 Context"
+      },
+      {
+        "file": "apps/mobile/hooks/use-check-auth.js",
+        "change_type": "新增",
+        "description": "登录状态检测 Hook"
+      },
+      {
+        "file": "apps/mobile/app/_layout.jsx",
+        "change_type": "修改",
+        "description": "集成 AuthProvider + useCheckAuth + 路由重定向"
+      },
+      {
+        "file": "apps/mobile/lib/api-client.js",
+        "change_type": "修改",
+        "description": "确保 credentials: 'include'"
+      }
+    ],
+    "config": [
+      {
+        "file": ".env",
+        "change_type": "修改",
+        "description": "新增 SESSION_SECRET 环境变量"
+      }
+    ]
+  },
+
+  "testing_strategy": {
+    "unit_tests": [
+      "密码哈希和验证函数（lib/password.js）",
+      "AuthContext reducer 状态转换"
+    ],
+    "integration_tests": [
+      "POST /api/auth/register - 成功注册",
+      "POST /api/auth/register - 邮箱重复",
+      "POST /api/auth/login - 成功登录",
+      "POST /api/auth/login - 邮箱不存在",
+      "POST /api/auth/login - 密码错误",
+      "GET /api/auth/me - 已登录",
+      "GET /api/auth/me - 未登录",
+      "POST /api/auth/logout - 登出"
+    ],
+    "e2e_tests": [
+      "新用户注册流程（输入 → 提交 → 自动登录 → 跳转）",
+      "已有用户登录流程（输入 → 提交 → 跳转）",
+      "自动登录流程（Session 未过期时直接进入主应用）",
+      "登录页和注册页之间跳转"
+    ]
+  },
+
+  "deployment_checklist": [
+    {
+      "step": "安装依赖",
+      "commands": [
+        "npm install"
+      ],
+      "status": "✅"
+    },
+    {
+      "step": "配置环境变量",
+      "commands": [
+        "echo 'SESSION_SECRET=$(openssl rand -hex 32)' >> .env"
+      ],
+      "status": "✅"
+    },
+    {
+      "step": "执行数据库迁移",
+      "commands": [
+        "cd apps/server",
+        "npm run db:generate",
+        "npm run db:migrate"
+      ],
+      "status": "✅"
+    },
+    {
+      "step": "启动后端服务",
+      "commands": [
+        "npm run dev -w apps/server"
+      ],
+      "status": "✅"
+    },
+    {
+      "step": "启动前端应用",
+      "commands": [
+        "npm run dev -w apps/mobile"
+      ],
+      "status": "✅"
+    },
+    {
+      "step": "验证功能",
+      "tasks": [
+        "访问 /register 页面，注册新用户",
+        "验证自动登录并跳转到 /memo",
+        "登出后访问 /login 页面",
+        "使用刚注册的账号登录",
+        "关闭应用后重新打开，验证自动登录"
+      ],
+      "status": "✅"
+    }
+  ],
+
+  "known_limitations": [
+    "无邮箱验证（注册时不发送验证邮件）",
+    "无找回密码功能",
+    "不支持第三方登录（Google / Apple）",
+    "用户表不包含头像字段",
+    "不限制同一账号的并发登录设备数量",
+    "不记录登录 IP、设备信息",
+    "无账号注销功能",
+    "无密码强度提示（仅格式校验）",
+    "无 CAPTCHA 验证码"
+  ],
+
+  "future_enhancements": [
+    "邮箱验证（发送验证邮件）",
+    "找回密码功能",
+    "第三方登录（Google / Apple Sign-In）",
+    "用户头像上传",
+    "多设备登录管理",
+    "登录日志（IP、设备、时间）",
+    "账号注销（软删除）",
+    "密码强度实时提示",
+    "图形验证码 / 滑块验证"
+  ]
+}
