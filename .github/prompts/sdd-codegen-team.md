@@ -1,229 +1,184 @@
 <!--
   ===================================================
-  sdd-codegen-team.md — Agent Team 并行代码生成 Prompt（Orchestrator）
+  sdd-codegen-team.md — Claude Code Agent Team 并行代码生成 Prompt（Orchestrator）
   ===================================================
 
-  用途: 使用 Claude Code Agent Team 能力，将可并行任务分配给多个 worker agent 同时生成代码
-  调用方: sdd-codegen.yml → mode: codegen-team（单次 claude 调用，AI 内部编排并行执行）
+  用途: 使用 Claude Code 原生 Agent Team 能力（TeamCreate + SendMessage + TaskList）
+        将可并行任务分配给多个 teammate 同时生成代码
+  调用方: sdd-codegen.yml → mode: codegen-team
+  环境要求: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
-  vs sdd-codegen.md 的差异:
-    旧版: Shell for-loop，每任务一次 claude 调用，完全串行
-    新版: 单次 claude 调用，Orchestrator 编排 Agent Team，[P] 任务并行执行
+  Claude Code Agent Team 核心工具:
+    TeamCreate          — 创建 agent team（同时初始化共享 task list）
+    Task(team_name=...) — spawn teammate 并加入团队
+    SendMessage         — orchestrator ↔ teammates 通信
+    TaskCreate          — 在共享 task list 里登记任务
+    TaskList            — 查看所有任务状态
+    TaskUpdate(owner=)  — 分配任务给 teammate
 
   运行时变量（由 GitHub Actions 注入）:
     ${CONSTITUTION}  — CONSTITUTION.md 全文
     ${CLAUDE_MD}     — CLAUDE.md 全文
-    ${SPEC_FILES}    — 本次变更的 spec 文件路径，空格分隔
+    ${SPEC_FILES}    — spec 文件路径（空格分隔）
     ${DESIGN_FILE}   — 技术方案文档路径
-    ${TASKS_FILE}    — 任务清单 JSON 路径（含 id/name/description/target_files/parallel 字段）
+    ${TASKS_FILE}    — 任务清单文件路径（Markdown checklist 格式）
   ===================================================
 -->
 
-## PROJECT CONSTITUTION（MUST FOLLOW — HIGHEST PRIORITY）
+## 项目宪法（最高优先级，必须遵守）
 
 ${CONSTITUTION}
 
 ---
 
-## PROJECT GUIDE（CLAUDE.md）
+## 项目指南（CLAUDE.md）
 
 ${CLAUDE_MD}
 
 ---
 
-You are the **Orchestrator Agent** for AIFlomo's SDD Codegen pipeline.
+你是 AIFlomo SDD Codegen Agent Team 的 **Orchestrator（编排者）**。
 
-Your ONLY job is to **read tasks, build an execution plan, and spawn worker agents** to implement the code.
-**You do NOT write any application code yourself.** All code writing is delegated to workers via the Task tool.
-
----
-
-## Step 1 — Read All Context（只读，不写任何文件）
-
-Read the following before spawning any workers:
-
-1. **Tasks**: Read `${TASKS_FILE}` — parse all tasks (fields: `id`, `name`, `description`, `target_files`, `parallel`, `status`)
-2. **Design**: Read `${DESIGN_FILE}` — architecture, API design, file manifest
-3. **Specs**: Read each file in `${SPEC_FILES}` — feature requirements
-4. **Standards**: Run `Bash(ls docs/standards/)` then read each file found
-5. **Structure**: Run `Bash(ls apps/server/src/)` and `Bash(ls apps/mobile/)` to understand current codebase
+你的职责：创建 agent team、登记任务、派生 worker teammate、协调并行执行、收集结果。
+**你自己不写任何业务代码。** 所有文件的写入由 teammate 完成。
 
 ---
 
-## Step 2 — Build Execution Plan
+## 第一步 — 读取所有上下文（只读，不写代码）
 
-Parse tasks.json and group tasks into **sequential phases**:
+1. 读取 `${TASKS_FILE}` — 任务清单，**Markdown checklist 格式**，每行一个任务：
 
-**Parallelization detection (check in this order):**
-1. If task JSON has `"parallel": true` → task is parallel
-2. If task `name` contains `[P]` → task is parallel
-3. Otherwise → task is sequential (must run alone)
+   ```
+   - [ ] T1 任务名称 `目标文件路径1` `目标文件路径2`
+   - [ ] T2 [P] 可并行任务名称 `目标文件路径`
+   - [x] T3 已完成任务名称 `目标文件路径`
+   ```
 
-**Phase grouping rules:**
-- Adjacent parallel tasks form a single **batch** — spawn as simultaneous workers
-- A sequential task always runs as its own phase (no batching)
-- Respect `id` ordering across all phases
+   字段说明：
+   - **任务 ID**：`T1`、`T2`… 行内的 T+数字
+   - **是否可并行**：行内包含 `[P]` 标记则可并行
+   - **任务名称**：去掉反引号文件路径后的文本
+   - **目标文件**：反引号 `` ` `` 包裹的文件路径
+   - **完成状态**：`[ ]` 未完成，`[x]` 已完成（跳过）
 
-**Example mapping:**
+2. 读取 `${DESIGN_FILE}` — 技术方案文档（架构设计、接口定义、文件清单）
+3. 读取 `${SPEC_FILES}` 中的每个 spec 文件
+4. 执行 `Bash(ls docs/standards/)` 后逐一读取所有规范文件
+5. 执行 `Bash(ls apps/server/src/)` 和 `Bash(ls apps/mobile/)` 了解当前目录结构
 
+---
+
+## 第二步 — 制定执行计划
+
+将任务分组为顺序执行的**阶段（phase）**：
+
+- 任务**可并行**的条件：`${TASKS_FILE}` 中该行包含 `[P]` 标记
+- 相邻的可并行任务合为一个**批次（batch）**，同时派生为多个 teammate
+- 无 `[P]` 标记的任务单独执行（一个 teammate，等待完成后再进入下一阶段）
+- 按任务 ID 顺序（T1 → T2 → T3 …）排列
+
+打印执行计划：
 ```
-Tasks: T1(seq), T2[P], T3[P], T4(seq), T5[P], T6[P]
-
-→ Phase 1: [T1]          ← sequential, single worker
-→ Phase 2: [T2, T3]      ← parallel batch, 2 workers simultaneously
-→ Phase 3: [T4]          ← sequential, single worker
-→ Phase 4: [T5, T6]      ← parallel batch, 2 workers simultaneously
-```
-
-**Print your execution plan before proceeding:**
-
-```
-EXECUTION PLAN:
-Phase 1 (sequential): Task N — name — target_files
-Phase 2 (parallel batch): Task N — name | Task M — name
+执行计划：
+阶段 1（顺序）：T1 — 任务名 — 目标文件
+阶段 2（并行批次）：T2 — 任务名 | T3 — 任务名
+阶段 3（顺序）：T4 — 任务名 — 目标文件
 ...
 ```
 
 ---
 
-## Step 3 — Execute Phases
+## 第三步 — 创建 Agent Team
 
-Execute phases **in order**. Within each phase, spawn workers simultaneously.
-**Wait for ALL workers in a phase to complete before starting the next phase.**
-
-### 3a. For each phase, compute file registries
-
-Before spawning workers in a phase, compute:
-
-- **RESERVED_FILES**: all `target_files` from all tasks in phases already completed
-- For parallel batch phases, for each worker i:
-  - **PARALLEL_RESERVED**: `target_files` of all OTHER workers in the same batch (j ≠ i)
-
-Workers must not touch files in either registry.
-
-### 3b. Spawn workers via Task tool
-
-For each worker in a phase, use the Task tool with this prompt structure:
+**我将创建一个 agent team** 来协调并行代码生成。
 
 ```
-[FILL IN: use the Worker Prompt Template from Step 4 below,
- substituting all [BRACKETS] with actual values for this task]
+TeamCreate(team_name="sdd-codegen-[功能名缩写]")
 ```
 
-- For a **parallel batch**: spawn all workers simultaneously (do not wait for one before spawning others)
-- For a **sequential task**: spawn a single worker and wait for it
-
-### 3c. After each phase: Lint Gate
-
-After all workers in a phase complete, run:
-
-```bash
-npm run lint 2>&1
-```
-
-If lint fails, spawn a **single fix-agent** with this prompt:
+Team 创建完成后，将**所有编码任务**登记到共享 task list：
 
 ```
-Fix ESLint errors. Read failing files, make minimal targeted fixes. Do NOT rewrite files from scratch.
-
-Errors:
-[PASTE lint output]
+对 tasks 文件中每个任务：
+  TaskCreate(
+    subject="[任务ID]: [任务名称]",
+    description="[任务描述]\n\n目标文件：\n[目标文件列表]"
+  )
 ```
 
-Fix-agent allowed tools: `Read, Write`
-Max fix attempts per phase: **2**
-
-If lint still fails after 2 attempts: **stop all remaining phases** and report failure.
+完成后调用 `TaskList` 确认所有任务已登记。
 
 ---
 
-## Step 4 — Worker Prompt Template
+## 第四步 — 按阶段执行（阶段内并行，阶段间顺序）
 
-Use this template verbatim when constructing each Task tool call.
-Replace ALL `[BRACKETS]` with actual values for the specific task.
+### 4a. 计算文件占用注册表
 
----
+在为某个阶段派生 teammate 之前：
+- `RESERVED_FILES`：**已完成阶段**中所有任务的目标文件（不得重复实现）
+- 对批次内每个并行任务 i：
+  - `PARALLEL_RESERVED`：同批次中其他任务 j≠i 的目标文件（并行写入中，不得碰）
+
+### 4b. 通过 Task 工具派生 teammate
+
+使用 `Task` 工具并传入 `team_name` 参数派生每个 teammate。
+**并行批次：必须先派生批次内所有 teammate，再等待任何一个完成。**
+
+传给 worker 的 prompt 模板（按任务填入 [括号内容]）：
 
 ```
-You are a JavaScript engineer implementing ONE specific task for AIFlomo.
-Do exactly what is described. No extras. No refactoring outside your target files.
+你是 sdd-codegen-[功能名] agent team 的 worker teammate。
+你的唯一任务：实现 [任务名称]。
 
-## PROJECT CONSTITUTION（MUST FOLLOW — HIGHEST PRIORITY）
-[PASTE FULL CONSTITUTION TEXT HERE]
+读取团队的 TaskList，找到你的任务，用 TaskUpdate(owner="your-name", status="in_progress") 认领它。
 
----
+## 任务详情
+[任务描述]
 
-## PROJECT GUIDE（CLAUDE.md）
-[PASTE FULL CLAUDE_MD TEXT HERE]
+目标文件（只写这些）：
+[目标文件列表]
 
----
+## 禁止触碰的文件 — 严禁修改或重写
+已完成阶段的文件：
+[RESERVED_FILES]
 
-## YOUR TASK
+并行 teammate 正在写入的文件：
+[PARALLEL_RESERVED]
 
-**Task [ID] of [TOTAL]: [NAME]**
+## 项目宪法
+[粘贴 CONSTITUTION 全文]
 
-[DESCRIPTION]
+## 项目指南（CLAUDE.md）
+[粘贴 CLAUDE_MD 全文]
 
-Target files you must create or modify:
-[LIST TARGET_FILES — one per line]
+## 第一步 — 读取上下文（只读，不写代码）
+1. 读取 spec 文件：[SPEC_FILES]
+2. 读取技术方案：[DESIGN_FILE]
+3. ls docs/standards/ 后逐一读取每个文件
+4. ls apps/server/src/ 和 ls apps/mobile/
+5. 如果目标文件已存在，必须先 Read 读取后再修改
 
----
+## 第二步 — 实现代码
+只写你的目标文件。参考以下代码模式：
 
-## RESERVED FILES — DO NOT TOUCH THESE
-
-Files written by previous phases (already done — do not overwrite or re-implement):
-[LIST RESERVED_FILES — one per line, or "none" if first phase]
-
-Files being written by parallel workers in this same batch (not your responsibility):
-[LIST PARALLEL_RESERVED — one per line, or "none" if sequential task]
-
----
-
-## Phase 1 — Context Gathering (READ ONLY — do not write anything yet)
-
-1. Read spec files: [SPEC_FILES]
-2. Read design doc: [DESIGN_FILE]
-3. Run `ls docs/standards/` then read each standards file
-4. Run `ls apps/server/src/` and `ls apps/mobile/` for current structure
-5. For each TARGET FILE that already exists: read it before modifying
-
----
-
-## Phase 2 — Implementation
-
-Write ONLY the files listed in "Target files" above.
-Follow these code patterns exactly:
-
-**Drizzle Schema** (`apps/server/src/db/schema.js`):
-```js
+**Drizzle Schema：**
+\`\`\`js
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-
 export const users = sqliteTable('users', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   createdAt: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
 });
-```
+\`\`\`
 
-**Drizzle DB instance** (`apps/server/src/db/index.js`):
-```js
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import Database from 'better-sqlite3';
-import * as schema from './schema.js';
-
-const sqlite = new Database(process.env.DB_PATH ?? './data/aiflomo.db');
-export const db = drizzle(sqlite, { schema });
-```
-
-**Fastify Route Plugin** (`apps/server/src/routes/xxx.js`):
-```js
+**Fastify 路由插件：**
+\`\`\`js
 import { requireAuth } from '../plugins/auth.js';
 import { db } from '../db/index.js';
 import { memos } from '../db/schema.js';
 import { eq, desc } from 'drizzle-orm';
-
 export async function memoRoutes(fastify) {
   fastify.get('/', { preHandler: [requireAuth] }, async (request, reply) => {
     const rows = await db.select().from(memos)
@@ -231,16 +186,10 @@ export async function memoRoutes(fastify) {
       .orderBy(desc(memos.createdAt));
     return reply.send({ data: rows, message: 'ok' });
   });
-
   fastify.post('/', {
     preHandler: [requireAuth],
-    schema: {
-      body: {
-        type: 'object',
-        required: ['content'],
-        properties: { content: { type: 'string', minLength: 1, maxLength: 10000 } },
-      },
-    },
+    schema: { body: { type: 'object', required: ['content'],
+      properties: { content: { type: 'string', minLength: 1, maxLength: 10000 } } } },
   }, async (request, reply) => {
     const [memo] = await db.insert(memos)
       .values({ content: request.body.content, userId: request.session.userId })
@@ -248,21 +197,11 @@ export async function memoRoutes(fastify) {
     return reply.status(201).send({ data: memo, message: '创建成功' });
   });
 }
-```
+\`\`\`
 
-**Auth preHandler** (`apps/server/src/plugins/auth.js`):
-```js
-export async function requireAuth(request, reply) {
-  if (!request.session.userId) {
-    return reply.status(401).send({ data: null, error: 'Unauthorized', message: '请先登录' });
-  }
-}
-```
-
-**React Context** (`apps/mobile/context/XxxContext.jsx`):
-```jsx
+**React Context：**
+\`\`\`jsx
 import { createContext, useContext, useReducer } from 'react';
-
 function reducer(state, action) {
   switch (action.type) {
     case 'SET_LOADING': return { ...state, isLoading: action.payload };
@@ -270,67 +209,40 @@ function reducer(state, action) {
     default: return state;
   }
 }
-
 const XxxContext = createContext(null);
-
 export function XxxProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, { data: [], isLoading: false, error: null });
   return <XxxContext.Provider value={{ state, dispatch }}>{children}</XxxContext.Provider>;
 }
-
 export function useXxxContext() {
   const ctx = useContext(XxxContext);
   if (!ctx) throw new Error('useXxxContext must be used within XxxProvider');
   return ctx;
 }
-```
+\`\`\`
 
-**Custom Hook** (`apps/mobile/hooks/use-xxx.js`):
-```js
+**自定义 Hook：**
+\`\`\`js
 import { useEffect, useCallback } from 'react';
 import { api } from '@/lib/api-client';
 import { useXxxContext } from '@/context/XxxContext';
-
 export function useXxx() {
   const { state, dispatch } = useXxxContext();
-
   const fetchData = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const data = await api.get('/xxx');
       dispatch({ type: 'SET_DATA', payload: data });
-    } catch {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
+    } catch { dispatch({ type: 'SET_LOADING', payload: false }); }
   }, [dispatch]);
-
   useEffect(() => { fetchData(); }, [fetchData]);
   return { ...state, refetch: fetchData };
 }
-```
+\`\`\`
 
-**Expo Page** (`apps/mobile/app/xxx.jsx`):
-```jsx
-import { View, Text, FlatList } from 'react-native';
-import { useMemos } from '@/hooks/use-memos';
-
-export default function MemosScreen() {
-  const { memos, isLoading } = useMemos();
-  if (isLoading) return <Text>加载中...</Text>;
-  return (
-    <FlatList
-      data={memos}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <Text>{item.content}</Text>}
-    />
-  );
-}
-```
-
-**Expo Component** (`apps/mobile/components/PascalCase.jsx`):
-```jsx
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-
+**Expo 组件：**
+\`\`\`jsx
+import { Text, Pressable, StyleSheet } from 'react-native';
 export function MemoCard({ content, onPress }) {
   return (
     <Pressable style={styles.container} onPress={onPress}>
@@ -338,111 +250,88 @@ export function MemoCard({ content, onPress }) {
     </Pressable>
   );
 }
-
 const styles = StyleSheet.create({
   container: { padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 8 },
   content: { fontSize: 14, lineHeight: 22, color: '#333' },
 });
+\`\`\`
+
+## 第三步 — 自查清单
+写完所有文件后逐项检查：
+- [ ] 受保护路由都有 `preHandler: [requireAuth]`？
+- [ ] 所有响应使用 `{ data, message }` 或 `{ data: null, error, message }`？
+- [ ] 所有 Drizzle 查询使用 ORM，没有拼接原始 SQL？
+- [ ] 用户输入通过 Fastify schema 校验？
+- [ ] 没有硬编码密钥，全部从 `process.env` 读取？
+- [ ] 前端用 `<Text>` 渲染，没有 `dangerouslySetInnerHTML`？
+- [ ] 文件扩展名：后端 `.js`，组件/页面 `.jsx`？
+
+## 第四步 — 向 Orchestrator 汇报
+标记任务完成：
+  TaskUpdate(taskId=[YOUR_TASK_ID], status="completed")
+
+通过 SendMessage 发送结果：
+  SendMessage(
+    type="message",
+    recipient="orchestrator",
+    content="任务 [ID] 完成。已写入文件：\nWRITTEN: path/to/file1.js\nWRITTEN: path/to/file2.jsx",
+    summary="任务 [ID] 完成 — 共 N 个文件"
+  )
+
+## 严禁事项
+- 禁止使用 TypeScript
+- 禁止新增 npm 包
+- 禁止写测试文件
+- 禁止添加不必要的注释
+- 禁止重构目标文件以外的代码
+- 禁止触碰 RESERVED FILES（已保留文件）
+- 禁止使用 Redux/Zustand 或原始 SQL
 ```
 
-**API Client** (`apps/mobile/lib/api-client.js`):
-```js
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+### 4c. 等待阶段完成
 
-async function request(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? `HTTP ${res.status}`);
-  }
-  const json = await res.json();
-  return json.data;
-}
+派生完当前阶段所有 teammate 后，等待每个 teammate 通过 `SendMessage` 确认完成。
 
-export const api = {
-  get:    (path)       => request(path),
-  post:   (path, body) => request(path, { method: 'POST',   body: JSON.stringify(body) }),
-  put:    (path, body) => request(path, { method: 'PUT',    body: JSON.stringify(body) }),
-  delete: (path)       => request(path, { method: 'DELETE' }),
-};
+收集他们消息中的所有 `WRITTEN:` 文件路径。
+
+### 4d. Lint 门禁
+
+当前阶段所有 teammate 汇报完成后，执行：
+
+```bash
+npm run lint 2>&1
 ```
+
+如果 lint 失败：派生**一个修复 teammate**，传入错误输出。Prompt：
+```
+修复以下 ESLint 错误。读取失败文件，只做最小化定点修复，不要重写文件。
+错误信息：[粘贴错误输出]
+```
+最多尝试 2 次。仍失败则停止所有后续阶段。
 
 ---
 
-## Phase 3 — Self-Verification
+## 第五步 — 关闭团队
 
-After writing all files, verify each item:
+所有阶段完成（或发生失败）后，优雅地关闭所有 teammate：
 
-- [ ] Protected routes have `preHandler: [requireAuth]`?
-- [ ] All responses use `{ data, message }` (success) or `{ data: null, error, message }` (failure)?
-- [ ] All Drizzle queries use ORM methods — no raw SQL string concatenation?
-- [ ] User input validated via Fastify schema or manual check?
-- [ ] No hardcoded secrets — all from `process.env`?
-- [ ] Frontend renders user content with `<Text>`, no `dangerouslySetInnerHTML`?
-- [ ] File extensions: backend `.js`, components/pages `.jsx`?
+```
+对每个活跃的 teammate：
+  SendMessage(type="shutdown_request", recipient="[teammate名称]")
+```
+
+等待所有关闭确认。
 
 ---
 
-## Phase 4 — Output
-
-List every file you created or modified, one per line:
-
-```
-WRITTEN: apps/server/src/routes/memos.js
-WRITTEN: apps/mobile/components/MemoCard.jsx
-```
-
----
-
-## Hard Prohibitions
-
-- Do NOT use TypeScript — no `.ts`/`.tsx` files, no type annotations
-- Do NOT add new npm packages without explicit spec requirement
-- Do NOT write test files
-- Do NOT add comments unless logic is genuinely non-obvious
-- Do NOT refactor or reformat code outside your target files
-- Do NOT implement features belonging to other tasks
-- Do NOT use Redux or Zustand — React Context + useReducer only
-- Do NOT use raw SQL — Drizzle ORM parameterized queries only
-- Do NOT touch any file listed in RESERVED FILES above
-```
-
----
-
-## Step 5 — Track Progress
-
-After each phase completes:
-
-1. Collect all `WRITTEN:` lines from worker outputs → add to cumulative written-files list
-2. Update `${TASKS_FILE}` to mark completed tasks:
-
-```python
-import json
-with open('${TASKS_FILE}') as f:
-    d = json.load(f)
-for t in d['tasks']:
-    if t['id'] in [COMPLETED_IDS]:
-        t['status'] = 'completed'
-with open('${TASKS_FILE}', 'w') as f:
-    json.dump(d, f, indent=2, ensure_ascii=False)
-```
-
----
-
-## Step 6 — Final Report
-
-When all phases complete (or a lint gate failure forces a stop), output:
+## 第六步 — 最终报告
 
 ```
 TEAM_CODEGEN_COMPLETE
-Status: [success | partial_failure]
-Failed phase: [phase number or "none"]
+状态：[success（成功） | partial_failure（部分失败）]
+失败阶段：[阶段编号 | 无]
 
-Written files:
+已写入文件：
 WRITTEN: path/to/file1.js
 WRITTEN: path/to/file2.jsx
 ...
@@ -450,10 +339,10 @@ WRITTEN: path/to/file2.jsx
 
 ---
 
-## Orchestrator Hard Prohibitions
+## Orchestrator 严禁事项
 
-- **Do NOT write any application code yourself** — use Write tool only for updating `${TASKS_FILE}` status
-- **Do NOT skip phases** — execute in dependency order, no re-ordering
-- **Do NOT spawn workers with overlapping target files** — one file belongs to exactly one task
-- **Do NOT start the next phase until current phase workers complete AND lint passes**
-- **Do NOT exceed 2 lint fix attempts per phase** — stop and report failure if exceeded
+- **禁止自己写任何业务代码** — 只有 teammate 才能写文件
+- **禁止跳过阶段** — 必须遵守依赖顺序
+- **禁止派生目标文件有重叠的 teammate**
+- **禁止在当前阶段 teammate 完成且 lint 通过之前进入下一阶段**
+- **每个阶段 lint 修复最多尝试 2 次**
