@@ -1,0 +1,283 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-registration"
+  generateReport: true
+
+tasks:
+  # 正常场景
+  - name: "有效信息+勾选协议,注册成功"
+    continueOnError: true
+    flow:
+      - ai: "访问注册页面"
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "张三"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "显示注册成功提示,页面跳转到登录页面或主页面"
+        timeout: 5000
+      - aiAssert: "注册成功,用户可以看到成功提示"
+        errorMessage: "注册后未显示成功提示或未跳转"
+
+  - name: "邮箱包含大写字母,统一转小写存储"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "User@Example.com"
+      - aiInput: "找到昵称输入框"
+        value: "测试用户"
+      - aiInput: "找到密码输入框"
+        value: "Secure123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "显示注册成功提示"
+        timeout: 5000
+      - aiAssert: "注册成功,后续可以使用大小写混合的邮箱登录"
+        errorMessage: "邮箱大小写处理有误,注册失败"
+
+  - name: "密码为6位边界值,注册成功"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test6@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "边界测试"
+      - aiInput: "找到密码输入框"
+        value: "123456"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "显示注册成功提示"
+        timeout: 5000
+      - aiAssert: "密码符合最小长度要求,注册成功"
+        errorMessage: "6位密码应该可以注册,但失败了"
+
+  - name: "密码为128位边界值,注册成功"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test128@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "长密码测试"
+      - aiInput: "找到密码输入框"
+        value: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "显示注册成功提示"
+        timeout: 5000
+      - aiAssert: "密码符合最大长度要求,注册成功"
+        errorMessage: "128位密码应该可以注册,但失败了"
+
+  - name: "昵称为1个字符边界值,注册成功"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test1@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "张"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "显示注册成功提示"
+        timeout: 5000
+      - aiAssert: "昵称符合最小长度要求,注册成功"
+        errorMessage: "1个字符的昵称应该可以注册,但失败了"
+
+  - name: "昵称为50个字符边界值,注册成功"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test50@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "这是一个非常非常非常非常非常非常非常非常非常非常长的昵称用来测试边界值1234567890"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "显示注册成功提示"
+        timeout: 5000
+      - aiAssert: "昵称符合最大长度要求,注册成功"
+        errorMessage: "50个字符的昵称应该可以注册,但失败了"
+
+  # 异常场景
+  - name: "邮箱格式不正确(缺少@),返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "invalid-email"
+      - aiInput: "找到昵称输入框"
+        value: "测试"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'请输入有效的邮箱地址'错误提示,未发起后端请求"
+        errorMessage: "无效邮箱应被前端拦截并提示,但未拦截"
+
+  - name: "邮箱格式不正确(缺少域名),返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@"
+      - aiInput: "找到昵称输入框"
+        value: "测试"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'请输入有效的邮箱地址'错误提示,未发起后端请求"
+        errorMessage: "无效邮箱应被前端拦截并提示,但未拦截"
+
+  - name: "邮箱格式不正确(纯域名),返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "测试"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'请输入有效的邮箱地址'错误提示,未发起后端请求"
+        errorMessage: "无效邮箱应被前端拦截并提示,但未拦截"
+
+  - name: "邮箱已被注册,返回409"
+    continueOnError: true
+    flow:
+      # 注:此用例依赖之前已成功注册的user@example.com
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "新用户"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "页面显示错误提示"
+        timeout: 3000
+      - aiAssert: "页面显示'该邮箱已被注册'错误提示"
+        errorMessage: "重复邮箱应被拒绝并提示,但未正确处理"
+
+  - name: "未勾选隐私协议,前端阻止提交"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test-policy@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "张三"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      # 不勾选隐私协议
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'请先同意隐私协议'提示,未发起后端请求"
+        errorMessage: "未勾选协议应被前端拦截,但未拦截"
+
+  - name: "密码少于6位,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test-short-pwd@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "测试"
+      - aiInput: "找到密码输入框"
+        value: "123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'密码至少需要6个字符'错误提示,未发起后端请求"
+        errorMessage: "少于6位的密码应被前端拦截,但未拦截"
+
+  - name: "密码超过128位,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test-long-pwd@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "测试"
+      - aiInput: "找到密码输入框"
+        value: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'密码不能超过128个字符'错误提示,未发起后端请求"
+        errorMessage: "超过128位的密码应被前端拦截,但未拦截"
+
+  - name: "昵称为空字符串,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test-empty-nickname@example.com"
+      - aiInput: "找到昵称输入框"
+        value: ""
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'昵称长度需在1-50个字符之间'错误提示,未发起后端请求"
+        errorMessage: "空昵称应被前端拦截,但未拦截"
+
+  - name: "昵称超过50个字符,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test-long-nickname@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的昵称用来测试边界值12345678901234567890"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiAssert: "页面显示'昵称长度需在1-50个字符之间'错误提示,未发起后端请求"
+        errorMessage: "超过50字符的昵称应被前端拦截,但未拦截"
+
+  - name: "快速点击注册按钮多次,仅发起一次请求"
+    continueOnError: true
+    flow:
+      # 注:原用例步骤不明确,已按以下方式解读:填写有效信息后快速点击按钮,观察是否防重复提交
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test-duplicate-click@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "测试"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - sleep: 100
+      - aiAssert: "注册按钮变为禁用状态,仅发起一次请求"
+        errorMessage: "未防止重复提交,可能发起多次请求"

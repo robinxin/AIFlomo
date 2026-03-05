@@ -1,0 +1,82 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "page-navigation"
+  generateReport: true
+
+tasks:
+  # 正常场景
+  - name: "从登录页面点击'立即注册',跳转到注册页面"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiTap: "点击'立即注册'链接"
+      - aiWaitFor: "页面跳转到注册页面(/register)"
+        timeout: 3000
+      - aiAssert: "成功跳转到注册页面,注册表单为空白状态"
+        errorMessage: "从登录页面跳转到注册页面失败"
+
+  - name: "从注册页面点击'返回登录',跳转到登录页面"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiTap: "点击'返回登录'链接"
+      - aiWaitFor: "页面跳转到登录页面(/login)"
+        timeout: 3000
+      - aiAssert: "成功跳转到登录页面,登录表单为空白状态"
+        errorMessage: "从注册页面跳转到登录页面失败"
+
+  - name: "注册成功后跳转到登录页面或自动登录"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test-nav-register@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "导航测试"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "显示'注册成功'提示,页面跳转"
+        timeout: 5000
+      - aiAssert: "注册成功后跳转到登录页面(/login)或主页面(/memo)"
+        errorMessage: "注册成功后未正确跳转"
+
+  - name: "登录成功后跳转到主页面"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "${TEST_EMAIL}"
+      - aiInput: "找到密码输入框"
+        value: "${TEST_PASSWORD}"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "页面跳转到主页面(/memo)"
+        timeout: 5000
+      - aiAssert: "登录成功后跳转到主应用页面"
+        errorMessage: "登录成功后未跳转到主页面"
+
+  # 异常场景
+  - name: "在登录/注册页面之间来回切换,之前填写的表单数据不保留"
+    continueOnError: true
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "test@example.com"
+      - aiTap: "点击'立即注册'链接"
+      - aiWaitFor: "页面跳转到注册页面"
+        timeout: 3000
+      - aiTap: "点击'返回登录'链接"
+      - aiWaitFor: "页面跳转回登录页面"
+        timeout: 3000
+      - aiAssert: "登录页面的邮箱输入框为空,之前填写的数据被清除"
+        errorMessage: "页面切换后表单数据未被清除,可能存在隐私风险"

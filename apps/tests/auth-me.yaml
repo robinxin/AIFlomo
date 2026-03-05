@@ -1,0 +1,61 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "get-current-user"
+  generateReport: true
+
+tasks:
+  # 前置-用户登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "${TEST_EMAIL}"
+      - aiInput: "找到密码输入框"
+        value: "${TEST_PASSWORD}"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主界面"
+        timeout: 5000
+
+  # 正常场景
+  - name: "已登录用户获取信息成功"
+    continueOnError: true
+    flow:
+      # 注:通过JavaScript调用接口验证
+      - javascript: |
+          fetch('/api/auth/me', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+              if (!data.data || !data.data.email || !data.data.nickname) {
+                throw new Error('获取用户信息失败或字段缺失');
+              }
+              if (data.data.passwordHash) {
+                throw new Error('响应不应包含passwordHash字段');
+              }
+            });
+      - sleep: 1000
+      - aiAssert: "成功获取当前用户信息,不包含密码哈希字段"
+        errorMessage: "获取用户信息失败或包含敏感字段"
+
+  # 异常场景
+  - name: "未登录时访问/api/auth/me,返回401"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/'"
+      - sleep: 1000
+      - javascript: |
+          fetch('/api/auth/me', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+              if (data.error !== 'Unauthorized') {
+                throw new Error('未登录时应返回401 Unauthorized');
+              }
+            });
+      - sleep: 1000
+      - aiAssert: "未登录访问/api/auth/me应返回401错误"
+        errorMessage: "未登录访问接口未正确返回401"

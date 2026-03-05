@@ -1,0 +1,50 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-logout"
+  generateReport: true
+
+tasks:
+  # 前置-用户登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "${TEST_EMAIL}"
+      - aiInput: "找到密码输入框"
+        value: "${TEST_PASSWORD}"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主界面"
+        timeout: 5000
+
+  # 正常场景
+  - name: "已登录用户登出成功"
+    continueOnError: true
+    flow:
+      - aiTap: "找到并点击登出按钮或个人中心的登出链接"
+      - aiWaitFor: "页面跳转到登录页面"
+        timeout: 3000
+      - aiAssert: "用户成功登出,回到登录页面,用户信息已清除"
+        errorMessage: "登出后未正确跳转到登录页面或状态未清除"
+
+  # 异常场景
+  - name: "未登录时访问登出接口,返回401"
+    continueOnError: true
+    flow:
+      # 注:此用例需直接访问登出接口,通过JavaScript模拟
+      - javascript: |
+          fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+              if (data.error !== 'Unauthorized') {
+                throw new Error('未登录时应返回401 Unauthorized');
+              }
+            });
+      - sleep: 1000
+      - aiAssert: "未登录访问登出接口应返回401错误"
+        errorMessage: "未登录访问登出接口未正确返回401"
