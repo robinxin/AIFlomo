@@ -41,6 +41,11 @@ jobs:
           else
             HEAD="${{ github.ref_name }}"
           fi
+          if [ "$HEAD" = "main" ]; then
+            echo "HEAD branch is 'main' — nothing to PR. Skipping."
+            exit 0
+          fi
+
           echo "head=$HEAD" >> "$GITHUB_OUTPUT"
 
           ISSUE_NUMBER=$(echo "$HEAD" | sed 's|.*\/\([0-9]*\)-.*|\1|')
