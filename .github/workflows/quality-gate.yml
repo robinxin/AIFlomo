@@ -51,27 +51,28 @@ jobs:
           npm run build 2>&1 | tee /tmp/build-output.txt
           exit ${PIPESTATUS[0]}
 
-      - name: Start server for testing
+      - name: Start services for testing
         run: |
-          SERVER_PORT=3000
-          npm run dev -w apps/server > /tmp/server-output.txt 2>&1 &
+          npm run dev > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
-          echo "Server PID: $(cat /tmp/server.pid), waiting for port $SERVER_PORT..."
-          for i in $(seq 1 15); do
-            if curl -sf "http://localhost:$SERVER_PORT" > /dev/null 2>&1; then
-              echo "✅ Server is ready on port $SERVER_PORT"
+          echo "Services starting (PID: $(cat /tmp/server.pid))..."
+          # Parse actual frontend URL from Expo output (e.g. "Web is waiting on http://localhost:8081")
+          FRONTEND_URL=""
+          for i in $(seq 1 30); do
+            FRONTEND_URL=$(grep -oP 'http://localhost:\d+' /tmp/server-output.txt | head -1)
+            if [ -n "$FRONTEND_URL" ]; then
+              echo "✅ Frontend detected at $FRONTEND_URL"
               break
             fi
-            if [ "$i" -eq 15 ]; then
-              echo "❌ Server failed to start within 30s"
+            if [ "$i" -eq 30 ]; then
+              echo "❌ Could not detect frontend URL within 60s"
               cat /tmp/server-output.txt
               exit 1
             fi
-            echo "Waiting... ($i/15)"
+            echo "Waiting for frontend URL... ($i/30)"
             sleep 2
           done
-          # Override WEB_URL in test.env to point to local server
-          sed -i "s|^WEB_URL=.*|WEB_URL=http://localhost:$SERVER_PORT|" test.env
+          sed -i "s|^WEB_URL=.*|WEB_URL=$FRONTEND_URL|" test.env
 
       - name: Run SDD-generated test cases
         id: test
@@ -84,12 +85,14 @@ jobs:
             echo "ℹ️ No test files in apps/tests/ — skipping"
           fi
 
-      - name: Stop server
+      - name: Stop services
         if: always()
         run: |
           if [ -f /tmp/server.pid ]; then
-            kill "$(cat /tmp/server.pid)" 2>/dev/null || true
-            echo "Server stopped"
+            PID=$(cat /tmp/server.pid)
+            # Kill the process group to also stop forked child processes
+            kill -- "-$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true
+            echo "Services stopped (PID: $PID)"
           fi
 
       - name: Collect errors
