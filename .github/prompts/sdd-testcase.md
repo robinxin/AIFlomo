@@ -35,11 +35,13 @@ ${CLAUDE_MD}
 
 # 角色
 
-你是一位资深软件测试工程师，熟悉 AIFlomo 项目技术栈：
-- Next.js 15 App Router + TypeScript strict
-- Prisma + SQLite，模型：User, Session, Note, Tag, NoteTag
-- 所有 API 响应格式：`{ data, error, message }`
-- 认证方式：Session token 存储于 HTTP-only cookie
+你是一位资深软件测试工程师。项目的完整技术栈、目录结构、命名规范、API 格式、数据库 schema 等信息已在上方 **PROJECT CONSTITUTION** 和 **PROJECT GUIDE (CLAUDE.md)** 中注入，请以那些内容为唯一权威，不要假设使用任何特定技术栈。
+
+以下是从注入内容中提取的测试核心约束（不得硬编码，以注入文档为准）：
+- **API 响应格式**：成功 `{ data, message }`；失败 `{ data: null, error, message }`
+- **Memo 内容长度上限**：10,000 字符
+- **认证方式**：Session + Cookie（HTTP-only）
+- **语言**：JavaScript（无 TypeScript）
 
 ---
 
@@ -47,9 +49,13 @@ ${CLAUDE_MD}
 
 ## Step 1 — 内部分析：提取测试点（只思考，不输出文件）
 
-读取以下文档，**不要写任何文件**，只在脑中梳理测试点：
-- Spec 文件：${SPEC_FILES}
-- 技术方案文档：${DESIGN_FILE}
+**先读取所有输入文档（不写任何文件）**：
+
+1. 使用 Read 工具逐一读取 Spec 文件（路径列表：`${SPEC_FILES}`，多个路径按空格分隔，需分别读取）
+2. 使用 Read 工具读取技术方案文档：`${DESIGN_FILE}`
+3. 列出 `docs/standards/` 下所有 `.md` 文件（`Bash: ls docs/standards/`），并逐一读取，理解后端和前端编码规范
+
+读取完成后，**不要写任何文件**，只在脑中梳理测试点：
 
 分析时，同时挖掘两类需求：
 
@@ -64,7 +70,7 @@ ${CLAUDE_MD}
 - 空列表/空状态时的 UI 展示
 - 网络/数据库异常时的降级处理
 - 并发操作或重复提交的处理
-- Note content 的 10,000 字符上限（即使 spec 未明确提及）
+- Memo content 的 10,000 字符上限（即使 spec 未明确提及）
 
 针对每个需求点，分别设计：
 - **正向测试点**：有效输入、有效边界、满足业务规则的场景
@@ -109,11 +115,11 @@ ${CLAUDE_MD}
 - {用例标题，如：有效内容和已登录用户，笔记创建成功}
   - 操作步骤：
     1. 用户已登录（Session 有效）
-    2. 发送 POST /api/notes，Body：`{ "content": "今天学了 TypeScript" }`
+    2. 发送 POST /api/memos，Body：`{ "content": "今天学习新知识" }`
   - 预期结果：
     - 接口返回 201
-    - 响应体：`{ data: { id, content, createdAt }, error: null, message: "创建成功" }`
-    - 数据库中新增一条 Note 记录
+    - 响应体：`{ data: { id, content, createdAt }, message: "创建成功" }`
+    - 数据库中新增一条 Memo 记录
 
 - {另一条正常场景用例标题}
   - 操作步骤：...
@@ -124,7 +130,7 @@ ${CLAUDE_MD}
 - {用例标题，如：未登录时访问创建接口，返回 401}
   - 操作步骤：
     1. 不携带 Session cookie
-    2. 发送 POST /api/notes，Body：`{ "content": "测试" }`
+    2. 发送 POST /api/memos，Body：`{ "content": "测试" }`
   - 预期结果：
     - 接口返回 401
     - 响应体：`{ data: null, error: "未登录", message: "请先登录" }`

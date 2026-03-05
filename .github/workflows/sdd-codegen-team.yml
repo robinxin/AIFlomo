@@ -1,0 +1,591 @@
+name: SDD Codegen (Reusable)
+
+# Reusable workflow for code generation and auto-fix.
+# - codegen mode: task-by-task code generation from SDD spec
+# - fix mode: auto-fix code based on code review feedback
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: 'codegen, codegen-team, or fix'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to checkout and push to'
+        required: true
+        type: string
+      spec_files:
+        description: 'Spec file list (codegen mode)'
+        required: false
+        type: string
+        default: ''
+      design_file:
+        description: 'Design document path (codegen mode)'
+        required: false
+        type: string
+        default: ''
+      tasks_file:
+        description: 'Tasks JSON path (codegen mode)'
+        required: false
+        type: string
+        default: ''
+      review_feedback:
+        description: 'Code review feedback (fix mode)'
+        required: false
+        type: string
+        default: ''
+      extra_prompt:
+        description: 'Optional extra prompt'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      written_files:
+        description: 'Files written during codegen'
+        value: ${{ jobs.run.outputs.written_files }}
+      has_failure:
+        description: 'Whether codegen had failures'
+        value: ${{ jobs.run.outputs.has_failure }}
+      failed_task:
+        description: 'Failed task number if any'
+        value: ${{ jobs.run.outputs.failed_task }}
+
+  # Quality Gate 失败时直接触发 fix 模式
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to fix'
+        required: true
+        type: string
+      extra_prompt:
+        description: 'Optional extra prompt'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  run:
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      issues: write
+    outputs:
+      written_files: ${{ steps.result.outputs.written_files }}
+      has_failure:   ${{ steps.result.outputs.has_failure }}
+      failed_task:   ${{ steps.result.outputs.failed_task }}
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      CODE_DIR:           'apps'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      # ── Shared setup ──────────────────────────────────────────────
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Load CLAUDE.md
+        run: |
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Install app dependencies
+        run: |
+          if [ ! -f "package.json" ]; then
+            echo "ℹ️ No package.json found — skipping install (fresh project)"
+          else
+            npm install --silent
+            if [ -f "apps/server/package.json" ]; then
+              npm run db:generate -w apps/server
+            fi
+          fi
+
+      # ── Mode: codegen ─────────────────────────────────────────────
+      - name: Generate code (task by task)
+        if: inputs.mode == 'codegen'
+        id: codegen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ inputs.extra_prompt }}
+        run: |
+          export SPEC_FILES="${{ inputs.spec_files }}"
+          export DESIGN_FILE="${{ inputs.design_file }}"
+          TASKS_FILE="${{ inputs.tasks_file }}"
+          MAX_FIX_ATTEMPTS=2
+
+          TASK_COUNT=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              d = json.load(f)
+          print(len(d.get('tasks', [])))
+          " 2>/dev/null || echo "1")
+
+          > /tmp/written-files.txt
+
+          # ── Initialize Step Summary ──
+          {
+            echo "## 📦 Codegen Summary"
+            echo ""
+            echo "| # | Task | Status | Target Files |"
+            echo "|---|------|--------|--------------|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          update_task_status() {
+            local task_idx=$1 new_status=$2
+            python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              d = json.load(f)
+          d['tasks'][$task_idx]['status'] = '$new_status'
+          with open('$TASKS_FILE', 'w') as f:
+              json.dump(d, f, indent=2, ensure_ascii=False)
+          "
+          }
+
+          FAILED_TASK=""
+
+          for i in $(seq 1 "$TASK_COUNT"); do
+            IDX=$((i - 1))
+
+            TASK_STATUS=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              tasks = json.load(f).get('tasks', [])
+          print(tasks[$IDX].get('status', 'pending') if $IDX < len(tasks) else 'pending')
+          ")
+            TASK_NAME=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              tasks = json.load(f).get('tasks', [])
+          print(tasks[$IDX]['name'] if $IDX < len(tasks) else 'task')
+          ")
+            TASK_DESC=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              tasks = json.load(f).get('tasks', [])
+          print(tasks[$IDX].get('description', '') if $IDX < len(tasks) else '')
+          ")
+            TASK_FILES=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              tasks = json.load(f).get('tasks', [])
+          files = tasks[$IDX].get('target_files', []) if $IDX < len(tasks) else []
+          print(' '.join(f'\`{f}\`' for f in files))
+          ")
+
+            if [ "$TASK_STATUS" = "completed" ]; then
+              echo "Task $i/$TASK_COUNT: $TASK_NAME — already completed, skipping"
+              echo "| $i | $TASK_NAME | ⏭ skipped | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            echo "Task $i/$TASK_COUNT: $TASK_NAME"
+            update_task_status $IDX "in_progress"
+
+            ALREADY=$(git diff --name-only 2>/dev/null | tr '\n' ' ')
+
+            export TASK_INDEX="$i"
+            export TASK_COUNT
+            export TASK_NAME
+            export TASK_DESC
+            export ALREADY="${ALREADY:-none}"
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
+
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
+
+            # ── lint verify + self-heal loop ──
+            TASK_PASSED=false
+            for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
+              > /tmp/build-err.txt
+              LINT_OK=true
+
+              npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+
+              if [ "$LINT_OK" = "true" ]; then
+                echo "Task $i lint check passed"
+                TASK_PASSED=true
+                break
+              fi
+
+              if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
+                echo "Task $i lint check failed after $MAX_FIX_ATTEMPTS fix attempts"
+                cat /tmp/build-err.txt
+                break
+              fi
+
+              echo "Task $i lint check failed, auto-fix attempt $attempt..."
+              BUILD_ERR=$(tail -50 /tmp/build-err.txt)
+              claude --print \
+                --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+                --model "$MODEL" \
+                "Fix the ESLint errors below.
+                 Read the failing files, understand the errors, and use Write to fix them.
+                 Do NOT rewrite files from scratch — make minimal targeted fixes.
+
+                 Errors:
+                 ${BUILD_ERR}"
+            done
+
+            if [ "$TASK_PASSED" = true ]; then
+              update_task_status $IDX "completed"
+              git diff --name-only >> /tmp/written-files.txt
+              echo "| $i | $TASK_NAME | ✅ passed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              update_task_status $IDX "failed"
+              FAILED_TASK="$i"
+              tail -80 /tmp/build-err.txt > /tmp/failed-task-error.txt
+              echo "Task $i failed — stopping at this task"
+              echo "| $i | $TASK_NAME | ❌ failed | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+          done
+
+          # ── Lint error details on failure ──
+          if [ -n "$FAILED_TASK" ]; then
+            {
+              echo ""
+              echo "### ❌ Lint Errors (Task $FAILED_TASK)"
+              echo ""
+              echo "\`\`\`"
+              cat /tmp/failed-task-error.txt 2>/dev/null || echo "No error details available"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "has_failure=$( [ -n "$FAILED_TASK" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "failed_task=$FAILED_TASK" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "written_files<<WRITTEN_EOF"
+            sort -u /tmp/written-files.txt
+            echo "WRITTEN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Mode: codegen-team ────────────────────────────────────────
+      - name: Generate code (agent team — parallel workers)
+        if: inputs.mode == 'codegen-team'
+        id: codegen_team
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1'
+          EXTRA_PROMPT: ${{ inputs.extra_prompt }}
+        run: |
+          export SPEC_FILES="${{ inputs.spec_files }}"
+          export DESIGN_FILE="${{ inputs.design_file }}"
+          export TASKS_FILE="${{ inputs.tasks_file }}"
+
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen-team.md)
+
+          claude --print \
+            --allowedTools "Read,Write,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(npm run lint*),Bash(python3:*)" \
+            --model "$MODEL" \
+            "$PROMPT_TEXT"
+
+          # Collect written files from git diff
+          git diff --name-only > /tmp/written-files.txt
+
+          # Determine failure from tasks file
+          HAS_FAILURE=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              d = json.load(f)
+          failed = [str(t['id']) for t in d.get('tasks', []) if t.get('status') == 'failed']
+          print('true' if failed else 'false')
+          " 2>/dev/null || echo "false")
+
+          FAILED_TASK=$(python3 -c "
+          import json
+          with open('$TASKS_FILE') as f:
+              d = json.load(f)
+          failed = [str(t['id']) for t in d.get('tasks', []) if t.get('status') == 'failed']
+          print(failed[0] if failed else '')
+          " 2>/dev/null || echo "")
+
+          echo "has_failure=${HAS_FAILURE}" >> "$GITHUB_OUTPUT"
+          echo "failed_task=${FAILED_TASK}"  >> "$GITHUB_OUTPUT"
+
+          {
+            echo "written_files<<WRITTEN_EOF"
+            sort -u /tmp/written-files.txt
+            echo "WRITTEN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Mode: fix ─────────────────────────────────────────────────
+      - name: Fix code from quality failures
+        if: inputs.mode == 'fix' || github.event_name == 'workflow_dispatch'
+        id: fix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ inputs.extra_prompt }}
+        run: |
+          MAX_FIX_ATTEMPTS=2
+
+          # 先跑 lint/build 抓当前错误（不依赖外部传入，保证信息最新）
+          > /tmp/quality-errors.txt
+          npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
+          npm run build 2>&1 | tee -a /tmp/quality-errors.txt || true
+
+          QUALITY_ERRORS=$(cat /tmp/quality-errors.txt)
+
+          # 补充 code review 传入的额外反馈（workflow_call 场景）
+          EXTRA_FEEDBACK="${{ inputs.review_feedback }}"
+
+          if [ -z "$QUALITY_ERRORS" ] && [ -z "$EXTRA_FEEDBACK" ]; then
+            echo "ℹ️ No errors found — nothing to fix."
+            echo "has_failure=false" >> "$GITHUB_OUTPUT"
+            echo "failed_task="      >> "$GITHUB_OUTPUT"
+            { echo "written_files<<WRITTEN_EOF"; echo "WRITTEN_EOF"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          claude --print \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+            --model "$MODEL" \
+            "## PROJECT CONSTITUTION
+          ${CONSTITUTION}
+
+          ---
+
+          ## PROJECT GUIDE (CLAUDE.md)
+          ${CLAUDE_MD}
+
+          ---
+
+          以下是 Quality Gate 检测到的 Lint / Build 错误，请修复：
+
+          ${QUALITY_ERRORS}
+
+          ${EXTRA_FEEDBACK:+额外反馈：$EXTRA_FEEDBACK}
+
+          修复要求：
+          1. Read 相关源文件，理解当前实现
+          2. 针对每个 error 进行最小化定点修复，不要重写文件
+          3. 修复后确保 ESLint 检查通过
+
+          ${EXTRA_PROMPT}"
+
+          # ── lint verify + self-heal loop ──
+          FIX_PASSED=false
+          for attempt in $(seq 1 "$MAX_FIX_ATTEMPTS"); do
+            > /tmp/build-err.txt
+            LINT_OK=true
+
+            npm run lint 2>&1 | tee -a /tmp/build-err.txt || LINT_OK=false
+
+            if [ "$LINT_OK" = "true" ]; then
+              echo "Fix lint check passed"
+              FIX_PASSED=true
+              break
+            fi
+
+            if [ "$attempt" -eq "$MAX_FIX_ATTEMPTS" ]; then
+              echo "Fix lint check failed after $MAX_FIX_ATTEMPTS attempts"
+              cat /tmp/build-err.txt
+              break
+            fi
+
+            echo "Fix lint check failed, auto-fix attempt $attempt..."
+            BUILD_ERR=$(tail -50 /tmp/build-err.txt)
+            claude --print \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+              --model "$MODEL" \
+              "Fix the ESLint errors below.
+               Read the failing files, understand the errors, and use Write to fix them.
+               Do NOT rewrite files from scratch — make minimal targeted fixes.
+
+               Errors:
+               ${BUILD_ERR}"
+          done
+
+          if [ "$FIX_PASSED" = true ]; then
+            echo "has_failure=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_failure=true" >> "$GITHUB_OUTPUT"
+            tail -80 /tmp/build-err.txt > /tmp/failed-task-error.txt
+          fi
+
+          echo "failed_task=" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "written_files<<WRITTEN_EOF"
+            git diff --name-only 2>/dev/null | sort -u
+            echo "WRITTEN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Merge outputs ─────────────────────────────────────────────
+      - name: Set outputs
+        id: result
+        if: always()
+        env:
+          MODE: ${{ inputs.mode }}
+          CODEGEN_HAS_FAILURE: ${{ steps.codegen.outputs.has_failure }}
+          CODEGEN_FAILED_TASK: ${{ steps.codegen.outputs.failed_task }}
+          CODEGEN_WRITTEN: ${{ steps.codegen.outputs.written_files }}
+          CODEGEN_TEAM_HAS_FAILURE: ${{ steps.codegen_team.outputs.has_failure }}
+          CODEGEN_TEAM_FAILED_TASK: ${{ steps.codegen_team.outputs.failed_task }}
+          CODEGEN_TEAM_WRITTEN: ${{ steps.codegen_team.outputs.written_files }}
+          FIX_HAS_FAILURE: ${{ steps.fix.outputs.has_failure }}
+          FIX_WRITTEN: ${{ steps.fix.outputs.written_files }}
+        run: |
+          if [ "$MODE" = "codegen" ]; then
+            echo "has_failure=${CODEGEN_HAS_FAILURE:-false}" >> "$GITHUB_OUTPUT"
+            echo "failed_task=${CODEGEN_FAILED_TASK}" >> "$GITHUB_OUTPUT"
+            {
+              echo "written_files<<WRITTEN_EOF"
+              echo "$CODEGEN_WRITTEN"
+              echo "WRITTEN_EOF"
+            } >> "$GITHUB_OUTPUT"
+          elif [ "$MODE" = "codegen-team" ]; then
+            echo "has_failure=${CODEGEN_TEAM_HAS_FAILURE:-false}" >> "$GITHUB_OUTPUT"
+            echo "failed_task=${CODEGEN_TEAM_FAILED_TASK}" >> "$GITHUB_OUTPUT"
+            {
+              echo "written_files<<WRITTEN_EOF"
+              echo "$CODEGEN_TEAM_WRITTEN"
+              echo "WRITTEN_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "has_failure=${FIX_HAS_FAILURE:-false}" >> "$GITHUB_OUTPUT"
+            echo "failed_task=" >> "$GITHUB_OUTPUT"
+            {
+              echo "written_files<<WRITTEN_EOF"
+              echo "$FIX_WRITTEN"
+              echo "WRITTEN_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Commit & push ─────────────────────────────────────────────
+      - name: Commit generated code
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: ${{ inputs.mode }}
+          HAS_FAILURE: ${{ steps.result.outputs.has_failure }}
+          FAILED_TASK: ${{ steps.result.outputs.failed_task }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+
+          if [ "$MODE" = "codegen" ] || [ "$MODE" = "codegen-team" ]; then
+            git add "$CODE_DIR" specs/active/
+          else
+            git add apps/
+          fi
+
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            if [ "$MODE" = "fix" ]; then
+              MSG="sdd: auto-fix from code review"
+            elif [ "$HAS_FAILURE" = "true" ]; then
+              MSG="sdd: partial codegen (task ${FAILED_TASK} failed)"
+            elif [ "$MODE" = "codegen-team" ]; then
+              MSG="sdd: auto-generate code via agent team (${{ github.sha }})"
+            else
+              MSG="sdd: auto-generate code from spec (${{ github.sha }})"
+            fi
+            git commit -m "$MSG"
+            git pull --rebase origin "${BRANCH}" || true
+            git push origin "HEAD:${BRANCH}"
+            echo "Committed to ${BRANCH}"
+          fi
+
+      # ── Failure comment to Issue ──────────────────────────────────
+      - name: Comment failure to Issue
+        if: always() && steps.result.outputs.has_failure == 'true'
+        env:
+          MODE: ${{ inputs.mode }}
+          FAILED_TASK: ${{ steps.result.outputs.failed_task }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          ISSUE_NUMBER=$(echo "$BRANCH" | sed 's|feat/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "$BRANCH" ] || [ -z "$ISSUE_NUMBER" ]; then
+            echo "Not a feat/<n>-* branch — skipping."
+            exit 0
+          fi
+
+          ERR_DETAIL=$(cat /tmp/failed-task-error.txt 2>/dev/null || echo "No error details available")
+
+          if [ "$MODE" = "codegen" ]; then
+            TITLE="SDD Codegen 失败 — Task ${FAILED_TASK}"
+            DESC="类型检查在自愈修复后仍未通过，需要人工介入。"
+          else
+            TITLE="Code Review Auto-Fix 失败"
+            DESC="自动修复后类型检查仍未通过，需要人工介入。"
+          fi
+
+          {
+            printf '**%s**\n\n' "$TITLE"
+            printf '%s\n\n' "$DESC"
+            printf '**修复步骤：**\n'
+            printf '1. 切换到分支 `%s`\n' "$BRANCH"
+            printf '2. 根据下方错误信息修复代码\n'
+            printf '3. push 修复后重新触发 Pipeline\n\n'
+            printf '<details><summary>错误详情（点击展开）</summary>\n\n```\n'
+            printf '%s\n' "$ERR_DETAIL"
+            printf '```\n\n</details>\n\n'
+            printf '[查看完整日志](%s/%s/actions/runs/%s)\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } > /tmp/failure-comment.md
+
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/failure-comment.md
+
+      - name: Fail job if there were failures
+        if: always() && steps.result.outputs.has_failure == 'true'
+        run: |
+          echo "Codegen/fix had failures — failing job"
+          exit 1
