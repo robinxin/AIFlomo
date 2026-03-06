@@ -37,7 +37,11 @@ jobs:
             echo "❌ No package.json found — SDD codegen has not generated project files yet."
             exit 1
           fi
-          npm install
+          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+            npm install
+          else
+            echo "⏭ node_modules up to date, skipping install"
+          fi
 
       - name: Lint
         id: lint
@@ -56,23 +60,22 @@ jobs:
           npm run dev > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
           echo "Services starting (PID: $(cat /tmp/server.pid))..."
-          # Parse actual frontend URL from Expo output (e.g. "Web is waiting on http://localhost:8081")
-          FRONTEND_URL=""
+          # Expo CI mode does not print a URL — poll the fixed port directly
+          FRONTEND_URL="http://localhost:8082"
           for i in $(seq 1 30); do
-            FRONTEND_URL=$(grep -oP 'http://localhost:\d+' /tmp/server-output.txt | head -1)
-            if [ -n "$FRONTEND_URL" ]; then
-              echo "✅ Frontend detected at $FRONTEND_URL"
+            if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
+              echo "✅ Frontend ready at $FRONTEND_URL"
               break
             fi
             if [ "$i" -eq 30 ]; then
-              echo "❌ Could not detect frontend URL within 60s"
+              echo "❌ Frontend did not respond within 60s"
               cat /tmp/server-output.txt
               exit 1
             fi
-            echo "Waiting for frontend URL... ($i/30)"
+            echo "Waiting for frontend... ($i/30)"
             sleep 2
           done
-          sed -i "s|^WEB_URL=.*|WEB_URL=$FRONTEND_URL|" test.env
+          sed -i.bak "s|url: \"\${WEB_URL}\"|url: \"$FRONTEND_URL\"|g" apps/tests/*.yaml && rm -f apps/tests/*.bak
 
       - name: Run SDD-generated test cases
         id: test
@@ -121,6 +124,10 @@ jobs:
       MAX_FIX_ROUNDS: 5
     steps:
       - name: Trigger autofix workflow
+        # 多行内容必须通过 env: 传入，不能用 ${{ }} 内联展开进 bash 脚本
+        # 否则 error_summary 里的单引号/换行会破坏 heredoc / shell 解析
+        env:
+          ERROR_SUMMARY: ${{ needs.quality.outputs.error_summary }}
         run: |
           FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
 
@@ -139,22 +146,16 @@ jobs:
           NEXT_ATTEMPT=$(( FIX_ATTEMPT + 1 ))
           echo "🔄 Autofix 第 $NEXT_ATTEMPT/$MAX_FIX_ROUNDS 次，branch: ${{ github.ref_name }}"
 
-          ERROR_MSG=$(cat << 'ERRMSG'
-          ${{ needs.quality.outputs.error_summary }}
-          ERRMSG
-          )
+          # 写到临时文件，用 jq --rawfile 构建 JSON，避免任何引号/换行转义问题
+          printf '%s' "$ERROR_SUMMARY" > /tmp/dispatch-errors.txt
 
-          gh api "repos/${{ github.repository }}/actions/workflows/autofix.yml/dispatches" \
-            -X POST \
-            --input - << EOF
-          {
-            "ref": "${{ github.ref_name }}",
-            "inputs": {
-              "branch": "${{ github.ref_name }}",
-              "quality_errors": $(echo "$ERROR_MSG" | jq -Rs .),
-              "extra_feedback": "",
-              "fix_attempt": "$NEXT_ATTEMPT"
-            }
-          }
-          EOF
+          jq -n \
+            --arg ref "${{ github.ref_name }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --rawfile quality_errors /tmp/dispatch-errors.txt \
+            --arg fix_attempt "$NEXT_ATTEMPT" \
+            '{ref: $ref, inputs: {branch: $branch, quality_errors: $quality_errors, extra_feedback: "", fix_attempt: $fix_attempt}}' \
+          | gh api "repos/${{ github.repository }}/actions/workflows/autofix.yml/dispatches" \
+              -X POST --input -
+
           echo "✅ Autofix workflow triggered（attempt $NEXT_ATTEMPT）on ${{ github.ref_name }}"

@@ -154,6 +154,20 @@ jobs:
             echo "CLAUDE_MD_EOF"
           } >> "$GITHUB_ENV"
 
+      - name: Install app dependencies
+        run: |
+          if [ ! -f "package.json" ]; then
+            echo "ℹ️ No package.json found — skipping install (fresh project)"
+          else
+            if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+              npm install --silent
+            else
+              echo "⏭ node_modules up to date, skipping install"
+            fi
+            if [ -f "apps/server/package.json" ]; then
+              npm run db:generate -w apps/server
+            fi
+          fi
 
       # ── Mode: codegen ─────────────────────────────────────────────
       - name: Generate code (task by task)

@@ -97,7 +97,12 @@ jobs:
 
       # ── 安装依赖，运行 lint/build 抓取最新错误 ─────────────────────────
       - name: Install dependencies
-        run: npm install
+        run: |
+          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+            npm install
+          else
+            echo "⏭ node_modules up to date, skipping install"
+          fi
 
       - name: Collect current quality errors
         id: collect-errors
