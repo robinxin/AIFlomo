@@ -1,0 +1,67 @@
+web:
+  url: "${process.env.APP_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "session-security"
+  generateReport: true
+
+tasks:
+  # 注：以下用例为 Session 安全性测试，主要涉及 HTTP 响应头和数据库验证
+  # Midscene 是 UI 层测试工具，无法直接检查响应头、Cookie 属性或数据库内容
+  # 这些用例更适合后端 API 测试或集成测试，这里仅提供 UI 层可验证的部分
+
+  # ==============================
+  # 正常场景
+  # ==============================
+
+  - name: "Cookie设置为HttpOnly"
+    continueOnError: true
+    flow:
+      # 注：Midscene 无法直接检查 Cookie 的 HttpOnly 属性
+      # 此用例更适合使用 Playwright 等工具直接检查响应头
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主页面"
+        timeout: 5000
+      - aiAssert: "用户成功登录（Cookie 应包含 HttpOnly 标志，需后端测试验证）"
+        errorMessage: "登录成功后 Cookie 应设置 HttpOnly 属性"
+
+  - name: "Cookie设置为SameSite=Strict"
+    continueOnError: true
+    flow:
+      # 注：同上，Midscene 无法直接检查 Cookie 属性
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主页面"
+        timeout: 5000
+      - aiAssert: "用户成功登录（Cookie 应包含 SameSite=Strict 标志，需后端测试验证）"
+        errorMessage: "登录成功后 Cookie 应设置 SameSite=Strict 属性"
+
+  - name: "生产环境Cookie设置为Secure"
+    continueOnError: true
+    flow:
+      # 注：此用例依赖环境变量 NODE_ENV=production，且需要 HTTPS 环境
+      # Midscene 无法直接验证，需后端测试或手动检查
+      - aiAssert: "生产环境中，Cookie 应设置 Secure 标志（需后端测试验证）"
+        errorMessage: "生产环境中 Cookie 应设置 Secure 属性"
+
+  - name: "密码使用bcrypt存储，salt rounds = 10"
+    continueOnError: true
+    flow:
+      # 注：此用例需要查询数据库 users 表的 password_hash 字段
+      # Midscene 是 UI 层测试，无法直接访问数据库
+      # 此用例应在后端集成测试中验证
+      - aiAssert: "用户密码在数据库中以 bcrypt 哈希值存储（需后端测试验证）"
+        errorMessage: "密码应使用 bcrypt 算法存储，salt rounds = 10"

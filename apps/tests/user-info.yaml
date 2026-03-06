@@ -1,0 +1,49 @@
+web:
+  url: "${process.env.APP_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-info"
+  generateReport: true
+
+tasks:
+  # 前置：用户登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主页面"
+        timeout: 5000
+
+  # ==============================
+  # 正常场景
+  # ==============================
+
+  - name: "已登录用户获取信息成功"
+    continueOnError: true
+    flow:
+      # 注：原用例描述的是 API 层面测试（GET /api/auth/me）
+      # Midscene 是 UI 层测试，假设主页面显示用户信息（如昵称、邮箱）
+      - aiAssert: "页面显示当前用户的昵称（张三）或邮箱（testuser001@example.com）"
+        errorMessage: "已登录用户应能看到自己的信息"
+
+  # ==============================
+  # 异常场景
+  # ==============================
+
+  - name: "未登录时访问/api/auth/me，返回401"
+    continueOnError: true
+    flow:
+      # 注：Midscene 是 UI 层测试，此用例更适合后端 API 测试
+      # 假设：未登录时访问主页面应自动跳转到登录页面
+      - javascript: "document.cookie = ''; window.location.href = '/memo'"
+      - sleep: 2000
+      - aiAssert: "页面自动跳转到登录页面（因为用户未登录）"
+        errorMessage: "未登录时访问需认证页面应跳转到登录页面"
