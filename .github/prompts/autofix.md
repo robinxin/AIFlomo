@@ -7,14 +7,6 @@
         最小化定点修复，使代码重新通过质量检查
   调用方: autofix.yml → job: autofix → step: Run autofix
 
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}      — CONSTITUTION.md 全文
-    ${CLAUDE_MD}         — CLAUDE.md 全文（技术栈、规范、目录结构）
-    ${QUALITY_ERRORS}    — lint / build / test 的完整错误输出
-    ${EXTRA_FEEDBACK}    — 额外补充反馈（可为空）
-    ${FIX_ATTEMPT}       — 当前是第几次自动修复（从 1 开始）
-    ${BRANCH}            — 当前修复的分支名
-
   输出:
     - 修复后的代码（通过 Write 工具写入相应文件）
     - 中文修复摘要（使用 FIXED / SKIPPED / RISK 标记）

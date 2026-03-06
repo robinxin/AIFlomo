@@ -6,13 +6,6 @@
   用途: 根据 GitHub Issue 描述，定位 Bug 根因并进行最小范围的精准修复
   调用方: issue-bugfix.yml → job: auto-bugfix → step: Analyze and fix bug
 
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}   — CONSTITUTION.md 全文
-    ${ISSUE_NUMBER}   — GitHub Issue 编号（如 42）
-    ${ISSUE_TITLE}    — Issue 标题
-    ${ISSUE_BODY}     — Issue 正文（包含复现步骤、期望行为、实际行为）
-    ${EXTRA_PROMPT}   — 额外补充指令（workflow_dispatch 手动触发时填写，可为空）
-
   输出:
     - 修复后的代码（通过 Write 工具写入相应文件）
     - 中文修复摘要（使用 ROOT_CAUSE / FIXED / RISK / SIMILAR_ISSUES 标记）

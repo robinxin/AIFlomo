@@ -7,13 +7,6 @@
         Midscene YAML 格式的可执行 E2E 测试脚本
   调用方: SDD 测试流水线 → job: testcase-code（在 testcase-gate 审批后运行）
 
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}    — CONSTITUTION.md 全文
-    ${TESTCASE_FILE}   — 测试用例文档路径（主要输入）
-    ${SPEC_FILES}      — spec 文件路径，空格分隔（补充需求上下文）
-    ${DESIGN_FILE}     — 技术方案文档路径（sdd-design 生成的，补充技术上下文）
-    ${TEST_DIR}        — 测试脚本输出目录（= apps/tests）
-
   输出: Midscene YAML 测试脚本（.yaml），每个功能模块一个文件
         测试脚本通过 `midscene ./tests/**/*.yaml --dotenv .env` 运行
 

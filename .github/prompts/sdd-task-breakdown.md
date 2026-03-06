@@ -6,13 +6,6 @@
   用途: 读取 spec 和技术方案文档，将功能拆分为有序的、原子性的实现任务
   调用方: claude-SDD.yml → job: sdd-task
 
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}   — CONSTITUTION.md 全文
-    ${CLAUDE_MD}      — CLAUDE.md 全文（技术栈、目录、命名规范）
-    ${SPEC_FILES}     — 本次变更的 spec 文件路径，空格分隔
-    ${DESIGN_FILE}    — 上一步生成的技术方案文档路径
-    ${TASKS_FILE}     — 任务清单输出路径（= specs/active/xxx-tasks.md）
-
   输出: Markdown 任务清单，通过 Write 工具写入 ${TASKS_FILE}
   ===================================================
 -->
