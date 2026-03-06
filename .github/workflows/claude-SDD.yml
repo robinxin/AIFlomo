@@ -402,9 +402,9 @@ jobs:
   # ─── SDD-Codegen（调用 Reusable Workflow）─────────────────────────
   sdd-codegen:
     needs: [sdd-detect, sdd-plan, sdd-task, task-gate]
-    uses: ./.github/workflows/sdd-codegen.yml
+    uses: ./.github/workflows/sdd-codegen-team.yml
     with:
-      mode: codegen
+      mode: codegen-team
       branch: ${{ github.ref_name }}
       spec_files: ${{ needs.sdd-detect.outputs.spec_files }}
       design_file: ${{ needs.sdd-plan.outputs.design_file }}
