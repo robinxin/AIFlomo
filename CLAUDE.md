@@ -287,7 +287,7 @@ npm workspace 的 hoisting 行为不一致：某些包被提升到根 `node_modu
 
 根目录 `dev` 脚本必须使用 `concurrently` 并行启动前后端：
 ```json
-"dev": "concurrently \"npm run dev -w apps/server\" \"npm run dev -w apps/mobile\""
+"dev": "concurrently \"npm run dev -w apps/server -- --clear\" \"npm run dev -w apps/mobile\""
 ```
 `npm run dev --workspaces` 是串行执行，服务端 `node --watch` 为常驻进程会阻塞前端启动。
 
