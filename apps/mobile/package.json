@@ -25,7 +25,6 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "babel-plugin-module-resolver": "^5.0.2",
-    "babel-preset-expo": "12",
     "eslint": "^9.18.0",
     "eslint-plugin-react": "^7.37.5"
   },
