@@ -5,16 +5,6 @@
 
   用途: 根据设计文档和任务描述，为单个任务生成符合项目规范的 JavaScript 代码
   调用方: sdd-codegen.yml → job: run（循环调用，每次处理一个任务）
-
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}    — CONSTITUTION.md 全文
-    ${SPEC_FILES}      — 本次变更的 spec 文件路径，空格分隔
-    ${DESIGN_FILE}     — 技术方案文档路径
-    ${TASK_INDEX}      — 当前任务序号（如 1、2、3）
-    ${TASK_COUNT}      — 总任务数
-    ${TASK_NAME}       — 当前任务名称
-    ${TASK_DESC}       — 当前任务的详细描述（含目标文件路径）
-    ${ALREADY}         — 前序任务已写入的文件路径列表（不得重复实现这些文件）
   ===================================================
 -->
 
