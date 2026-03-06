@@ -168,16 +168,15 @@ jobs:
 
           echo "── Start services (pm2) ──────────────────────────"
           cd "$DEPLOY_PATH"
-          npm install
           if pm2 describe aiflomo-server >/dev/null 2>&1; then
             pm2 restart aiflomo-server
           else
-            pm2 start npm --name aiflomo-server -- run dev
+            pm2 start npm --name aiflomo-server -- run prod -w apps/server
           fi
           if pm2 describe aiflomo-mobile >/dev/null 2>&1; then
             pm2 restart aiflomo-mobile
           else
-            pm2 start npm --name aiflomo-mobile -- run dev -w apps/mobile
+            pm2 start npm --name aiflomo-mobile -- run prod -w apps/mobile
           fi
           pm2 save
           pm2 list
