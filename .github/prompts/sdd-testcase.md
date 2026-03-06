@@ -10,14 +10,6 @@
   工作流（两步，合并在一个 prompt 中）:
     Step 1 [内部思考，不写文件]: 需求 → 提取显式/隐式测试点
     Step 2 [写文件]:             测试点 → 生成详细测试用例文档
-
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}    — CONSTITUTION.md 全文（项目宪法，最高优先级）
-    ${SPEC_FILES}      — 本次变更的 spec 文件路径，空格分隔
-    ${DESIGN_FILE}     — 技术方案文档路径（sdd-design 生成的）
-    ${TESTCASE_FILE}   — 测试用例文档的输出路径（如 specs/active/xxx-testcases.md）
-
-  输出: 仅输出测试用例文档（${TESTCASE_FILE}），测试点只作为中间推理，不保存为文件
   ===================================================
 -->
 

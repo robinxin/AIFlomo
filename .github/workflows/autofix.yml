@@ -172,7 +172,7 @@ jobs:
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/autofix.md)
 
           claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \
+            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(npm run lint:*),Bash(npm run build:*)" \
             --model "$MODEL" \
             "$PROMPT_TEXT"
 
@@ -188,7 +188,7 @@ jobs:
           git remote set-url origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
 
-          git add apps/
+          git add -u
 
           if git diff --cached --quiet; then
             echo "⚠️ No files were modified by Claude — no commit needed."

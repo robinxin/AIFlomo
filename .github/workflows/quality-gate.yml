@@ -76,11 +76,13 @@ jobs:
             echo "Waiting for frontend... ($i/30)"
             sleep 2
           done
-          sed -i.bak "s|url: \"\${WEB_URL}\"|url: \"$FRONTEND_URL\"|g" apps/tests/*.yaml && rm -f apps/tests/*.bak
+          sed -i.bak 's|url: "${WEB_URL}"|url: "'"$FRONTEND_URL"'"|g' apps/tests/*.yaml && rm -f apps/tests/*.bak
 
       - name: Run SDD-generated test cases
         id: test
         run: |
+          echo "Waiting 10s for frontend to fully initialize..."
+          sleep 10
           if find apps/tests/ -name "*.yaml" -print -quit 2>/dev/null | grep -q .; then
             echo "Running test cases..."
             npm run test 2>&1 | tee /tmp/test-output.txt

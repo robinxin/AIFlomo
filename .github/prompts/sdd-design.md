@@ -6,11 +6,6 @@
   用途: 根据 spec 文件和现有代码结构，生成一份完整的技术设计文档
   调用方: claude-SDD.yml → job: sdd-plan
 
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}   — CONSTITUTION.md 全文（项目宪法，最高优先级约束）
-    ${SPEC_FILES}     — 本次变更的 spec 文件路径，空格分隔
-    ${DESIGN_FILE}    — 技术方案文档的输出路径（通常为 specs/active/xxx-design.md）
-
   输出: 中文技术方案文档，通过 Write 工具保存到 ${DESIGN_FILE}
   ===================================================
 -->

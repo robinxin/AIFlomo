@@ -15,13 +15,6 @@
     TaskCreate          — 在共享 task list 里登记任务
     TaskList            — 查看所有任务状态
     TaskUpdate(owner=)  — 分配任务给 teammate
-
-  运行时变量（由 GitHub Actions 注入）:
-    ${CONSTITUTION}  — CONSTITUTION.md 全文
-    ${CLAUDE_MD}     — CLAUDE.md 全文
-    ${SPEC_FILES}    — spec 文件路径（空格分隔）
-    ${DESIGN_FILE}   — 技术方案文档路径
-    ${TASKS_FILE}    — 任务清单文件路径（Markdown checklist 格式）
   ===================================================
 -->
 
