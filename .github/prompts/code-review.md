@@ -6,11 +6,6 @@
   用途: 对 PR 差异或 push 提交进行全面代码审查，输出结构化中文审查报告
   调用方: code-review.yml → job: code-review
 
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}      — CONSTITUTION.md 全文
-    ${REVIEW_CONTEXT}    — 审查上下文（如 "PR #12: feat: add search" 或 "Push to feat/xxx by actor — commit msg"）
-    ${DIFF}              — git diff 内容（统一 unified diff 格式）
-
   输出: 中文代码审查报告（发布为 PR 评论或 GitHub Step Summary）
   ===================================================
 -->
