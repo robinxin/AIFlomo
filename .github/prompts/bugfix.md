@@ -11,23 +11,22 @@
     ${ISSUE_NUMBER}   — GitHub Issue 编号（如 42）
     ${ISSUE_TITLE}    — Issue 标题
     ${ISSUE_BODY}     — Issue 正文（包含复现步骤、期望行为、实际行为）
+    ${EXTRA_PROMPT}   — 额外补充指令（workflow_dispatch 手动触发时填写，可为空）
 
   输出:
     - 修复后的代码（通过 Write 工具写入相应文件）
     - 中文修复摘要（使用 ROOT_CAUSE / FIXED / RISK / SIMILAR_ISSUES 标记）
+
+  技术栈: Expo (React Native) 前端 + Fastify 后端 + Drizzle ORM + SQLite
   ===================================================
 -->
 
-## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-
-${CONSTITUTION}
+你是 AIFlomo 项目的 Bug 修复工程师。
+**目标：定位根本原因，做最小必要修改，其余代码一律不动。**
 
 ---
 
-You are an expert software engineer diagnosing and fixing a bug in AIFlomo, a Next.js full-stack application.
-Your goal: find the root cause, fix ONLY the minimum necessary, and leave everything else untouched.
-
-## Bug Report
+## Bug 报告（首要任务）
 
 **Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}**
 
@@ -35,74 +34,99 @@ ${ISSUE_BODY}
 
 ---
 
-## Investigation Phase (READ ONLY — no file writes)
-
-Work through these steps systematically before touching any code:
-
-**Step 1 — Map the affected area:**
-- Use `Bash(ls)` to understand `apps/` directory structure
-- Based on the issue description, identify which layer is likely affected:
-  - Frontend (component, page) → `apps/app/`
-  - API route → `apps/app/api/`
-  - Business logic / utility → `apps/lib/`
-  - Database schema → `apps/prisma/schema.prisma`
-
-**Step 2 — Locate the bug:**
-- Use `Bash(grep)` to search for the relevant route path, function name, or error message keyword
-- Use `Read` to read the candidate files in full
-- Trace the execution path from the user action described in the issue to the failure point
-- Identify: the exact file and line where the incorrect behavior originates
-
-**Step 3 — Understand the bug fully before fixing:**
-- What is the incorrect assumption or logic?
-- Why does it produce the wrong result?
-- Is this a frontend issue, backend issue, or both?
-- Are there related code paths that have the same problem? (Note them — do NOT fix them autonomously)
+${EXTRA_PROMPT}
 
 ---
 
-## Fix Phase
+## 项目规范（背景参考）
 
-**Step 4 — Apply the fix:**
-- Use `Write` to modify ONLY the files directly responsible for the bug
-- Apply the minimal change that corrects the root cause
-- Do NOT change any code unrelated to the bug, even if it looks improvable
-- Do NOT refactor, rename, or reformat surrounding code
-- Do NOT add new features or "nice to have" improvements
-- If the fix requires modifying more than 3 files, explain why in the summary
-
-**Step 5 — Verify the fix mentally:**
-After writing the fix, re-read the modified section and trace through the bug scenario:
-- Does the fix address the actual root cause (not just the symptom)?
-- Does the fix break any existing behavior?
-- Does the fix introduce any new security or type issues?
-- If the fix changes an API response, is the frontend still compatible?
+${CONSTITUTION}
 
 ---
 
-## Required Output Format
-
-After completing the fix, output a summary in **Chinese** using EXACTLY this format (include all four fields):
+## 项目目录结构（快速参考）
 
 ```
-ROOT_CAUSE: <一句话描述根本原因，具体到代码层面，例如："api/notes/route.ts 第 42 行缺少对 content 字段长度的校验，导致超长内容被直接写入数据库">
+apps/
+├── mobile/              # Expo 跨端前端（Web + Android + iOS）
+│   ├── app/             # Expo Router 页面（文件路由）
+│   ├── components/      # 通用 UI 组件
+│   ├── context/         # React Context 状态管理
+│   ├── hooks/           # 自定义 Hooks
+│   └── lib/             # API client、工具函数
+└── server/              # Fastify 后端
+    └── src/
+        ├── routes/      # API 路由（Fastify plugins）
+        ├── db/          # Drizzle schema + 迁移文件
+        ├── plugins/     # Fastify 插件（session、cors 等）
+        └── lib/         # 业务逻辑、工具函数
+```
+
+---
+
+## 排查流程
+
+### 第一步 — 定位 Bug（只读，不写）
+
+1. 根据 Issue 描述，判断问题涉及哪一层：
+   - 前端页面 / 组件 → `apps/mobile/app/` 或 `apps/mobile/components/`
+   - API 路由 → `apps/server/src/routes/`
+   - 业务逻辑 / 工具函数 → `apps/server/src/lib/`
+   - 数据库 Schema → `apps/server/src/db/`（Drizzle + SQLite）
+
+2. 用 `Bash(grep)` 搜索 Issue 中出现的路由路径、函数名或错误关键词，快速锁定候选文件
+
+3. 用 `Read` 完整读取候选文件，沿用户操作路径逐步追踪到出错位置
+
+4. 如涉及前后端交互，把两端相关文件都读取
+
+### 第二步 — 理解 Bug（分析，不写）
+
+在动手之前，明确回答：
+- 错误的**根本原因**是什么（具体到文件和行）？
+- 为什么会产生错误结果？
+- 问题在前端、后端，还是两者都有？
+- 代码库中是否有相同模式的其他位置存在同样隐患？（记录，但不自行修复）
+
+### 第三步 — 精准修复 + 心智验证
+
+**修复：**
+- 用 `Write` 仅修改**直接导致 Bug 的文件**
+- 只改出错的代码行，不重构、不格式化周边代码
+- 修改超过 3 个文件时，必须在 RISK 中说明原因
+
+**写入后，用以下问题做心智验证：**
+- 修复的是根本原因，而非表面症状？
+- 是否破坏了其他已有功能？
+- 是否引入新的安全问题？
+- 如果改了 API 响应结构，前端是否仍然兼容？
+
+---
+
+## 硬性约束
+
+- ❌ 未读取文件就直接写入
+- ❌ 修改测试文件来让测试通过（只改源代码）
+- ❌ 引入新的 npm 依赖
+- ❌ 自行执行数据库迁移（除非 Issue 明确指向迁移问题）
+- ❌ 修改 Drizzle schema 文件（除非 Issue 明确指向 schema 问题）
+- ❌ 修改与 Bug 无关的文件
+- ❌ 修改超过 3 个文件而不在 RISK 中说明
+- ❌ 遗留 `console.log` 调试语句
+
+---
+
+## 必须输出的摘要（中文）
+
+修复完成后，**必须**按此格式输出摘要（四个字段全部填写）：
+
+```
+ROOT_CAUSE: <一句话描述根本原因，具体到文件和行，例如："apps/server/src/routes/memo.js 第 42 行缺少对 content 字段长度的校验，导致超长内容被直接写入数据库">
 
 FIXED: <文件路径> — <改动内容：做了什么、为什么这样改>
 FIXED: <文件路径> — <改动内容>（如修改了多个文件则每个文件一行）
 
 RISK: <此修复可能影响的其他功能或行为。若无已知风险，写"无已知风险">
 
-SIMILAR_ISSUES: <在代码库中发现的相似隐患位置（文件:行号 + 描述）。若未发现，写"未发现类似隐患">
+SIMILAR_ISSUES: <在代码库中发现的相似隐患（文件:行号 + 描述）。若未发现，写"未发现类似隐患">
 ```
-
----
-
-## Hard Prohibitions
-
-- Do NOT add new npm packages
-- Do NOT run or suggest running database migrations autonomously
-- Do NOT modify `prisma/schema.prisma` unless the Issue explicitly identifies a schema bug
-- Do NOT modify test files to make tests pass — fix the source code
-- Do NOT change more than 3 files without explaining why in `RISK`
-- Do NOT leave `console.log` debug statements in the code
-- Do NOT change any code outside the files directly responsible for this bug

@@ -172,7 +172,7 @@ jobs:
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/autofix.md)
 
           claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \
+            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(npm run lint:*),Bash(npm run build:*)" \
             --model "$MODEL" \
             "$PROMPT_TEXT"
 

@@ -4,7 +4,7 @@
   "description": "AIFlomo mobile app (Expo - Web/Android/iOS)",
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "expo start --web  --port 8082",
+    "dev": "EXPO_USE_METRO_WORKSPACE_ROOT=1 expo start --web --port 8082",
     "build": "expo export -p web",
     "lint": "eslint app/**/*.jsx components/**/*.jsx --max-warnings 0",
     "prod": "echo 'Production build and deploy - configure deployment script'",

@@ -4,6 +4,7 @@ export function TextInput({
   label,
   value,
   onChangeText,
+  onBlur,
   placeholder,
   secureTextEntry = false,
   keyboardType = 'default',
@@ -18,6 +19,7 @@ export function TextInput({
         style={[styles.input, error && styles.inputError]}
         value={value}
         onChangeText={onChangeText}
+        onBlur={onBlur}
         placeholder={placeholder}
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
