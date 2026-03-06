@@ -12,8 +12,8 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "prod": "npm run prod --workspaces --if-present",
-    "test": "npx midscene apps/tests/*.yaml",
-    "test:ui": "npx midscene apps/tests/*.yaml",
+    "test": "npx midscene apps/tests/",
+    "test:ui": "npx midscene --headed apps/tests/",
     "test:report": "playwright show-report"
   },
   "devDependencies": {
