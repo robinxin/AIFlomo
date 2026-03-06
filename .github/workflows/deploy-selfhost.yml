@@ -90,7 +90,6 @@ jobs:
           RUN_MIGRATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
-          NGINX_WEB_ROOT: ${{ secrets.NGINX_WEB_ROOT }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
@@ -100,7 +99,6 @@ jobs:
             RUN_MIGRATE="$RUN_MIGRATE" \
             SESSION_SECRET="$SESSION_SECRET" \
             CORS_ORIGIN="$CORS_ORIGIN" \
-            NGINX_WEB_ROOT="$NGINX_WEB_ROOT" \
             bash << 'ENDSSH'
           set -e
 
@@ -160,17 +158,21 @@ jobs:
 
           echo "── Lint check ────────────────────────────────────"
           npm run lint -w apps/server
+          npm run lint -w apps/mobile
+
+          echo "── Build server ──────────────────────────────────"
+          npm run build -w apps/server
 
           echo "── Build frontend ────────────────────────────────"
-          npm run build -w apps/mobile
+          EXPO_USE_METRO_WORKSPACE_ROOT=1 npm run build -w apps/mobile
 
-          echo "── Start backend (pm2) ───────────────────────────"
-          cd "$SERVER_DIR"
-          set -o allexport; source .env; set +o allexport
+          echo "── Start services (pm2) ──────────────────────────"
+          cd "$DEPLOY_PATH"
+          npm install
           if pm2 describe aiflomo-server >/dev/null 2>&1; then
             pm2 restart aiflomo-server
           else
-            npm run prod
+            pm2 start npm --name aiflomo-server -- run dev
           fi
           pm2 save
           pm2 list
