@@ -24,6 +24,11 @@ on:
         required: false
         type: string
         default: '1'
+      test_errors:
+        description: '测试用例执行失败的完整输出（由 quality-gate 传入）'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   autofix:
@@ -110,19 +115,29 @@ jobs:
         # 直接展开会把换行/引号/特殊字符注入 bash 脚本，导致 exit 127
         env:
           PASSED_QUALITY_ERRORS: ${{ inputs.quality_errors }}
+          PASSED_TEST_ERRORS: ${{ inputs.test_errors }}
         run: |
+          # 只捕获真正失败的 lint/build 输出（非零退出码），避免成功日志污染错误上下文
+          npm run lint  2>&1 | tee /tmp/lint-live.txt  || LINT_FAILED=true
+          npm run build 2>&1 | tee /tmp/build-live.txt || BUILD_FAILED=true
+
           > /tmp/quality-errors.txt
+          [ "${LINT_FAILED:-}"  = "true" ] && cat /tmp/lint-live.txt  >> /tmp/quality-errors.txt
+          [ "${BUILD_FAILED:-}" = "true" ] && cat /tmp/build-live.txt >> /tmp/quality-errors.txt
 
-          npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
-          npm run build 2>&1 | tee -a /tmp/quality-errors.txt || true
-
-          # 优先使用本地实时 lint/build 错误；若本地无错，则用 dispatch 传入的错误
           LIVE_ERRORS=$(cat /tmp/quality-errors.txt)
 
           if [ -n "$LIVE_ERRORS" ]; then
+            # 有实时 lint/build 错误，优先使用
             FINAL_ERRORS="$LIVE_ERRORS"
           else
+            # lint/build 均通过，使用 quality gate 传入的错误（可能包含测试失败）
             FINAL_ERRORS="$PASSED_QUALITY_ERRORS"
+          fi
+
+          # 无论 lint/build 是否失败，始终追加测试用例失败结果（若有）
+          if [ -n "$PASSED_TEST_ERRORS" ]; then
+            FINAL_ERRORS=$(printf '%s\n\n=== Test Case Failures ===\n%s' "$FINAL_ERRORS" "$PASSED_TEST_ERRORS")
           fi
 
           if [ -z "$FINAL_ERRORS" ]; then
@@ -130,6 +145,9 @@ jobs:
             echo "no_errors=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          # 同步写入临时文件，供 step summary 使用
+          printf '%s\n' "$FINAL_ERRORS" > /tmp/quality-errors.txt
 
           # 用随机 delimiter 避免内容与定界符冲突；printf '%s\n' 保证末尾有换行
           DELIM="QUALITY_ERRORS_$(openssl rand -hex 8)"
