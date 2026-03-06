@@ -188,7 +188,7 @@ jobs:
           git remote set-url origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
 
-          git add apps/
+          git add -u
 
           if git diff --cached --quiet; then
             echo "⚠️ No files were modified by Claude — no commit needed."
