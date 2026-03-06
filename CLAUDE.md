@@ -1,6 +1,6 @@
 # CLAUDE.md — AIFlomo 项目指南
 
-> **最后更新**: 2026-03-04
+> **最后更新**: 2026-03-06
 > **审核频率**: 每周
 
 ---
@@ -134,6 +134,24 @@ AIFlomo/
 { data: value, message: string }
 // 失败
 { data: null, error: string, message: string }
+```
+
+### 表单验证规范
+
+**实时验证要求**：
+- 所有表单输入必须同时支持 `onChange` 和 `onBlur` 事件
+- `onChange` 时清除错误提示（用户正在输入，不打断）
+- `onBlur` 时触发字段验证并显示错误（用户离开字段时立即反馈）
+- 提交时进行完整校验
+
+**TextInput 组件规范**：
+```jsx
+<TextInput
+  value={value}
+  onChangeText={handleChange}  // 清除错误
+  onBlur={handleBlur}           // 触发验证
+  error={errorMessage}
+/>
 ```
 
 ---
@@ -300,6 +318,19 @@ import { dirname } from 'path';
 const dbPath = process.env.DB_PATH ?? './data/aiflomo.db';
 mkdirSync(dirname(dbPath), { recursive: true });
 ```
+
+### 7. CI 环境 Expo 配置
+
+在 CI 环境（GitHub Actions、Jenkins 等）运行时，`apps/mobile/package.json` 的 `dev` 脚本**必须**设置 `EXPO_USE_METRO_WORKSPACE_ROOT=1` 环境变量：
+
+```json
+"dev": "EXPO_USE_METRO_WORKSPACE_ROOT=1 expo start --web --port 8082"
+```
+
+原因：
+- Monorepo 环境下，Metro 需要明确知道工作区根目录位置
+- 不设置此变量可能导致 Metro 无法正确解析模块路径
+- CI 环境下缺少交互式终端，必须明确指定平台（`--web`）和端口
 
 ---
 

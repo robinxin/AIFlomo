@@ -65,14 +65,29 @@ export default function RegisterScreen() {
     if (emailError) setEmailError('');
   };
 
+  const handleEmailBlur = () => {
+    const error = validateEmail(email);
+    setEmailError(error);
+  };
+
   const handleNicknameChange = (value) => {
     setNickname(value);
     if (nicknameError) setNicknameError('');
   };
 
+  const handleNicknameBlur = () => {
+    const error = validateNickname(nickname);
+    setNicknameError(error);
+  };
+
   const handlePasswordChange = (value) => {
     setPassword(value);
     if (passwordError) setPasswordError('');
+  };
+
+  const handlePasswordBlur = () => {
+    const error = validatePassword(password);
+    setPasswordError(error);
   };
 
   const handlePolicyToggle = () => {
@@ -129,6 +144,7 @@ export default function RegisterScreen() {
           label="邮箱"
           value={email}
           onChangeText={handleEmailChange}
+          onBlur={handleEmailBlur}
           placeholder="请输入邮箱地址"
           keyboardType="email-address"
           autoCapitalize="none"
@@ -139,6 +155,7 @@ export default function RegisterScreen() {
           label="昵称"
           value={nickname}
           onChangeText={handleNicknameChange}
+          onBlur={handleNicknameBlur}
           placeholder="请输入昵称（1-50 个字符）"
           autoCapitalize="none"
           error={nicknameError}
@@ -148,6 +165,7 @@ export default function RegisterScreen() {
           label="密码"
           value={password}
           onChangeText={handlePasswordChange}
+          onBlur={handlePasswordBlur}
           placeholder="请输入密码（至少 6 个字符）"
           secureTextEntry
           autoCapitalize="none"
