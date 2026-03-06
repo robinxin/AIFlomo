@@ -1,0 +1,57 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "form-validation"
+  generateReport: true
+
+tasks:
+  # 正常场景
+  - name: "邮箱格式正确，无错误提示"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiTap: "点击页面其他区域，使邮箱输入框失去焦点"
+      - sleep: 1000
+      - aiAssert: "邮箱输入框无错误提示"
+        errorMessage: "正确的邮箱格式不应该显示错误"
+
+  - name: "密码长度符合要求，无错误提示"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击页面其他区域，使密码输入框失去焦点"
+      - sleep: 1000
+      - aiAssert: "密码输入框无错误提示"
+        errorMessage: "符合长度要求的密码不应该显示错误"
+
+  # 异常场景
+  - name: "实时邮箱格式校验"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "invalid"
+      - aiTap: "点击页面其他区域，使邮箱输入框失去焦点"
+      - sleep: 1000
+      - aiAssert: "邮箱输入框下方显示红色错误提示：请输入有效的邮箱地址"
+        errorMessage: "错误的邮箱格式应该在1秒内显示错误提示"
+
+  - name: "密码输入框以掩码形式显示"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiAssert: "密码输入框中的字符显示为星号或圆点，实际输入的字符不可见"
+        errorMessage: "密码应该以掩码形式显示"
