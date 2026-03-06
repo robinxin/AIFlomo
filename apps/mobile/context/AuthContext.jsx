@@ -1,8 +1,9 @@
-import { createContext, useContext, useReducer } from 'react';
+import { createContext, useContext, useReducer, useEffect } from 'react';
+import { api } from '@/lib/api-client';
 
 const initialState = {
   user: null,
-  isLoading: false,
+  isLoading: true, // true 直到 session 检查完成
   error: null,
 };
 
@@ -24,6 +25,8 @@ function authReducer(state, action) {
       return { ...state, user: null, error: null };
     case 'FETCH_USER_SUCCESS':
       return { ...state, user: action.payload, isLoading: false, error: null };
+    case 'FETCH_USER_ERROR':
+      return { ...state, user: null, isLoading: false, error: null };
     default:
       return state;
   }
@@ -33,6 +36,14 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
+
+  // 应用启动时检查已有 session，恢复登录状态
+  useEffect(() => {
+    api.get('/api/auth/me')
+      .then((user) => dispatch({ type: 'FETCH_USER_SUCCESS', payload: user }))
+      .catch(() => dispatch({ type: 'FETCH_USER_ERROR' }));
+  }, []);
+
   return (
     <AuthContext.Provider value={{ state, dispatch }}>
       {children}

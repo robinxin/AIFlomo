@@ -25,7 +25,7 @@ export function TextInput({
         placeholderTextColor="#999"
         {...rest}
       />
-      {error && <Text style={styles.errorText}>{error}</Text>}
+      {!!error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
 }
