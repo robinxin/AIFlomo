@@ -7,7 +7,7 @@
     "dev": "EXPO_USE_METRO_WORKSPACE_ROOT=1 expo start --web --port 8082",
     "build": "expo export -p web",
     "lint": "eslint app/**/*.jsx components/**/*.jsx --max-warnings 0",
-    "prod": "echo 'Production build and deploy - configure deployment script'",
+    "prod": "npx serve dist -l 8082 --single",
     "start": "expo start",
     "web": "expo start --web  --port 8082",
     "android": "expo start --android",
