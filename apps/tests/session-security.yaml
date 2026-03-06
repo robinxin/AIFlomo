@@ -1,0 +1,66 @@
+web:
+  url: "${process.env.WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "session-security"
+  generateReport: true
+
+tasks:
+  # 前置-用户登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主界面"
+        timeout: 5000
+
+  # 正常场景
+  - name: "Cookie设置为HttpOnly"
+    continueOnError: true
+    flow:
+      # 注：此测试需要检查响应头中的 Set-Cookie 字段,通过 UI 难以直接验证
+      # 可通过开发者工具网络面板或后端日志验证
+      - ai: "检查登录响应头中的 Set-Cookie 字段"
+      - aiAssert: "Cookie 包含 HttpOnly 标志,前端 JavaScript 无法通过 document.cookie 读取 Session ID"
+        errorMessage: "Cookie 应设置为 HttpOnly,防止 XSS 攻击"
+
+  - name: "Cookie设置为SameSite=Strict"
+    continueOnError: true
+    flow:
+      # 注：此测试需要检查响应头中的 Set-Cookie 字段
+      - ai: "检查登录响应头中的 Set-Cookie 字段"
+      - aiAssert: "Cookie 包含 SameSite=Strict 标志,防止 CSRF 攻击"
+        errorMessage: "Cookie 应设置为 SameSite=Strict,防止跨站请求伪造"
+
+  - name: "生产环境Cookie设置为Secure"
+    continueOnError: true
+    flow:
+      # 注：此测试仅在生产环境(NODE_ENV=production)下有效
+      - ai: "在生产环境下检查登录响应头中的 Set-Cookie 字段"
+      - aiAssert: "Cookie 包含 Secure 标志,仅通过 HTTPS 传输"
+        errorMessage: "生产环境下 Cookie 应设置为 Secure,仅通过 HTTPS 传输"
+
+  - name: "密码使用bcrypt存储,salt rounds=10"
+    continueOnError: true
+    flow:
+      # 注：此测试需要查询数据库验证,通过 UI 无法直接验证
+      # 需要通过后端测试或数据库查询验证
+      - ai: "查询数据库 users 表中的 password_hash 字段"
+      - aiAssert: "字段值以 $2b$10$ 开头,表示使用 bcrypt 哈希,salt rounds = 10,不存储明文密码"
+        errorMessage: "密码应使用 bcrypt 算法存储,salt rounds = 10"
+
+  - name: "Session有效期为7天"
+    continueOnError: true
+    flow:
+      # 注：此测试需要查询数据库 sessions 表中的 expiresAt 字段
+      - ai: "查询数据库 sessions 表中的 expiresAt 字段"
+      - aiAssert: "expiresAt 的 Unix 时间戳(毫秒) = 当前时间 + 7 天(604,800,000 毫秒)"
+        errorMessage: "Session 有效期应为 7 天"

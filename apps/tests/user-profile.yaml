@@ -1,0 +1,55 @@
+web:
+  url: "${process.env.WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-profile"
+  generateReport: true
+
+tasks:
+  # 前置-用户登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser001@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123!"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主界面"
+        timeout: 5000
+
+  # 正常场景
+  - name: "已登录用户获取信息成功"
+    continueOnError: true
+    flow:
+      # 注：此测试假设主页面会自动调用 GET /api/auth/me 获取用户信息
+      # 或者访问用户资料页面触发该接口
+      - ai: "访问用户资料页面或主页面,触发获取当前用户信息接口"
+      - sleep: 2000
+      - aiAssert: "页面显示当前用户的邮箱和昵称信息,且不包含密码哈希字段"
+        errorMessage: "已登录用户应能成功获取自己的信息,且密码哈希不应暴露"
+
+  # 异常场景
+  - name: "未登录时访问/api/auth/me,返回401"
+    continueOnError: true
+    flow:
+      # 清除 Cookie 模拟未登录状态
+      - javascript: "document.cookie = 'sessionId=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'"
+      - sleep: 1000
+      # 注：此测试需要直接调用 API,UI 层面难以直接触发
+      # 可能需要通过开发者工具或 API 测试工具验证
+      - ai: "尝试在未登录状态下访问 /api/auth/me 接口"
+      - aiAssert: "接口返回 401 错误,提示'请先登录'"
+        errorMessage: "未登录时访问用户信息接口应返回 401"
+
+  - name: "Session已过期时访问/api/auth/me,返回401"
+    continueOnError: true
+    flow:
+      # 注：此测试需要手动设置过期的 Session,实际 E2E 测试中难以实现
+      - ai: "使用已过期的 Session Cookie 访问 /api/auth/me 接口"
+      - aiAssert: "接口返回 401 错误,提示'请先登录'"
+        errorMessage: "Session 过期时访问用户信息接口应返回 401"
