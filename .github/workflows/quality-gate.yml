@@ -33,16 +33,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: |
-          if [ ! -f "package.json" ]; then
-            echo "❌ No package.json found — SDD codegen has not generated project files yet."
-            exit 1
-          fi
-          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
-            npm install
-          else
-            echo "⏭ node_modules up to date, skipping install"
-          fi
+        run: bash scripts/ci/install.sh
 
       - name: Lint
         id: lint
@@ -58,11 +49,10 @@ jobs:
 
       - name: Start services for testing
         run: |
-          npm run dev > /tmp/server-output.txt 2>&1 &
+          bash scripts/ci/fullstack-start.sh > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
           echo "Services starting (PID: $(cat /tmp/server.pid))..."
-          # Expo CI mode does not print a URL — poll the fixed port directly
-          FRONTEND_URL="http://localhost:8082"
+          FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
           for i in $(seq 1 30); do
             if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
               echo "✅ Frontend ready at $FRONTEND_URL"
