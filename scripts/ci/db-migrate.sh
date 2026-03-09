@@ -7,7 +7,11 @@
 set -e
 
 # 确保数据库目录存在（drizzle-kit 不会自动创建）
-DB_PATH="${DB_PATH:-apps/server/data/aiflomo.db}"
+# 必须用绝对路径：npm workspace 会将 CWD 切换到 apps/server/，
+# 若使用相对路径 "apps/server/data/..." 会被叠加解析为
+# "apps/server/apps/server/data/..."，导致迁移写入错误位置
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export DB_PATH="${DB_PATH:-${REPO_ROOT}/apps/server/data/aiflomo.db}"
 mkdir -p "$(dirname "$DB_PATH")"
 
 npm run db:migrate -w apps/server
