@@ -38,8 +38,14 @@ fastify.register(corsPlugin);
 fastify.register(sessionPlugin);
 fastify.register(authRoutes, { prefix: '/api/auth' });
 
-fastify.get('/health', async () => {
-  return { status: 'ok', message: 'AIFlomo server is running' };
+fastify.get('/health', async (request, reply) => {
+  try {
+    // 实际查询 DB，验证迁移已完成且连接正常
+    db.$client.prepare('SELECT 1').get();
+    return { status: 'ok', message: 'AIFlomo server is running' };
+  } catch {
+    return reply.status(503).send({ status: 'error', message: 'Database unavailable' });
+  }
 });
 
 const start = async () => {
