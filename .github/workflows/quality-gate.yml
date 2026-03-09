@@ -47,6 +47,9 @@ jobs:
           bash scripts/ci/build.sh 2>&1 | tee /tmp/build-output.txt
           exit ${PIPESTATUS[0]}
 
+      - name: Run database migrations
+        run: bash scripts/ci/db-migrate.sh
+
       - name: Start services for testing
         run: |
           bash scripts/ci/fullstack-start.sh > /tmp/server-output.txt 2>&1 &
