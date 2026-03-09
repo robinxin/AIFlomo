@@ -67,10 +67,7 @@ export default function LoginScreen() {
     setIsSubmitting(false);
 
     if (result.success) {
-      Alert.alert('登录成功', '即将进入主页面');
-      setTimeout(() => {
-        router.replace('/memo');
-      }, 1500);
+      router.replace('/');
     } else {
       Alert.alert('登录失败', result.error || '邮箱或密码错误');
     }
