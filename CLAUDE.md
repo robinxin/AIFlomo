@@ -408,8 +408,17 @@ apps/mobile/app/
 ```bash
 # 检查是否有误用的路由组
 find apps/mobile/app -type d -name "(auth)" -o -name "(tabs)" | grep -v node_modules
-# 输出应为空，否则需手动删除
+# 输出应为空，否则需修复
 ```
+
+**修复方法（如发现误用的路由组）**：
+1. 将路由组内的页面文件（如 `login.jsx`, `register.jsx`）移到 `app/` 根目录
+2. 在 `apps/mobile/package.json` 的 `dev` 和 `build` 脚本前添加 `rm -rf app/\\(auth\\) &&` 删除路由组目录
+3. 示例：
+   ```json
+   "dev": "rm -rf app/\\(auth\\) && EXPO_USE_METRO_WORKSPACE_ROOT=1 expo start --web --port 8082",
+   "build": "rm -rf app/\\(auth\\) && expo export -p web"
+   ```
 
 ### 8. CI 环境 Expo 配置
 
