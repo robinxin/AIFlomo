@@ -48,9 +48,13 @@ jobs:
           exit ${PIPESTATUS[0]}
 
       - name: Run database migrations
-        run: bash scripts/ci/db-migrate.sh
+        id: db-migrate
+        run: |
+          bash scripts/ci/db-migrate.sh 2>&1 | tee /tmp/db-migrate-output.txt
+          exit ${PIPESTATUS[0]}
 
       - name: Start services for testing
+        id: start-services
         run: |
           bash scripts/ci/fullstack-start.sh > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
@@ -93,20 +97,28 @@ jobs:
         id: collect-errors
         if: always()
         run: |
+          LINT_OUTCOME="${{ steps.lint.outcome }}"
+          BUILD_OUTCOME="${{ steps.build.outcome }}"
+          DB_MIGRATE_OUTCOME="${{ steps.db-migrate.outcome }}"
+          TEST_OUTCOME="${{ steps.test.outcome }}"
+
+          # 使用随机 delimiter 避免错误内容与定界符冲突（原 ERROR_EOF 为硬编码，存在截断风险）
+          DELIM="ERROR_$(openssl rand -hex 8)"
           {
-            echo "error_summary<<ERROR_EOF"
-            [ -s /tmp/lint-output.txt ]  && echo "=== Lint Errors ===" && tail -100 /tmp/lint-output.txt
-            [ -s /tmp/build-output.txt ] && echo "=== Build Errors ===" && tail -100 /tmp/build-output.txt
-            [ -s /tmp/test-output.txt ]  && echo "=== Test Errors ===" && tail -200 /tmp/test-output.txt
-            echo "ERROR_EOF"
+            echo "error_summary<<${DELIM}"
+            [ "$LINT_OUTCOME"       = "failure" ] && echo "=== Lint Errors ===" && tail -100 /tmp/lint-output.txt
+            [ "$BUILD_OUTCOME"      = "failure" ] && echo "=== Build Errors ===" && tail -100 /tmp/build-output.txt
+            [ "$DB_MIGRATE_OUTCOME" = "failure" ] && echo "=== DB Migration Errors ===" && cat /tmp/db-migrate-output.txt
+            [ "$TEST_OUTCOME"       = "failure" ] && echo "=== Test Errors ===" && tail -200 /tmp/test-output.txt
+            echo "${DELIM}"
           } >> "$GITHUB_OUTPUT"
 
           # 单独输出完整 test_errors，随机 delimiter 避免内容冲突
-          DELIM="TEST_ERRORS_$(openssl rand -hex 8)"
+          DELIM2="TEST_ERRORS_$(openssl rand -hex 8)"
           {
-            echo "test_errors<<${DELIM}"
-            [ -s /tmp/test-output.txt ] && cat /tmp/test-output.txt || true
-            echo "${DELIM}"
+            echo "test_errors<<${DELIM2}"
+            [ "$TEST_OUTCOME" = "failure" ] && [ -s /tmp/test-output.txt ] && cat /tmp/test-output.txt || true
+            echo "${DELIM2}"
           } >> "$GITHUB_OUTPUT"
 
   # ─── Quality 通过 → 触发 Code Review ────────────────────────────

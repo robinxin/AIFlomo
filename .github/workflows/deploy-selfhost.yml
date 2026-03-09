@@ -139,47 +139,27 @@ jobs:
 
           echo "── Install dependencies ──────────────────────────"
           cd "$DEPLOY_PATH"
-          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
-            npm install
-          else
-            echo "node_modules up to date, skipping install"
-          fi
+          bash scripts/ci/install.sh
 
           echo "── Drizzle generate ──────────────────────────────"
-          npm run db:generate -w apps/server
+          bash scripts/ci/db-setup.sh
 
           echo "── Drizzle migrate ───────────────────────────────"
           if [ "$RUN_MIGRATE" = "true" ]; then
-            npm run db:migrate -w apps/server
+            bash scripts/ci/db-migrate.sh
             echo "Migration complete."
           else
             echo "Skipped migration (pass run_migrate=yes to run)."
           fi
 
           echo "── Lint check ────────────────────────────────────"
-          npm run lint -w apps/server
-          npm run lint -w apps/mobile
+          bash scripts/ci/lint.sh
 
-          echo "── Build server ──────────────────────────────────"
-          npm run build -w apps/server
+          echo "── Deploy server ─────────────────────────────────"
+          bash scripts/ci/deploy-server.sh
 
-          echo "── Build frontend ────────────────────────────────"
-          EXPO_USE_METRO_WORKSPACE_ROOT=1 npm run build -w apps/mobile
-
-          echo "── Start services (pm2) ──────────────────────────"
-          cd "$DEPLOY_PATH"
-          if pm2 describe aiflomo-server >/dev/null 2>&1; then
-            pm2 restart aiflomo-server
-          else
-            pm2 start npm --name aiflomo-server -- run prod -w apps/server
-          fi
-          if pm2 describe aiflomo-mobile >/dev/null 2>&1; then
-            pm2 restart aiflomo-mobile
-          else
-            pm2 start npm --name aiflomo-mobile -- run prod -w apps/mobile
-          fi
-          pm2 save
-          pm2 list
+          echo "── Deploy frontend ───────────────────────────────"
+          bash scripts/ci/deploy-frontend.sh
 
           echo "✅ Deploy complete"
           ENDSSH

@@ -252,7 +252,7 @@ jobs:
             done
 
             sleep 5
-            npx midscene "$TEST_FILE"
+            bash scripts/ci/test.sh "$TEST_FILE"
             RESULT=$?
             kill $DEV_PID 2>/dev/null
             exit $RESULT
