@@ -6,13 +6,6 @@
   用途: 根据 GitHub Issue 描述，定位 Bug 根因并进行最小范围的精准修复
   调用方: issue-bugfix.yml → job: auto-bugfix → step: Analyze and fix bug
 
-  运行时变量（由 GitHub Actions 在运行时注入）:
-    ${CONSTITUTION}   — CONSTITUTION.md 全文
-    ${ISSUE_NUMBER}   — GitHub Issue 编号（如 42）
-    ${ISSUE_TITLE}    — Issue 标题
-    ${ISSUE_BODY}     — Issue 正文（包含复现步骤、期望行为、实际行为）
-    ${EXTRA_PROMPT}   — 额外补充指令（workflow_dispatch 手动触发时填写，可为空）
-
   输出:
     - 修复后的代码（通过 Write 工具写入相应文件）
     - 中文修复摘要（使用 ROOT_CAUSE / FIXED / RISK / SIMILAR_ISSUES 标记）
@@ -41,6 +34,10 @@ ${EXTRA_PROMPT}
 ## 项目规范（背景参考）
 
 ${CONSTITUTION}
+
+### PROJECT GUIDE (CLAUDE.md)
+
+${CLAUDE_MD}
 
 ---
 
@@ -121,6 +118,8 @@ apps/
 修复完成后，**必须**按此格式输出摘要（四个字段全部填写）：
 
 ```
+BRANCH_SLUG: <修复内容的英文短语，仅限小写字母和连字符，不超过 40 字符，例如：memo-save-500-error>
+
 ROOT_CAUSE: <一句话描述根本原因，具体到文件和行，例如："apps/server/src/routes/memo.js 第 42 行缺少对 content 字段长度的校验，导致超长内容被直接写入数据库">
 
 FIXED: <文件路径> — <改动内容：做了什么、为什么这样改>

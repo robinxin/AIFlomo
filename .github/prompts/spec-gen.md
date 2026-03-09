@@ -5,12 +5,6 @@
 
   用途: 根据 GitHub Issue 内容，生成功能规格说明文档（Spec）
   调用方: issue-to-feature.yml → job: generate-spec
-
-  运行时变量（由 GitHub Actions 注入）:
-    ${ISSUE_NUMBER}   — GitHub Issue 编号
-    ${ISSUE_TITLE}    — Issue 标题
-    ${ISSUE_BODY}     — Issue 正文
-    ${SPEC_FILE}      — Spec 输出路径（specs/active/xxx.md）
   ===================================================
 -->
 

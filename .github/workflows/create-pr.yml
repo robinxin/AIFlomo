@@ -124,6 +124,15 @@ jobs:
             echo "CONSTITUTION_EOF"
           } >> "$GITHUB_ENV"
 
+      - name: Load CLAUDE.md
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        run: |
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
       # ── AI 解决冲突 ────────────────────────────────────────────────────
       - name: AI resolve merge conflicts
         if: steps.merge.outputs.merge_status == 'conflict'
@@ -139,6 +148,9 @@ jobs:
           ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
           ${CONSTITUTION}
 
+          ## PROJECT GUIDE (CLAUDE.md)
+          ${CLAUDE_MD}
+
           ---
 
           You are resolving git merge conflicts after merging origin/main into the current feature branch.
@@ -151,7 +163,7 @@ jobs:
           3. Resolve each conflict by choosing the correct combination of both sides
           4. Use Write to save the resolved file (remove ALL conflict markers)
           5. Preserve the intent of BOTH the feature branch changes and the main branch updates
-          6. Follow project conventions: TypeScript, Next.js App Router, Prisma
+          6. Follow the project conventions defined in CLAUDE.md above
 
           After resolving, list each file:
           RESOLVED: <file path> — <resolution strategy>
@@ -205,6 +217,9 @@ jobs:
           ## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
           ${CONSTITUTION}
 
+          ## PROJECT GUIDE (CLAUDE.md)
+          ${CLAUDE_MD}
+
           ---
 
           After merging origin/main into this feature branch, check whether existing tests still cover the merged code adequately, and supplement test cases if needed.
@@ -215,7 +230,7 @@ jobs:
           ${CHANGED_FILES}
 
           Instructions:
-          1. Use Read to examine changed source files under apps/app/ and apps/lib/
+          1. Use Read to examine the changed source files listed above
           2. Use Read + Bash(ls) to examine existing tests under apps/tests/
           3. Use Bash(git log) or Bash(git diff) to understand what changed in the merge
           4. If existing tests already cover the merged code — do nothing and report 'No new tests needed'
@@ -251,18 +266,16 @@ jobs:
       # ── 合并后跑测试 ──────────────────────────────────────────────────
       - name: Install app dependencies
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
-        working-directory: apps
         run: |
           npm install
-          npm run db:generate
+          npm run db:generate -w apps/server
 
       - name: Run tests after merge
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
-        working-directory: apps
         run: |
           echo "🧪 Running build + tests after merge..."
           npm run build
-          npm run test:coverage
+          npm run test
           echo "✅ Build and tests passed after merge."
 
       # ── 创建 PR ────────────────────────────────────────────────────────
@@ -307,10 +320,18 @@ jobs:
             printf '\n%s\n' "$CLOSES_LINE"
           } > /tmp/pr-body.md
 
+          TYPE=$(echo "$HEAD" | sed 's|/.*||')
+          SLUG=$(echo "$HEAD" | sed 's|^[^/]*/[0-9]*-||; s|-| |g')
+          if [ -n "$ISSUE_NUMBER" ]; then
+            PR_TITLE="${TYPE}(#${ISSUE_NUMBER}): ${SLUG}"
+          else
+            PR_TITLE="${TYPE}: ${SLUG}"
+          fi
+
           gh pr create \
             --base "main" \
             --head "$HEAD" \
-            --title "$HEAD -> main" \
+            --title "$PR_TITLE" \
             --body-file /tmp/pr-body.md
 
           echo "✅ PR created for $HEAD"
