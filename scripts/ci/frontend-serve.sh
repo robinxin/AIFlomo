@@ -14,4 +14,4 @@ if [ ! -d "$DIST_DIR" ]; then
   exit 1
 fi
 
-exec npx serve@14 "$DIST_DIR" -l "$PORT" --no-clipboard
+exec npx serve@14 "$DIST_DIR" -l "$PORT" --no-clipboard --single
