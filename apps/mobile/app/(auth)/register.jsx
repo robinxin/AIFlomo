@@ -117,7 +117,10 @@ export default function RegisterScreen() {
     setIsSubmitting(false);
 
     if (result.success) {
-      router.replace('/login');
+      Alert.alert('注册成功', '即将跳转到登录页面');
+      setTimeout(() => {
+        router.replace('/login');
+      }, 1500);
     } else {
       Alert.alert('注册失败', result.error || '注册失败，请稍后重试');
     }
