@@ -1,0 +1,23 @@
+{
+  "name": "@aiflomo/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "EXPO_USE_METRO_WORKSPACE_ROOT=1 expo start --web --port 8082",
+    "build": "expo export -p web",
+    "lint": "eslint app/ components/ context/ hooks/ lib/",
+    "prod": "npm run build"
+  },
+  "dependencies": {
+    "expo": "^52.0.0",
+    "expo-router": "^4.0.0",
+    "react": "^18.3.1",
+    "react-native": "^0.76.0",
+    "react-native-web": "^0.19.13"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "eslint": "^9.18.0"
+  }
+}
