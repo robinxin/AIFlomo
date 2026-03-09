@@ -50,6 +50,12 @@ jobs:
       - name: Run database migrations
         id: db-migrate
         run: |
+          bash scripts/ci/db-reset.sh 2>&1 | tee /tmp/db-reset-output.txt
+          [ ${PIPESTATUS[0]} -eq 0 ] || exit 1
+
+          bash scripts/ci/db-setup.sh 2>&1 | tee /tmp/db-setup-output.txt
+          [ ${PIPESTATUS[0]} -eq 0 ] || exit 1
+
           bash scripts/ci/db-migrate.sh 2>&1 | tee /tmp/db-migrate-output.txt
           exit ${PIPESTATUS[0]}
 
