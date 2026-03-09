@@ -1,0 +1,39 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "account-logout"
+  generateReport: true
+
+tasks:
+  # 前置条件:登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主页面"
+        timeout: 5000
+
+  # ====== 正常场景 ======
+  - name: "已登录用户登出成功"
+    continueOnError: true
+    flow:
+      # 注:假设用户已登录,在主页面找到登出按钮
+      - aiTap: "点击登出按钮或用户菜单中的登出选项"
+      - aiWaitFor: "登出成功,页面跳转到登录页面"
+        timeout: 3000
+      - aiAssert: "页面已跳转到/login,Session已清除"
+        errorMessage: "登出后未正确跳转到登录页面"
+
+  # ====== 异常场景 ======
+  # 注:以下场景需要直接调用API接口,无法通过UI测试验证
+  # - name: "未登录时访问登出接口,返回401"
+  # - name: "Session已过期时访问登出接口,返回401"

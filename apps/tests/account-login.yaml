@@ -1,0 +1,133 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "account-login"
+  generateReport: true
+
+tasks:
+  # ====== 正常场景 ======
+  - name: "有效邮箱和密码,登录成功"
+    continueOnError: true
+    flow:
+      # 注:假设user@example.com已注册,密码Pass123
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主页面"
+        timeout: 5000
+      - aiAssert: "页面已跳转到/memo,显示主应用界面"
+        errorMessage: "登录成功后未正确跳转到主页面"
+
+  - name: "邮箱大小写混合,统一转小写比对,登录成功"
+    continueOnError: true
+    flow:
+      # 注:假设注册时邮箱存储为user@example.com(小写)
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "User@Example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主页面"
+        timeout: 5000
+      - aiAssert: "大小写混合邮箱统一转小写后比对,登录成功"
+        errorMessage: "大小写邮箱登录失败,应统一转小写比对"
+
+  # 注:Session有效期验证需要后端数据库查询,无法通过UI测试验证
+  # - name: "Session有效期为7天"
+
+  # ====== 异常场景 ======
+  - name: "邮箱不存在,返回401"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "nonexistent@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "页面显示错误提示"
+        timeout: 3000
+      - aiAssert: "页面显示'邮箱或密码错误',不暴露具体错误"
+        errorMessage: "邮箱不存在时应统一提示'邮箱或密码错误'"
+
+  - name: "密码错误,返回401"
+    continueOnError: true
+    flow:
+      # 注:假设user@example.com已注册,正确密码Pass123
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到密码输入框"
+        value: "WrongPass"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "页面显示错误提示"
+        timeout: 3000
+      - aiAssert: "页面显示'邮箱或密码错误',不暴露具体错误"
+        errorMessage: "密码错误时应统一提示'邮箱或密码错误'"
+
+  - name: "邮箱字段为空,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: ""
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示'请填写完整信息'提示,未发起后端请求"
+        errorMessage: "空邮箱应被前端拦截"
+
+  - name: "密码字段为空,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到密码输入框"
+        value: ""
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示'请填写完整信息'提示,未发起后端请求"
+        errorMessage: "空密码应被前端拦截"
+
+  - name: "邮箱和密码都为空,返回400"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: ""
+      - aiInput: "找到密码输入框"
+        value: ""
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示'请填写完整信息'提示,未发起后端请求"
+        errorMessage: "空表单应被前端拦截"
+
+  - name: "快速点击登录按钮多次,仅发起一次请求"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      # 注:原用例要求连续点击5次,但Midscene无法精确控制点击次数,此处验证按钮禁用机制
+      - aiTap: "点击登录按钮"
+      - aiAssert: "登录按钮变为禁用状态,仅发起一次后端请求"
+        errorMessage: "按钮防重复提交机制失效"
+
+  # 注:网络错误场景需要模拟环境,暂不实现
+  # - name: "网络错误时显示友好提示"

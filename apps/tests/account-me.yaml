@@ -1,0 +1,36 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "account-me"
+  generateReport: true
+
+tasks:
+  # 前置条件:登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "user@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功,页面跳转到主页面"
+        timeout: 5000
+
+  # ====== 正常场景 ======
+  - name: "已登录用户获取信息成功"
+    continueOnError: true
+    flow:
+      # 注:假设主页面或用户中心会显示当前用户信息
+      - aiAssert: "页面显示当前用户的邮箱user@example.com和昵称张三"
+        errorMessage: "已登录用户信息未正确显示"
+
+  # ====== 异常场景 ======
+  # 注:以下场景需要直接调用API接口,无法通过UI测试验证
+  # - name: "未登录时访问/api/auth/me,返回401"
+  # - name: "Session已过期时访问/api/auth/me,返回401"
