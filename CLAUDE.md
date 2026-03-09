@@ -388,7 +388,7 @@ mkdirSync(dirname(dbPath), { recursive: true });
 
 Expo 应用需要在其**应用目录**下存在 `.env` 文件才能正确加载环境变量。在 Monorepo 中：
 
-**必需文件**：
+**必需文件（必须提交到 Git）**：
 - **根目录** `.env` — 全局环境变量（模型配置、后端环境等）
 - **apps/mobile/.env** — 前端专用环境变量（必须包含 `EXPO_PUBLIC_*` 变量）
 
@@ -397,11 +397,14 @@ Expo 应用需要在其**应用目录**下存在 `.env` 文件才能正确加载
 EXPO_PUBLIC_API_URL=http://localhost:3000
 ```
 
+**CRITICAL（关键）**：
+- **`apps/mobile/.env` 文件缺失会导致页面空白**，因为 `api-client.js` 中 `process.env.EXPO_PUBLIC_API_URL` 为 undefined，API 请求失败，AuthContext 初始化超时，应用卡在加载状态（`isLoading: true`）
+- 此文件**必须提交到 Git**，确保 CI 环境和新机器能正常运行
+
 原因：
 - `npm run dev -w apps/mobile` 会将工作目录切换到 `apps/mobile/`
 - Expo 只会加载**当前工作目录**下的 `.env` 文件，不会自动读取根目录的 `.env`
 - 以 `EXPO_PUBLIC_` 开头的变量会在构建时被内联到前端代码中
-- 未设置此变量时，`api-client.js` 使用默认值 `http://localhost:3000`，可能导致 API 调用失败
 
 验证：构建后检查打包产物中是否包含正确的 API URL：
 ```bash
