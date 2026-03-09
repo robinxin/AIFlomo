@@ -312,7 +312,7 @@ jobs:
 
           claude --print \
             --allowedTools "Read,Write,Task,TeamCreate,SendMessage,TaskCreate,TaskList,TaskUpdate,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(npm run lint*),Bash(python3:*)" \
-            --model "Sonnet 4.6" \
+            --model "claude-sonnet-4-6" \
             "$PROMPT_TEXT"
 
           git diff --name-only > /tmp/written-files.txt

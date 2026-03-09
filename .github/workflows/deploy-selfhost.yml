@@ -35,14 +35,11 @@ jobs:
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
           BRANCH="${{ env.DEPLOY_BRANCH }}"
           if [[ "$BRANCH" == feat/* ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}"     ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
-            [ -z "${{ secrets.SYSTEMD_SERVICE_FEAT }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_FEAT"
+            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}" ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
           elif [[ "$BRANCH" == bugfix/* ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH_BUGFIX }}"     ] && MISSING="$MISSING DEPLOY_PATH_BUGFIX"
-            [ -z "${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" ] && MISSING="$MISSING SYSTEMD_SERVICE_BUGFIX"
+            [ -z "${{ secrets.DEPLOY_PATH_BUGFIX }}" ] && MISSING="$MISSING DEPLOY_PATH_BUGFIX"
           elif [[ "$BRANCH" == 'main' ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH }}"     ] && MISSING="$MISSING DEPLOY_PATH"
-            [ -z "${{ secrets.SYSTEMD_SERVICE }}" ] && MISSING="$MISSING SYSTEMD_SERVICE"
+            [ -z "${{ secrets.DEPLOY_PATH }}" ] && MISSING="$MISSING DEPLOY_PATH"
           fi
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:$MISSING"
@@ -54,14 +51,11 @@ jobs:
         run: |
           BRANCH="${{ env.DEPLOY_BRANCH }}"
           if [[ "$BRANCH" == feat/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}"           >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_FEAT }}"   >> $GITHUB_ENV
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}" >> $GITHUB_ENV
           elif [[ "$BRANCH" == bugfix/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_BUGFIX }}"         >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE_BUGFIX }}" >> $GITHUB_ENV
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_BUGFIX }}" >> $GITHUB_ENV
           elif [[ "$BRANCH" == 'main' ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}"                >> $GITHUB_ENV
-            echo "SYSTEMD_SERVICE=${{ secrets.SYSTEMD_SERVICE }}"        >> $GITHUB_ENV
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}" >> $GITHUB_ENV
           fi
 
       - name: Checkout code
@@ -93,20 +87,26 @@ jobs:
       - name: Deploy on ECS
         env:
           DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-          SYSTEMD_SERVICE: ${{ env.SYSTEMD_SERVICE }}
           RUN_MIGRATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             DEPLOY_PATH="$DEPLOY_PATH" \
-            SYSTEMD_SERVICE="$SYSTEMD_SERVICE" \
             RUN_MIGRATE="$RUN_MIGRATE" \
             SESSION_SECRET="$SESSION_SECRET" \
+            CORS_ORIGIN="$CORS_ORIGIN" \
             bash << 'ENDSSH'
           set -e
+
+          # SSH 非交互式 shell 不加载 ~/.bashrc，手动 source nvm 确保 node/npm/pm2 可用
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+          export PATH="$PATH:$(npm prefix -g)/bin"
+
           SERVER_DIR="$DEPLOY_PATH/apps/server"
 
           echo "── Clean macOS metadata files ────────────────────"
@@ -130,21 +130,19 @@ jobs:
           ENV_FILE="$SERVER_DIR/.env"
           if [ ! -f "$ENV_FILE" ]; then
             SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
-            printf 'NODE_ENV=production\nPORT=3001\nSESSION_SECRET=%s\nDB_PATH=./data/aiflomo.db\nCORS_ORIGIN=*\n' "$SECRET" > "$ENV_FILE"
+            CORS="${CORS_ORIGIN:-http://localhost:8082}"
+            printf 'NODE_ENV=production\nPORT=3001\nSESSION_SECRET=%s\nDB_PATH=./data/aiflomo.db\nCORS_ORIGIN=%s\n' "$SECRET" "$CORS" > "$ENV_FILE"
             echo "Created $ENV_FILE"
           else
             echo ".env already exists"
           fi
-
-          echo "── Stop service ──────────────────────────────────"
-          sudo systemctl stop "$SYSTEMD_SERVICE" || true
 
           echo "── Install dependencies ──────────────────────────"
           cd "$DEPLOY_PATH"
           if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
             npm install
           else
-            echo "⏭ node_modules up to date, skipping install"
+            echo "node_modules up to date, skipping install"
           fi
 
           echo "── Drizzle generate ──────────────────────────────"
@@ -160,14 +158,28 @@ jobs:
 
           echo "── Lint check ────────────────────────────────────"
           npm run lint -w apps/server
+          npm run lint -w apps/mobile
 
-          echo "── Start service ─────────────────────────────────"
-          sudo systemctl restart "$SYSTEMD_SERVICE" || {
-            echo "Service failed to start. Journal log:"
-            sudo journalctl -u "$SYSTEMD_SERVICE" -n 50 --no-pager
-            exit 1
-          }
-          sudo systemctl status "$SYSTEMD_SERVICE" --no-pager
+          echo "── Build server ──────────────────────────────────"
+          npm run build -w apps/server
+
+          echo "── Build frontend ────────────────────────────────"
+          EXPO_USE_METRO_WORKSPACE_ROOT=1 npm run build -w apps/mobile
+
+          echo "── Start services (pm2) ──────────────────────────"
+          cd "$DEPLOY_PATH"
+          if pm2 describe aiflomo-server >/dev/null 2>&1; then
+            pm2 restart aiflomo-server
+          else
+            pm2 start npm --name aiflomo-server -- run prod -w apps/server
+          fi
+          if pm2 describe aiflomo-mobile >/dev/null 2>&1; then
+            pm2 restart aiflomo-mobile
+          else
+            pm2 start npm --name aiflomo-mobile -- run prod -w apps/mobile
+          fi
+          pm2 save
+          pm2 list
 
           echo "✅ Deploy complete"
           ENDSSH
