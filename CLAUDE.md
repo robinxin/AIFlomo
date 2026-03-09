@@ -384,6 +384,31 @@ mkdirSync(dirname(dbPath), { recursive: true });
 - 不设置此变量可能导致 Metro 无法正确解析模块路径
 - CI 环境下缺少交互式终端，必须明确指定平台（`--web`）和端口
 
+### 8. 环境变量配置（Expo 前端）
+
+Expo 应用需要在其**应用目录**下存在 `.env` 文件才能正确加载环境变量。在 Monorepo 中：
+
+**必需文件**：
+- **根目录** `.env` — 全局环境变量（模型配置、后端环境等）
+- **apps/mobile/.env** — 前端专用环境变量（必须包含 `EXPO_PUBLIC_*` 变量）
+
+**apps/mobile/.env 必须包含**：
+```bash
+EXPO_PUBLIC_API_URL=http://localhost:3000
+```
+
+原因：
+- `npm run dev -w apps/mobile` 会将工作目录切换到 `apps/mobile/`
+- Expo 只会加载**当前工作目录**下的 `.env` 文件，不会自动读取根目录的 `.env`
+- 以 `EXPO_PUBLIC_` 开头的变量会在构建时被内联到前端代码中
+- 未设置此变量时，`api-client.js` 使用默认值 `http://localhost:3000`，可能导致 API 调用失败
+
+验证：构建后检查打包产物中是否包含正确的 API URL：
+```bash
+npm run build -w apps/mobile
+grep -o "http://localhost:3000" apps/mobile/dist/_expo/static/js/web/*.js
+```
+
 ---
 
 ## ✅ 实现后自验证步骤（必须执行）
