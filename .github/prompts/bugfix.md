@@ -42,26 +42,6 @@ ${CLAUDE_MD}
 
 ---
 
-## 项目目录结构（快速参考）
-
-```
-apps/
-├── mobile/              # Expo 跨端前端（Web + Android + iOS）
-│   ├── app/             # Expo Router 页面（文件路由）
-│   ├── components/      # 通用 UI 组件
-│   ├── context/         # React Context 状态管理
-│   ├── hooks/           # 自定义 Hooks
-│   └── lib/             # API client、工具函数
-└── server/              # Fastify 后端
-    └── src/
-        ├── routes/      # API 路由（Fastify plugins）
-        ├── db/          # Drizzle schema + 迁移文件
-        ├── plugins/     # Fastify 插件（session、cors 等）
-        └── lib/         # 业务逻辑、工具函数
-```
-
----
-
 ## 排查流程
 
 ### 第一步 — 定位 Bug（只读，不写）
@@ -142,7 +122,7 @@ STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:3001/ap
 
 - ❌ 未读取文件就直接写入
 - ❌ 修改**已有**测试文件来让测试通过（新增 bug 专属测试除外）
-- ❌ 引入新的 npm 依赖
+- ❌ 引入新的 npm 依赖（除非该依赖缺失本身是 Bug 根因，需在 RISK 中说明理由）
 - ❌ 自行执行数据库迁移（除非 Issue 明确指向迁移问题）
 - ❌ 修改 Drizzle schema 文件（除非 Issue 明确指向 schema 问题）
 - ❌ 修改与 Bug 无关的文件

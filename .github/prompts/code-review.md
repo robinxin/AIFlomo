@@ -49,7 +49,7 @@ Check for:
 - Off-by-one errors, incorrect conditions, wrong comparisons
 - Async/await misuse (missing `await`, unhandled promises)
 - Incorrect HTTP status codes (e.g., returning `200` for error responses)
-- API response NOT following `{ data, message }` (success) / `{ data: null, error, message }` (failure) structure
+- API response NOT following the unified response structure defined in CLAUDE.md
 - Logic that doesn't match the intent visible from the surrounding code
 
 ### Dimension 2 — Security (highest priority)
@@ -61,7 +61,7 @@ Check for:
 - XSS risk — user content rendered with `dangerouslySetInnerHTML` or equivalent in RN
 - Hardcoded secrets, tokens, passwords, or API keys in source code
 - Sensitive data (passwords, tokens) accidentally logged or returned in responses
-- Memo/Note content not validated for the 10,000-character limit
+- Memo/Note content not validated for the character limit defined in CLAUDE.md
 
 ### Dimension 3 — JavaScript Code Quality
 
@@ -77,9 +77,7 @@ Check for:
 ### Dimension 4 — Code Quality & Conventions
 
 Check for:
-- Backend file names not in `kebab-case.js`
-- Expo page/route files not in `kebab-case.jsx`, component files not in `PascalCase.jsx`
-- Functions or variables not in `camelCase`
+- File names, component names, and variable names not following the naming conventions defined in CLAUDE.md
 - Comments or docstrings added to code that was not changed in this diff
 - Code changes outside the stated task scope (scope creep — changes unrelated to the feature)
 - New npm packages added without the spec requiring them
