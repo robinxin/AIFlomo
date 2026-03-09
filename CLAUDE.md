@@ -371,36 +371,45 @@ const dbPath = process.env.DB_PATH ?? './data/aiflomo.db';
 mkdirSync(dirname(dbPath), { recursive: true });
 ```
 
-### 7. Expo Router 路由组规范
+### 7. Expo Router 路由组规范（⚠️ 违反会导致全站 404）
+
+**CRITICAL（关键）**：违反此规范会导致所有页面返回 404 错误，E2E 测试全部失败。
 
 **路由文件放置规则**：
 - **所有路由页面**（login、register、memo 等）必须直接放在 `apps/mobile/app/` 根目录下
 - **禁止使用路由组**（如 `(auth)/`、`(tabs)/` 等）包裹页面文件，除非该组确实需要独立的布局或嵌套导航
-- 路由组 `(groupName)` 不会出现在 URL 路径中，但如果组内有 `_layout.jsx`，Expo Router 会为该组创建独立的导航栈，可能导致路由匹配失败
+- 路由组 `(groupName)` 不会出现在 URL 路径中，但如果组内有 `_layout.jsx`，Expo Router 会为该组创建独立的导航栈，导致所有路由返回 404
 
-**错误示例**（会导致 404）：
+**错误示例**（会导致全站 404）：
 ```
 apps/mobile/app/
   (auth)/
-    _layout.jsx      ← 创建了独立导航栈，阻断了路由匹配
-    login.jsx        ← 无法通过 /login 访问
-    register.jsx     ← 无法通过 /register 访问
+    _layout.jsx      ← ❌ 创建了独立导航栈，阻断了所有路由匹配
+    login.jsx        ← ❌ 无法通过 /login 访问（404）
+    register.jsx     ← ❌ 无法通过 /register 访问（404）
 ```
 
 **正确示例**：
 ```
 apps/mobile/app/
-  _layout.jsx        ← 根布局
-  index.jsx          ← 根路由（重定向逻辑）
-  login.jsx          ← 可通过 /login 访问
-  register.jsx       ← 可通过 /register 访问
-  memo.jsx           ← 可通过 /memo 访问
+  _layout.jsx        ← ✅ 根布局
+  index.jsx          ← ✅ 根路由（重定向逻辑）
+  login.jsx          ← ✅ 可通过 /login 访问
+  register.jsx       ← ✅ 可通过 /register 访问
+  memo.jsx           ← ✅ 可通过 /memo 访问
 ```
 
 **何时使用路由组**：
 - 仅在需要为一组页面提供共享布局时使用（如 tabs 导航）
 - 组内的 `_layout.jsx` 应只定义布局，不应阻断路由匹配
 - 若无共享布局需求，直接将页面放在 `app/` 根目录
+
+**验证方法**：
+```bash
+# 检查是否有误用的路由组
+find apps/mobile/app -type d -name "(auth)" -o -name "(tabs)" | grep -v node_modules
+# 输出应为空，否则需手动删除
+```
 
 ### 8. CI 环境 Expo 配置
 
@@ -460,13 +469,19 @@ npm ls babel-preset-expo                        # 只有一个版本且为 12.x
 ls node_modules/@fastify/cookie                 # 目录必须存在
 grep '"dev"' package.json                       # 应包含 concurrently
 
-# 3. Bundle 内容验证（前端核心验证）
+# 3. 路由结构验证（CRITICAL - 防止全站 404）
+find apps/mobile/app -type d \( -name "(auth)" -o -name "(tabs)" \) | grep -v node_modules
+# 输出应为空，否则说明路由组配置错误，会导致全站 404
+
+ls apps/mobile/app/*.jsx                        # 应包含 login.jsx、register.jsx 等页面
+
+# 4. Bundle 内容验证（前端核心验证）
 cd apps/mobile && npx expo export -p web --output-dir /tmp/expo-dist
 grep -c 'renderRootComponent' /tmp/expo-dist/bundles/*.js   # 结果必须 > 0
 
-# 4. 后端健康检查
+# 5. 后端健康检查
 curl http://localhost:3000/health               # 应返回 {"status":"ok"}
 
-# 5. 前端页面验证
+# 6. 前端页面验证
 # 访问 http://localhost:8082/ 应重定向到 /login 并渲染登录表单（非空白页）
 ```
