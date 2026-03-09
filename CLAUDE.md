@@ -1,6 +1,6 @@
 # CLAUDE.md — AIFlomo 项目指南
 
-> **最后更新**: 2026-03-04
+> **最后更新**: 2026-03-10
 > **审核频率**: 每周
 
 ---
@@ -68,6 +68,28 @@ npm run test              # playwright test
 npm run test:ui           # playwright test --ui
 npm run test:report       # playwright show-report
 ```
+
+---
+
+## 🏗️ 项目初始化状态
+
+**重要提示**：当 `apps/mobile/` 和 `apps/server/` 子包尚未创建时：
+
+1. **根 package.json 配置**：
+   - 移除或清空 `workspaces` 字段
+   - 将 `dev` / `build` / `lint` / `prod` 脚本设置为占位符（echo 提示信息）
+
+2. **创建子包后**：
+   - 恢复 `workspaces: ["apps/mobile", "apps/server"]`
+   - 将脚本改为 `npm run <script> --workspaces --if-present`
+   - 确保每个子包的 package.json 包含四条标准脚本（dev / build / lint / prod）
+
+3. **验证项目状态**：
+   ```bash
+   ls apps/         # 应包含 mobile/ 和 server/ 目录
+   npm run lint     # 应正常执行或提示"无 workspaces"
+   npm run build    # 应正常执行或提示"无 workspaces"
+   ```
 
 ---
 
