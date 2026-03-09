@@ -33,36 +33,26 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: |
-          if [ ! -f "package.json" ]; then
-            echo "❌ No package.json found — SDD codegen has not generated project files yet."
-            exit 1
-          fi
-          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
-            npm install
-          else
-            echo "⏭ node_modules up to date, skipping install"
-          fi
+        run: bash scripts/ci/install.sh
 
       - name: Lint
         id: lint
         run: |
-          npm run lint 2>&1 | tee /tmp/lint-output.txt
+          bash scripts/ci/lint.sh 2>&1 | tee /tmp/lint-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Build
         id: build
         run: |
-          npm run build 2>&1 | tee /tmp/build-output.txt
+          bash scripts/ci/build.sh 2>&1 | tee /tmp/build-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Start services for testing
         run: |
-          npm run dev > /tmp/server-output.txt 2>&1 &
+          bash scripts/ci/fullstack-start.sh > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
           echo "Services starting (PID: $(cat /tmp/server.pid))..."
-          # Expo CI mode does not print a URL — poll the fixed port directly
-          FRONTEND_URL="http://localhost:8082"
+          FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
           for i in $(seq 1 30); do
             if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
               echo "✅ Frontend ready at $FRONTEND_URL"
@@ -83,13 +73,8 @@ jobs:
         run: |
           echo "Waiting 10s for frontend to fully initialize..."
           sleep 10
-          if find apps/tests/ -name "*.yaml" -print -quit 2>/dev/null | grep -q .; then
-            echo "Running test cases..."
-            npm run test 2>&1 | tee /tmp/test-output.txt
-            exit ${PIPESTATUS[0]}
-          else
-            echo "ℹ️ No test files in apps/tests/ — skipping"
-          fi
+          bash scripts/ci/test.sh 2>&1 | tee /tmp/test-output.txt
+          exit ${PIPESTATUS[0]}
 
       - name: Stop services
         if: always()
