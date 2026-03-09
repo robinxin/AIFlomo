@@ -38,13 +38,13 @@ jobs:
       - name: Lint
         id: lint
         run: |
-          npm run lint 2>&1 | tee /tmp/lint-output.txt
+          bash scripts/ci/lint.sh 2>&1 | tee /tmp/lint-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Build
         id: build
         run: |
-          npm run build 2>&1 | tee /tmp/build-output.txt
+          bash scripts/ci/build.sh 2>&1 | tee /tmp/build-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Start services for testing
@@ -73,13 +73,8 @@ jobs:
         run: |
           echo "Waiting 10s for frontend to fully initialize..."
           sleep 10
-          if find apps/tests/ -name "*.yaml" -print -quit 2>/dev/null | grep -q .; then
-            echo "Running test cases..."
-            npm run test 2>&1 | tee /tmp/test-output.txt
-            exit ${PIPESTATUS[0]}
-          else
-            echo "ℹ️ No test files in apps/tests/ — skipping"
-          fi
+          bash scripts/ci/test.sh 2>&1 | tee /tmp/test-output.txt
+          exit ${PIPESTATUS[0]}
 
       - name: Stop services
         if: always()
