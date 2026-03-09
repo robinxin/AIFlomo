@@ -25,3 +25,12 @@ coverage/
 
 # Secrets
 .secrets
+
+# Deprecated routes (to be deleted)
+apps/mobile/app/(auth)/
+apps/mobile/app/.auth-deprecated/
+
+# Cleanup scripts
+.cleanup.js
+.cleanup-auth-dir.sh
+.rename-auth.js

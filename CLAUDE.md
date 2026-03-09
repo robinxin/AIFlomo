@@ -371,7 +371,38 @@ const dbPath = process.env.DB_PATH ?? './data/aiflomo.db';
 mkdirSync(dirname(dbPath), { recursive: true });
 ```
 
-### 7. CI 环境 Expo 配置
+### 7. Expo Router 路由组规范
+
+**路由文件放置规则**：
+- **所有路由页面**（login、register、memo 等）必须直接放在 `apps/mobile/app/` 根目录下
+- **禁止使用路由组**（如 `(auth)/`、`(tabs)/` 等）包裹页面文件，除非该组确实需要独立的布局或嵌套导航
+- 路由组 `(groupName)` 不会出现在 URL 路径中，但如果组内有 `_layout.jsx`，Expo Router 会为该组创建独立的导航栈，可能导致路由匹配失败
+
+**错误示例**（会导致 404）：
+```
+apps/mobile/app/
+  (auth)/
+    _layout.jsx      ← 创建了独立导航栈，阻断了路由匹配
+    login.jsx        ← 无法通过 /login 访问
+    register.jsx     ← 无法通过 /register 访问
+```
+
+**正确示例**：
+```
+apps/mobile/app/
+  _layout.jsx        ← 根布局
+  index.jsx          ← 根路由（重定向逻辑）
+  login.jsx          ← 可通过 /login 访问
+  register.jsx       ← 可通过 /register 访问
+  memo.jsx           ← 可通过 /memo 访问
+```
+
+**何时使用路由组**：
+- 仅在需要为一组页面提供共享布局时使用（如 tabs 导航）
+- 组内的 `_layout.jsx` 应只定义布局，不应阻断路由匹配
+- 若无共享布局需求，直接将页面放在 `app/` 根目录
+
+### 8. CI 环境 Expo 配置
 
 在 CI 环境（GitHub Actions、Jenkins 等）运行时，`apps/mobile/package.json` 的 `dev` 脚本**必须**设置 `EXPO_USE_METRO_WORKSPACE_ROOT=1` 环境变量：
 
@@ -384,7 +415,7 @@ mkdirSync(dirname(dbPath), { recursive: true });
 - 不设置此变量可能导致 Metro 无法正确解析模块路径
 - CI 环境下缺少交互式终端，必须明确指定平台（`--web`）和端口
 
-### 8. 环境变量配置（Expo 前端）
+### 9. 环境变量配置（Expo 前端）
 
 Expo 应用需要在其**应用目录**下存在 `.env` 文件才能正确加载环境变量。在 Monorepo 中：
 
