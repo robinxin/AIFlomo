@@ -213,6 +213,7 @@ jobs:
             # ── 2/2 修复后状态验证 ──────────────────────────────────────
             echo "--- [2/2] 修复后状态（期望通过）---"
             bash scripts/ci/db-reset.sh 2>/dev/null || true
+            bash scripts/ci/db-migrate.sh 2>/dev/null || true
             bash scripts/ci/server-start.sh > /tmp/server-after.log 2>&1 &
             SERVER_PID=$!
             SERVER_URL=$(bash scripts/ci/server-url.sh)
