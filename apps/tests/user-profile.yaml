@@ -1,0 +1,42 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-profile"
+  generateReport: true
+
+tasks:
+  # 前置-用户登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "logintest@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主界面"
+        timeout: 5000
+
+  # 正常场景
+  - name: "已登录用户获取信息成功"
+    continueOnError: true
+    flow:
+      - ai: "页面已加载当前用户信息"
+      - aiAssert: "页面显示用户邮箱：logintest@example.com 和昵称：登录测试"
+        errorMessage: "用户信息未正确加载"
+      - aiAssert: "页面不显示密码或密码哈希值"
+        errorMessage: "不应该暴露密码信息"
+
+  # 异常场景
+  - name: "未登录时访问需要认证的页面，返回401"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/memo'"
+      - sleep: 2000
+      - aiAssert: "页面自动跳转到登录页面，显示登录表单"
+        errorMessage: "未登录时应该无法访问需要认证的页面"

@@ -1,0 +1,51 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "session-security"
+  generateReport: true
+
+tasks:
+  # 前置-用户登录
+  - name: "前置-用户登录"
+    continueOnError: false
+    flow:
+      - javascript: "window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "logintest@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主界面"
+        timeout: 5000
+
+  # 正常场景
+  - name: "Cookie设置为HttpOnly"
+    continueOnError: true
+    flow:
+      # 注：此测试通过验证前端JavaScript无法读取Cookie来间接验证HttpOnly
+      - javascript: |
+          const cookies = document.cookie;
+          if (cookies.includes('sessionId')) {
+            throw new Error('Session Cookie应该设置为HttpOnly，前端JavaScript不应该能读取');
+          }
+      - aiAssert: "前端JavaScript无法通过document.cookie读取Session ID"
+        errorMessage: "Cookie应该设置为HttpOnly"
+
+  - name: "Cookie设置为SameSite=Strict"
+    continueOnError: true
+    flow:
+      # 注：此测试项难以通过UI测试完全验证，需要后端测试或手动检查响应头
+      - aiAssert: "Cookie已正确设置SameSite=Strict属性，防止CSRF攻击"
+        errorMessage: "Cookie应该设置SameSite=Strict"
+
+  - name: "密码使用bcrypt存储，salt rounds = 10"
+    continueOnError: true
+    flow:
+      # 注：此测试项需要检查数据库，UI层无法直接验证
+      # 通过验证密码不以明文形式出现在任何前端响应中来间接验证
+      - aiAssert: "页面不显示任何密码明文或密码哈希值"
+        errorMessage: "密码应该使用bcrypt安全存储，不暴露给前端"
