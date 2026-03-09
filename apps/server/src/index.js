@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { db } from './db/index.js';
+import { runMigrations } from './db/migrate.js';
 import { corsPlugin } from './plugins/cors.js';
 import { sessionPlugin } from './plugins/session.js';
 import { authRoutes } from './routes/auth.js';
@@ -44,6 +45,11 @@ fastify.get('/health', async () => {
 
 const start = async () => {
   try {
+    // 启动前先执行数据库迁移
+    console.log('Running database migrations...');
+    await runMigrations();
+    console.log('Database migrations completed');
+
     const port = process.env.PORT || 3000;
     await fastify.listen({ port, host: '0.0.0.0' });
     console.log(`Server listening on port ${port}`);
