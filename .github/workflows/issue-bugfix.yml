@@ -143,6 +143,7 @@ jobs:
             --model "$MODEL" \
             "$PROMPT_TEXT")
           echo "$CLAUDE_OUTPUT"
+          echo "$CLAUDE_OUTPUT" > /tmp/claude-bugfix-output.txt
 
           # 从输出中提取 BRANCH_SLUG
           RAW_SLUG=$(echo "$CLAUDE_OUTPUT" | grep '^BRANCH_SLUG:' | head -1 | sed 's/^BRANCH_SLUG:[[:space:]]*//')
@@ -162,6 +163,128 @@ jobs:
           fi
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "Branch will be: $BRANCH"
+
+      - name: Verify fix
+        id: verify
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          OUTPUT=$(cat /tmp/claude-bugfix-output.txt 2>/dev/null || echo "")
+          BUG_TYPE=$(echo "$OUTPUT" | grep '^BUG_TYPE:' | head -1 | sed 's/^BUG_TYPE:[[:space:]]*//')
+          N="${ISSUE_NUMBER:-0}"
+
+          if [ "$BUG_TYPE" = "backend" ]; then
+            VERIFY_SCRIPT="apps/tests/verify-bug-${N}.sh"
+            if [ ! -f "$VERIFY_SCRIPT" ]; then
+              echo "⚠️ 未找到 $VERIFY_SCRIPT，跳过验证"
+              exit 0
+            fi
+            chmod +x "$VERIFY_SCRIPT"
+
+            npm install --silent
+            npm run db:generate -w apps/server --silent 2>/dev/null || true
+            npm run db:migrate -w apps/server --silent 2>/dev/null || true
+
+            # ── 1/2 未修复状态验证 ──────────────────────────────────────
+            echo "--- [1/2] 未修复状态（期望失败）---"
+            STASH_MSG=$(git stash 2>&1)
+            if echo "$STASH_MSG" | grep -q "No local changes"; then
+              echo "⚠️ 没有检测到已跟踪文件的修改，跳过双向验证"
+              exit 0
+            fi
+
+            npm run dev -w apps/server > /tmp/server-before.log 2>&1 &
+            SERVER_PID=$!
+            for i in $(seq 1 15); do
+              curl -s http://localhost:3001 > /dev/null 2>&1 && break || sleep 2
+            done
+
+            bash "$VERIFY_SCRIPT" && BEFORE_RESULT=0 || BEFORE_RESULT=1
+            kill $SERVER_PID 2>/dev/null; sleep 2
+            git stash pop
+
+            if [ "$BEFORE_RESULT" -eq 0 ]; then
+              echo "❌ 验证脚本在未修复代码上通过了，脚本未能覆盖此 Bug，请检查脚本逻辑"
+              exit 1
+            fi
+            echo "✅ 未修复状态：脚本正确失败"
+
+            # ── 2/2 修复后状态验证 ──────────────────────────────────────
+            echo "--- [2/2] 修复后状态（期望通过）---"
+            npm run dev -w apps/server > /tmp/server-after.log 2>&1 &
+            SERVER_PID=$!
+            for i in $(seq 1 15); do
+              curl -s http://localhost:3001 > /dev/null 2>&1 && break || sleep 2
+            done
+
+            bash "$VERIFY_SCRIPT" && AFTER_RESULT=0 || AFTER_RESULT=1
+            kill $SERVER_PID 2>/dev/null
+
+            if [ "$AFTER_RESULT" -ne 0 ]; then
+              echo "❌ 修复后验证脚本仍然失败，修复可能不完整"
+              exit 1
+            fi
+            echo "✅ 双向验证通过：Bug 已确认修复"
+
+          elif [ "$BUG_TYPE" = "frontend" ]; then
+            TEST_FILE="apps/tests/bug-${N}.yaml"
+            if [ ! -f "$TEST_FILE" ]; then
+              echo "⚠️ 未找到 $TEST_FILE，跳过验证"
+              exit 0
+            fi
+
+            npm install --silent
+            npm run dev > /tmp/dev-verify.log 2>&1 &
+            DEV_PID=$!
+
+            FRONTEND_URL="http://localhost:8082"
+            for i in $(seq 1 30); do
+              if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
+                echo "✅ Frontend ready"
+                break
+              fi
+              [ "$i" -eq 30 ] && { echo "❌ Frontend 未能启动"; kill $DEV_PID 2>/dev/null; exit 1; }
+              sleep 2
+            done
+
+            sleep 5
+            npx midscene "$TEST_FILE"
+            RESULT=$?
+            kill $DEV_PID 2>/dev/null
+            exit $RESULT
+
+          else
+            echo "⚠️ BUG_TYPE 未识别（${BUG_TYPE:-空}），跳过验证"
+          fi
+
+      - name: Write step summary
+        if: always()
+        run: |
+          OUTPUT=$(cat /tmp/claude-bugfix-output.txt 2>/dev/null || echo "")
+          ROOT_CAUSE=$(echo "$OUTPUT" | grep '^ROOT_CAUSE:' | head -1 | sed 's/^ROOT_CAUSE:[[:space:]]*//')
+          FIXED=$(echo "$OUTPUT" | grep '^FIXED:' | sed 's/^FIXED:[[:space:]]*/- /' | tr '\n' '\n')
+          TEST_CASE=$(echo "$OUTPUT" | grep '^TEST_CASE:' | head -1 | sed 's/^TEST_CASE:[[:space:]]*//')
+          RISK=$(echo "$OUTPUT" | grep '^RISK:' | head -1 | sed 's/^RISK:[[:space:]]*//')
+          SIMILAR=$(echo "$OUTPUT" | grep '^SIMILAR_ISSUES:' | head -1 | sed 's/^SIMILAR_ISSUES:[[:space:]]*//')
+          BRANCH="${{ steps.bugfix.outputs.branch }}"
+          {
+            echo "## 🔧 Bug Fix — Issue #${{ github.event.issue.number }}"
+            echo ""
+            echo "| 字段 | 内容 |"
+            echo "|------|------|"
+            echo "| 分支 | \`${BRANCH}\` |"
+            echo "| 根因 | ${ROOT_CAUSE:-未提取} |"
+            echo "| 风险 | ${RISK:-未提取} |"
+            echo "| 验证测试 | ${TEST_CASE:-未生成} |"
+            echo ""
+            echo "### 修复文件"
+            echo "$OUTPUT" | grep '^FIXED:' | sed 's/^FIXED:[[:space:]]*/- /' || echo "未提取"
+            echo ""
+            echo "### 相似隐患"
+            echo "${SIMILAR:-未发现}"
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create branch and push fix
         run: |
@@ -194,13 +317,26 @@ jobs:
             --field fix_attempt="0"
           echo "✅ Quality Gate triggered on $BRANCH"
 
-      - name: Comment — 分支已创建，流水线启动
+      - name: Comment — 修复摘要
         if: success() && github.event.issue.number
         run: |
+          OUTPUT=$(cat /tmp/claude-bugfix-output.txt 2>/dev/null || echo "")
+          ROOT_CAUSE=$(echo "$OUTPUT" | grep '^ROOT_CAUSE:' | head -1 | sed 's/^ROOT_CAUSE:[[:space:]]*//')
+          TEST_CASE=$(echo "$OUTPUT" | grep '^TEST_CASE:' | head -1 | sed 's/^TEST_CASE:[[:space:]]*//')
+          RISK=$(echo "$OUTPUT" | grep '^RISK:' | head -1 | sed 's/^RISK:[[:space:]]*//')
           BRANCH="${{ steps.bugfix.outputs.branch }}"
-          printf '✅ **Bug 修复已推送，流水线已启动**\n\n- **修复分支**: `%s`\n\n后续自动执行：\n1. Quality Gate（build + test）\n2. AI Code Review + 人工审批\n3. 部署验证\n4. 创建 PR 到 main\n\n[查看流水线进度](%s/%s/actions)\n' \
-            "$BRANCH" "${{ github.server_url }}" "${{ github.repository }}" \
-            > /tmp/comment.md
+          {
+            printf '✅ **Bug 已修复，验证中**\n\n'
+            printf '**根因**：%s\n\n' "${ROOT_CAUSE:-（未提取）}"
+            printf '**修复**：\n'
+            echo "$OUTPUT" | grep '^FIXED:' | sed 's/^FIXED:[[:space:]]*/- /'
+            printf '\n**验证测试**：%s\n\n' "${TEST_CASE:-（未生成）}"
+            printf '**风险**：%s\n\n' "${RISK:-（未提取）}"
+            printf '**分支**：`%s`\n\n' "$BRANCH"
+            printf 'Quality Gate 运行中，通过后将自动创建 PR。\n\n'
+            printf '[查看流水线进度](%s/%s/actions)\n' \
+              "${{ github.server_url }}" "${{ github.repository }}"
+          } > /tmp/comment.md
           gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
 
       - name: Comment — 失败通知
