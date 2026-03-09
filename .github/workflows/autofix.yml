@@ -41,7 +41,6 @@ jobs:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
       MODEL:              'claude-sonnet-4-5-20250929'
-      MAX_FIX_ROUNDS:     5
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:

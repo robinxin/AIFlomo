@@ -35,20 +35,17 @@ You are a senior software engineer decomposing a feature into precise, ordered i
 
 ## 第二步 — 理解项目结构
 
-根据 CLAUDE.md，项目技术栈如下：
-
-- **后端**: Fastify（Node.js）— 路由在 `apps/server/src/routes/`，服务层在 `apps/server/src/lib/`
-- **数据库**: SQLite + Drizzle ORM — Schema 在 `apps/server/src/db/schema.js`
-- **移动端**: Expo（React Native）— 页面在 `apps/mobile/app/`，组件在 `apps/mobile/components/`
-- **语言**: JavaScript（无 TypeScript，文件扩展名：后端 `.js`，组件/页面 `.jsx`）
+根据上方注入的 CLAUDE.md，理解项目的技术栈、目录结构和命名规范。
 
 任务拆分必须严格遵循以下实现顺序（跳过不需要的层）：
 
-1. **数据库 Schema** — `apps/server/src/db/schema.js` 中新增/修改字段、索引
-2. **服务层 / 工具函数** — `apps/server/src/lib/` 中的业务逻辑、数据访问函数
-3. **API 路由** — `apps/server/src/routes/` 中的路由处理器
-4. **移动端页面** — `apps/mobile/app/` 中的 Expo Router 页面
-5. **移动端组件** — `apps/mobile/components/` 中的 React Native UI 组件
+1. **数据库 Schema** — 数据模型变更
+2. **服务层 / 工具函数** — 业务逻辑、数据访问函数
+3. **API 路由** — 路由处理器
+4. **移动端页面** — Expo Router 页面
+5. **移动端组件** — UI 组件
+
+具体文件路径以 CLAUDE.md 中的目录结构为准。
 
 ---
 

@@ -66,7 +66,7 @@ Write the complete document in **Chinese** to: `${DESIGN_FILE}`
 - 对应文件路径（如 `apps/server/src/routes/memos.js`）
 - 鉴权：`preHandler: [requireAuth]`（是否需要）
 - 请求验证：JSON Schema 格式（Fastify 原生，参考 code-standards-backend.md 写法）
-- 成功响应示例（符合 `{ data, message }` 格式）
+- 成功响应示例（符合 CLAUDE.md 中定义的统一 API 响应格式）
 - 失败响应清单（HTTP 状态码 + error 字段内容）
 
 ### 4. 前端页面与组件
