@@ -10,12 +10,8 @@
     "lint": "eslint src/**/*.js",
     "prod": "pm2 start src/index.js --name aiflomo-server",
     "db:generate": "drizzle-kit generate",
-<<<<<<< HEAD
-    "db:migrate": "drizzle-kit migrate"
-=======
     "db:migrate": "drizzle-kit migrate",
     "db:reset": "rm -f data/*.db"
->>>>>>> main
   },
   "dependencies": {
     "@fastify/cookie": "^10.0.1",
