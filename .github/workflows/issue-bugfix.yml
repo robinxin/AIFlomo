@@ -32,11 +32,41 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.base_branch || 'main' }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Resolve base branch
+        id: base
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          # 优先级1：workflow_dispatch 手动指定
+          BASE="${{ github.event.inputs.base_branch }}"
+
+          # 优先级2：从 issue body 的 "Base 分支" 字段解析
+          if [ -z "$BASE" ] && [ -n "$ISSUE_BODY" ]; then
+            BASE=$(printf '%s' "$ISSUE_BODY" \
+              | awk '/^### Base 分支/{found=1; next} found && /[^[:space:]]/{gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit}')
+          fi
+
+          # 默认 main
+          BASE="${BASE:-main}"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Base branch: $BASE"
+
+      - name: Switch to base branch
+        run: |
+          BASE="${{ steps.base.outputs.base }}"
+          CURRENT=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$BASE" != "$CURRENT" ]; then
+            git fetch origin "$BASE"
+            git checkout "$BASE"
+            echo "Switched to $BASE"
+          else
+            echo "Already on $BASE"
+          fi
 
       - name: Comment — AI 正在分析
         if: github.event.issue.number
