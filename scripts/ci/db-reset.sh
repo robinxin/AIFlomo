@@ -5,4 +5,8 @@
 # MongoDB:    mongosh --eval "db.dropDatabase()"
 set -e
 
+# 确保数据库目录存在，再执行清空
+DB_PATH="${DB_PATH:-apps/server/data/aiflomo.db}"
+mkdir -p "$(dirname "$DB_PATH")"
+
 npm run db:reset -w apps/server

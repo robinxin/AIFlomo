@@ -6,4 +6,8 @@
 # golang-migrate: migrate -path ./migrations -database $DATABASE_URL up
 set -e
 
+# 确保数据库目录存在（drizzle-kit 不会自动创建）
+DB_PATH="${DB_PATH:-apps/server/data/aiflomo.db}"
+mkdir -p "$(dirname "$DB_PATH")"
+
 npm run db:migrate -w apps/server
