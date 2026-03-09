@@ -97,8 +97,5 @@ Rules:
 
 ## Project Context
 
-- **Tech stack**: Expo (React Native) + Fastify + SQLite + Drizzle ORM
-- **Auth**: Session + Cookie (httpOnly)
-- **API convention**: `{ data, error, message }`
-- **Security rules**: no XSS, input validation on both ends, memo content ≤ 10,000 chars
-- **Core value**: low-friction recording — specs must not add unnecessary friction
+Read `CLAUDE.md` for the authoritative tech stack, API conventions, security rules, and project constraints.
+Core value: low-friction recording — specs must not add unnecessary friction.

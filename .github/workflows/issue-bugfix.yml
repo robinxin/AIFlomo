@@ -5,6 +5,10 @@ on:
     types: [labeled]
   workflow_dispatch:
     inputs:
+      base_branch:
+        description: '基础分支（bugfix 从此分支切出，默认 main）'
+        default: 'main'
+        required: false
       extra_prompt:
         description: '额外指令（追加到 AI prompt 末尾）'
         default: ''
@@ -12,11 +16,12 @@ on:
 
 jobs:
   auto-bugfix:
-    if: github.event.label.name == 'ai-bugfix'
+    if: github.event.label.name == 'ai-bugfix' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
       issues: write
+      actions: write
     env:
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
       UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
@@ -32,7 +37,39 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Resolve base branch
+        id: base
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          # 优先级1：workflow_dispatch 手动指定
+          BASE="${{ github.event.inputs.base_branch }}"
+
+          # 优先级2：从 issue body 的 "Base 分支" 字段解析
+          if [ -z "$BASE" ] && [ -n "$ISSUE_BODY" ]; then
+            BASE=$(printf '%s' "$ISSUE_BODY" \
+              | awk '/^### Base 分支/{found=1; next} found && /[^[:space:]]/{gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit}')
+          fi
+
+          # 默认 main
+          BASE="${BASE:-main}"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Base branch: $BASE"
+
+      - name: Switch to base branch
+        run: |
+          BASE="${{ steps.base.outputs.base }}"
+          CURRENT=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$BASE" != "$CURRENT" ]; then
+            git fetch origin "$BASE"
+            git checkout "$BASE"
+            echo "Switched to $BASE"
+          else
+            echo "Already on $BASE"
+          fi
+
       - name: Comment — AI 正在分析
+        if: github.event.issue.number
         run: |
           printf '🔍 **AI 正在分析 Bug**\n\n正在读取代码库并定位问题，请稍候...\n\n[查看工作流进度](%s/%s/actions/runs/%s)\n' \
             "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
@@ -77,24 +114,17 @@ jobs:
             echo "CONSTITUTION_EOF"
           } >> "$GITHUB_ENV"
 
-      - name: Generate slug and branch name
-        id: branch
-        env:
-          ISSUE_TITLE: ${{ github.event.issue.title }}
+      - name: Load CLAUDE.md
         run: |
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-          SLUG=$(printf '%s' "$ISSUE_TITLE" \
-            | tr '[:upper:]' '[:lower:]' \
-            | sed 's/\[feature\] //g; s/\[bug\] //g' \
-            | tr -cs 'a-z0-9' '-' \
-            | sed 's/^-//; s/-$//' \
-            | cut -c1-40 \
-            | sed 's/-$//')
-          BRANCH="bugfix/${ISSUE_NUMBER}-${SLUG}"
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
-          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "Branch will be: $BRANCH"
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare issue info
+        run: |
+          echo "Issue: ${{ github.event.issue.number || 'none (workflow_dispatch)' }}"
 
       - name: Analyze and fix bug
         id: bugfix
@@ -108,14 +138,161 @@ jobs:
 
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/bugfix.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(grep:*)" \
+          CLAUDE_OUTPUT=$(claude --print \
+            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(npm run lint:*),Bash(npm run build:*)" \
             --model "$MODEL" \
-            "$PROMPT_TEXT"
+            "$PROMPT_TEXT")
+          echo "$CLAUDE_OUTPUT"
+          echo "$CLAUDE_OUTPUT" > /tmp/claude-bugfix-output.txt
+
+          # 从输出中提取 BRANCH_SLUG
+          RAW_SLUG=$(echo "$CLAUDE_OUTPUT" | grep '^BRANCH_SLUG:' | head -1 | sed 's/^BRANCH_SLUG:[[:space:]]*//')
+          SLUG=$(printf '%s' "$RAW_SLUG" \
+            | tr '[:upper:]' '[:lower:]' \
+            | tr -cs 'a-z0-9' '-' \
+            | sed 's/^-//; s/-$//' \
+            | cut -c1-40 \
+            | sed 's/-$//')
+          if [ -z "$SLUG" ]; then SLUG="fix"; fi
+
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          if [ -n "$ISSUE_NUMBER" ]; then
+            BRANCH="bugfix/${ISSUE_NUMBER}-${SLUG}"
+          else
+            BRANCH="bugfix/${SLUG}"
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Branch will be: $BRANCH"
+
+      - name: Verify fix
+        id: verify
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          OUTPUT=$(cat /tmp/claude-bugfix-output.txt 2>/dev/null || echo "")
+          BUG_TYPE=$(echo "$OUTPUT" | grep '^BUG_TYPE:' | head -1 | sed 's/^BUG_TYPE:[[:space:]]*//')
+          N="${ISSUE_NUMBER:-0}"
+
+          if [ "$BUG_TYPE" = "backend" ]; then
+            VERIFY_SCRIPT="apps/tests/verify-bug-${N}.sh"
+            if [ ! -f "$VERIFY_SCRIPT" ]; then
+              echo "⚠️ 未找到 $VERIFY_SCRIPT，跳过验证"
+              exit 0
+            fi
+            chmod +x "$VERIFY_SCRIPT"
+
+            bash scripts/ci/install.sh
+            bash scripts/ci/db-setup.sh
+
+            # ── 1/2 未修复状态验证 ──────────────────────────────────────
+            echo "--- [1/2] 未修复状态（期望失败）---"
+            STASH_MSG=$(git stash 2>&1)
+            if echo "$STASH_MSG" | grep -q "No local changes"; then
+              echo "⚠️ 没有检测到已跟踪文件的修改，跳过双向验证"
+              exit 0
+            fi
+
+            bash scripts/ci/db-reset.sh 2>/dev/null || true
+            bash scripts/ci/server-start.sh > /tmp/server-before.log 2>&1 &
+            SERVER_PID=$!
+            SERVER_URL=$(bash scripts/ci/server-url.sh)
+            for i in $(seq 1 15); do
+              curl -s "$SERVER_URL" > /dev/null 2>&1 && break || sleep 2
+            done
+
+            bash "$VERIFY_SCRIPT" && BEFORE_RESULT=0 || BEFORE_RESULT=1
+            kill $SERVER_PID 2>/dev/null; sleep 2
+            git stash pop
+
+            if [ "$BEFORE_RESULT" -eq 0 ]; then
+              echo "❌ 验证脚本在未修复代码上通过了，脚本未能覆盖此 Bug，请检查脚本逻辑"
+              exit 1
+            fi
+            echo "✅ 未修复状态：脚本正确失败"
+
+            # ── 2/2 修复后状态验证 ──────────────────────────────────────
+            echo "--- [2/2] 修复后状态（期望通过）---"
+            bash scripts/ci/db-reset.sh 2>/dev/null || true
+            bash scripts/ci/db-migrate.sh 2>/dev/null || true
+            bash scripts/ci/server-start.sh > /tmp/server-after.log 2>&1 &
+            SERVER_PID=$!
+            SERVER_URL=$(bash scripts/ci/server-url.sh)
+            for i in $(seq 1 15); do
+              curl -s "$SERVER_URL" > /dev/null 2>&1 && break || sleep 2
+            done
+
+            bash "$VERIFY_SCRIPT" && AFTER_RESULT=0 || AFTER_RESULT=1
+            kill $SERVER_PID 2>/dev/null
+
+            if [ "$AFTER_RESULT" -ne 0 ]; then
+              echo "❌ 修复后验证脚本仍然失败，修复可能不完整"
+              exit 1
+            fi
+            echo "✅ 双向验证通过：Bug 已确认修复"
+
+          elif [ "$BUG_TYPE" = "frontend" ]; then
+            TEST_FILE="apps/tests/bug-${N}.yaml"
+            if [ ! -f "$TEST_FILE" ]; then
+              echo "⚠️ 未找到 $TEST_FILE，跳过验证"
+              exit 0
+            fi
+
+            bash scripts/ci/install.sh
+            bash scripts/ci/fullstack-start.sh > /tmp/dev-verify.log 2>&1 &
+            DEV_PID=$!
+
+            FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
+            for i in $(seq 1 30); do
+              if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
+                echo "✅ Frontend ready"
+                break
+              fi
+              [ "$i" -eq 30 ] && { echo "❌ Frontend 未能启动"; kill $DEV_PID 2>/dev/null; exit 1; }
+              sleep 2
+            done
+
+            sleep 5
+            npx midscene "$TEST_FILE"
+            RESULT=$?
+            kill $DEV_PID 2>/dev/null
+            exit $RESULT
+
+          else
+            echo "⚠️ BUG_TYPE 未识别（${BUG_TYPE:-空}），跳过验证"
+          fi
+
+      - name: Write step summary
+        if: always()
+        run: |
+          OUTPUT=$(cat /tmp/claude-bugfix-output.txt 2>/dev/null || echo "")
+          ROOT_CAUSE=$(echo "$OUTPUT" | grep '^ROOT_CAUSE:' | head -1 | sed 's/^ROOT_CAUSE:[[:space:]]*//')
+          FIXED=$(echo "$OUTPUT" | grep '^FIXED:' | sed 's/^FIXED:[[:space:]]*/- /' | tr '\n' '\n')
+          TEST_CASE=$(echo "$OUTPUT" | grep '^TEST_CASE:' | head -1 | sed 's/^TEST_CASE:[[:space:]]*//')
+          RISK=$(echo "$OUTPUT" | grep '^RISK:' | head -1 | sed 's/^RISK:[[:space:]]*//')
+          SIMILAR=$(echo "$OUTPUT" | grep '^SIMILAR_ISSUES:' | head -1 | sed 's/^SIMILAR_ISSUES:[[:space:]]*//')
+          BRANCH="${{ steps.bugfix.outputs.branch }}"
+          {
+            echo "## 🔧 Bug Fix — Issue #${{ github.event.issue.number }}"
+            echo ""
+            echo "| 字段 | 内容 |"
+            echo "|------|------|"
+            echo "| 分支 | \`${BRANCH}\` |"
+            echo "| 根因 | ${ROOT_CAUSE:-未提取} |"
+            echo "| 风险 | ${RISK:-未提取} |"
+            echo "| 验证测试 | ${TEST_CASE:-未生成} |"
+            echo ""
+            echo "### 修复文件"
+            echo "$OUTPUT" | grep '^FIXED:' | sed 's/^FIXED:[[:space:]]*/- /' || echo "未提取"
+            echo ""
+            echo "### 相似隐患"
+            echo "${SIMILAR:-未发现}"
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create branch and push fix
         run: |
-          BRANCH="${{ steps.branch.outputs.branch }}"
+          BRANCH="${{ steps.bugfix.outputs.branch }}"
 
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
@@ -132,19 +309,42 @@ jobs:
 
           git commit -m "fix: auto-fix for issue #${{ github.event.issue.number }}"
           git push origin "$BRANCH"
-          echo "✅ Branch $BRANCH pushed — pipeline will continue automatically."
+          echo "✅ Branch $BRANCH pushed."
 
-      - name: Comment — 分支已创建，流水线启动
+      - name: Dispatch Quality Gate
         if: success()
         run: |
-          BRANCH="${{ steps.branch.outputs.branch }}"
-          printf '✅ **Bug 修复已推送，流水线已启动**\n\n- **修复分支**: `%s`\n\n后续自动执行：\n1. Quality Gate（build + test）\n2. AI Code Review + 人工审批\n3. 部署验证\n4. 创建 PR 到 main\n\n[查看流水线进度](%s/%s/actions)\n' \
-            "$BRANCH" "${{ github.server_url }}" "${{ github.repository }}" \
-            > /tmp/comment.md
+          BRANCH="${{ steps.bugfix.outputs.branch }}"
+          gh workflow run quality-gate.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$BRANCH" \
+            --field fix_attempt="0"
+          echo "✅ Quality Gate triggered on $BRANCH"
+
+      - name: Comment — 修复摘要
+        if: success() && github.event.issue.number
+        run: |
+          OUTPUT=$(cat /tmp/claude-bugfix-output.txt 2>/dev/null || echo "")
+          ROOT_CAUSE=$(echo "$OUTPUT" | grep '^ROOT_CAUSE:' | head -1 | sed 's/^ROOT_CAUSE:[[:space:]]*//')
+          TEST_CASE=$(echo "$OUTPUT" | grep '^TEST_CASE:' | head -1 | sed 's/^TEST_CASE:[[:space:]]*//')
+          RISK=$(echo "$OUTPUT" | grep '^RISK:' | head -1 | sed 's/^RISK:[[:space:]]*//')
+          BRANCH="${{ steps.bugfix.outputs.branch }}"
+          {
+            printf '✅ **Bug 已修复，验证中**\n\n'
+            printf '**根因**：%s\n\n' "${ROOT_CAUSE:-（未提取）}"
+            printf '**修复**：\n'
+            echo "$OUTPUT" | grep '^FIXED:' | sed 's/^FIXED:[[:space:]]*/- /'
+            printf '\n**验证测试**：%s\n\n' "${TEST_CASE:-（未生成）}"
+            printf '**风险**：%s\n\n' "${RISK:-（未提取）}"
+            printf '**分支**：`%s`\n\n' "$BRANCH"
+            printf 'Quality Gate 运行中，通过后将自动创建 PR。\n\n'
+            printf '[查看流水线进度](%s/%s/actions)\n' \
+              "${{ github.server_url }}" "${{ github.repository }}"
+          } > /tmp/comment.md
           gh issue comment ${{ github.event.issue.number }} --body-file /tmp/comment.md
 
       - name: Comment — 失败通知
-        if: failure()
+        if: failure() && github.event.issue.number
         run: |
           printf '❌ **AI 修复失败**\n\n自动修复过程中发生错误，需要人工介入。\n\n[查看错误详情](%s/%s/actions/runs/%s)\n' \
             "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \

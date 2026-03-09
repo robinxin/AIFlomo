@@ -61,7 +61,16 @@ body:
     attributes:
       label: 疑似相关文件（可选）
       description: 你认为 Bug 可能出在哪些文件？
-      placeholder: 例如：apps/app/api/memos/route.ts
+      placeholder: 例如：apps/server/src/routes/memo.js
+    validations:
+      required: false
+
+  - type: input
+    id: base-branch
+    attributes:
+      label: Base 分支（可选）
+      description: AI 将从此分支切出 bugfix 分支，留空默认使用 main
+      placeholder: main
     validations:
       required: false
 

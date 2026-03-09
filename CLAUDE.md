@@ -101,6 +101,19 @@ AIFlomo/
 │   ├── templates/         # Spec 模板
 │   ├── active/            # 当前进行中 Spec
 │   └── completed/         # 已完成 Spec
+├── scripts/
+│   └── ci/                # CI 接口脚本（技术栈无关，换栈只改这里）
+│       ├── install.sh         # 安装依赖
+│       ├── lint.sh            # 代码风格检测
+│       ├── build.sh           # 生产构建
+│       ├── test.sh            # 运行测试用例
+│       ├── db-reset.sh        # 清空数据库（幂等）
+│       ├── db-setup.sh        # 生成 schema 产物（非破坏性）
+│       ├── db-migrate.sh      # 执行迁移、创建/更新表结构
+│       ├── server-start.sh    # 启动后端服务器
+│       ├── server-url.sh      # 输出后端健康检查 URL
+│       ├── fullstack-start.sh # 同时启动前后端
+│       └── frontend-url.sh    # 输出前端健康检查 URL
 ├── .env                   # 环境配置（模型 + 业务，需提交 Git）
 ├── test.env               # 测试用例执行变量（WEB_URL、账号密码等，需提交 Git）
 ├── .github/               # Actions + Issue 模板
@@ -176,6 +189,45 @@ AIFlomo/
 - 测试文件放在 `apps/tests/`，命名为 `*.yaml`
 - MVP 阶段允许测试为空，但新增重要功能必须补 E2E 测试
 - CI 质量门禁顺序：`lint` → `build` → `test`
+
+---
+
+## ⚙️ CI 脚本接口规范（AI 必读）
+
+CI workflow 通过 `scripts/ci/` 下的 shell 脚本与项目交互，**不直接调用技术栈命令**。
+换栈（npm → pip、SQLite → PostgreSQL 等）时只改对应脚本，workflow 文件不动。
+
+| 脚本 | 职责 | 当前实现 |
+|------|------|---------|
+| `install.sh` | 安装依赖 | `npm install` |
+| `lint.sh` | 代码风格检测 | `npm run lint` |
+| `build.sh` | 生产构建 | `npm run build` |
+| `test.sh` | 运行测试用例 | `npm run test` |
+| `db-reset.sh` | 清空数据库（幂等） | `npm run db:reset -w apps/server` |
+| `db-setup.sh` | 生成 schema 产物（非破坏性） | `npm run db:generate -w apps/server` |
+| `db-migrate.sh` | 执行迁移、创建/更新表结构 | `npm run db:migrate -w apps/server` |
+| `server-start.sh` | 启动后端（前台，调用方后台化） | `npm run dev -w apps/server` |
+| `server-url.sh` | 输出后端健康检查 URL | `http://localhost:${PORT:-3000}` |
+| `fullstack-start.sh` | 同时启动前后端 | `npm run dev` |
+| `frontend-url.sh` | 输出前端健康检查 URL | `http://localhost:8082` |
+
+### 禁止行为
+- ❌ 不要在 workflow `.yml` 文件中直接写 `npm install`、`rm -f *.db`、`npm run dev` 等技术细节
+- ❌ 不要在 workflow 中硬编码端口号（`3000`、`8082` 等）
+- ✅ 统一通过 `bash scripts/ci/<script>.sh` 调用
+
+### 换栈示例
+切换到 Python + PostgreSQL 时，只需修改对应脚本：
+```bash
+# db-reset.sh
+psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+# server-start.sh
+exec uvicorn apps.server.main:app --reload --port 3000
+
+# server-url.sh
+echo "http://localhost:3000"
+```
 
 ---
 
