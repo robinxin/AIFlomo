@@ -56,18 +56,43 @@ jobs:
       - name: Start services for testing
         id: start-services
         run: |
-          bash scripts/ci/fullstack-start.sh > /tmp/server-output.txt 2>&1 &
+          # 后端：dev server
+          bash scripts/ci/server-start.sh > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
-          echo "Services starting (PID: $(cat /tmp/server.pid))..."
+
+          # 前端：serve 预编译静态产物（build 步骤已生成 apps/mobile/dist/）
+          # 使用静态托管而非 Metro dev server，避免 JS bundle 懒编译导致测试时页面未就绪
+          bash scripts/ci/frontend-serve.sh > /tmp/frontend-output.txt 2>&1 &
+          echo $! > /tmp/frontend.pid
+
+          echo "Services starting..."
+
+          # 1. 等后端 /health 就绪（含 DB 可用性验证）
+          SERVER_URL=$(bash scripts/ci/server-url.sh)
+          for i in $(seq 1 30); do
+            if curl -sf "$SERVER_URL/health" > /dev/null 2>&1; then
+              echo "✅ Backend ready at $SERVER_URL"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "❌ Backend did not respond within 60s"
+              cat /tmp/server-output.txt
+              exit 1
+            fi
+            echo "Waiting for backend... ($i/30)"
+            sleep 2
+          done
+
+          # 2. 等前端静态服务就绪（200 即代表 JS bundle 已可访问，无需额外等待编译）
           FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
           for i in $(seq 1 30); do
-            if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
+            if curl -sf "$FRONTEND_URL" > /dev/null 2>&1; then
               echo "✅ Frontend ready at $FRONTEND_URL"
               break
             fi
             if [ "$i" -eq 30 ]; then
               echo "❌ Frontend did not respond within 60s"
-              cat /tmp/server-output.txt
+              cat /tmp/frontend-output.txt
               exit 1
             fi
             echo "Waiting for frontend... ($i/30)"
@@ -80,18 +105,20 @@ jobs:
         run: |
           echo "Waiting 10s for frontend to fully initialize..."
           sleep 10
+          
           bash scripts/ci/test.sh 2>&1 | tee /tmp/test-output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Stop services
         if: always()
         run: |
-          if [ -f /tmp/server.pid ]; then
-            PID=$(cat /tmp/server.pid)
-            # Kill the process group to also stop forked child processes
-            kill -- "-$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true
-            echo "Services stopped (PID: $PID)"
-          fi
+          for PIDFILE in /tmp/server.pid /tmp/frontend.pid; do
+            if [ -f "$PIDFILE" ]; then
+              PID=$(cat "$PIDFILE")
+              kill -- "-$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true
+              echo "Stopped PID $PID ($PIDFILE)"
+            fi
+          done
 
       - name: Collect errors
         id: collect-errors
