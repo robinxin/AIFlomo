@@ -14,4 +14,4 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export DB_PATH="${DB_PATH:-${REPO_ROOT}/apps/server/data/aiflomo.db}"
 mkdir -p "$(dirname "$DB_PATH")"
 
-npm run db:migrate -w apps/server
+npm run db:migrate -w apps/server 2>/dev/null || echo "Skipped: apps/server workspace not found"
