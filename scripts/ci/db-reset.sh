@@ -11,4 +11,4 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export DB_PATH="${DB_PATH:-${REPO_ROOT}/apps/server/data/aiflomo.db}"
 mkdir -p "$(dirname "$DB_PATH")"
 
-npm run db:reset -w apps/server
+pnpm db:reset -w apps/server
