@@ -47,11 +47,11 @@ jobs:
               "${{ github.event.before }}" "${{ github.sha }}" \
               -- specs/active/ \
               | grep -E '\.md$' \
-              | grep -vE '(-design|-tasks|-testcases)\.md$' || true)
+              | grep -vE '(-design|-tasks|-testcases)\.md' || true)
           else
             FILES=$(ls specs/active/ 2>/dev/null \
               | grep -E '\.md$' \
-              | grep -vE '(-design|-tasks|-testcases)\.md$' \
+              | grep -vE '(-design|-tasks|-testcases)\.md' \
               | sed 's#^#specs/active/#' || true)
           fi
 
