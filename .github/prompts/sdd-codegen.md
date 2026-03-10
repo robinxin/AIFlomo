@@ -15,7 +15,7 @@
   验证阶段（每个任务生成后必跑）:
     所有任务 → code-reviewer
     后端任务 → 额外跑 security-reviewer
-    有问题   → build-error-resolver 修复，最多重试 2 次
+    有问题   → build-error-resolver 修复，最多重试 5 次
 
   allowedTools（yml 中必须包含）:
     Read, Write, Edit, Task, Bash(ls:*), Bash(find:*), Bash(mkdir:*)
@@ -402,11 +402,11 @@ SECURITY: ISSUES
 
 ---
 
-### STEP 5 — 修复（build-error-resolver，最多 2 次）
+### STEP 5 — 修复（build-error-resolver，最多 5 次）
 
 仅当存在 REVIEW_ISSUES 时执行。FIX_ATTEMPT 从 0 开始计数。
 
-修复循环（每次循环 FIX_ATTEMPT += 1，最多执行 2 次）：
+修复循环（每次循环 FIX_ATTEMPT += 1，最多执行 5 次）：
 
 使用 Task 工具，subagent_type = build-error-resolver。
 
@@ -446,8 +446,8 @@ REASON: [失败原因]
 解析返回结果：
 - FIX: DONE → 重新执行 STEP 3 审查
   - REVIEW: PASS → 进入 STEP 6
-  - REVIEW: ISSUES 且 FIX_ATTEMPT < 2 → 回到本步骤循环
-  - REVIEW: ISSUES 且 FIX_ATTEMPT >= 2 → 输出「任务 ${TASK_INDEX} 自动修复失败，需人工介入」后停止
+  - REVIEW: ISSUES 且 FIX_ATTEMPT < 5 → 回到本步骤循环
+  - REVIEW: ISSUES 且 FIX_ATTEMPT >= 5 → 输出「任务 ${TASK_INDEX} 自动修复失败，需人工介入」后停止
 - FIX: FAILED → 输出「任务 ${TASK_INDEX} 修复 agent 报告失败：[REASON]」后停止
 
 ---

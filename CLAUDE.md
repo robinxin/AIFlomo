@@ -1,6 +1,6 @@
 # CLAUDE.md — AIFlomo 项目指南
 
-> **最后更新**: 2026-03-06
+> **最后更新**: 2026-03-10
 > **审核频率**: 每周
 
 ---
@@ -22,8 +22,8 @@
 | ORM | Drizzle ORM |
 | 认证 | Session + Cookie（Session 存储于 SQLite 同库） |
 | 状态管理 | React Context + useReducer |
-| 测试 | midscene-pc ^1.0.4（AI 驱动 E2E，内置 Playwright） |
-| 包管理 | npm workspaces（Monorepo） |
+| 测试 | @playwright/test ^1.51+（跨浏览器 E2E 测试） |
+| 包管理 | pnpm workspaces（Monorepo） |
 | 进程守护 | pm2（VPS 部署） |
 
 ---
@@ -41,32 +41,44 @@
 
 ```bash
 # ── 根目录（Monorepo）──
-npm install                          # 安装所有子包依赖
-npm run dev                          # 同时启动后端和前端
-npm run dev -w apps/server           # 启动后端
-npm run dev -w apps/mobile           # 启动前端
+pnpm install                          # 安装所有子包依赖
+pnpm dev                              # 同时启动后端和前端
+pnpm dev -w apps/server               # 启动后端
+pnpm dev -w apps/mobile               # 启动前端
 
 # ── 后端（apps/server）──
 cd apps/server
-npm run dev               # 启动 Fastify 开发服务器（node --watch）
-npm run build             # 打包到 dist/
-npm run lint              # ESLint 检测
-npm run prod              # pm2 start dist/index.js --name aiflomo-server
-npm run db:generate       # 生成 Drizzle client
-npm run db:migrate        # 执行数据库迁移
+pnpm dev               # 启动 Fastify 开发服务器（node --watch）
+pnpm build             # 打包到 dist/
+pnpm lint              # ESLint 检测
+pnpm prod              # pm2 start dist/index.js --name aiflomo-server
+pnpm db:generate       # 生成 Drizzle client
+pnpm db:migrate        # 执行数据库迁移
 
 # ── 前端（apps/mobile，Expo）──
 cd apps/mobile
-npm run dev               # npx expo start（交互式选择平台）
-npm run build             # npx expo export（Web 静态产物）
-npm run lint              # ESLint 检测
-npm run prod              # 构建 + 部署 Web 静态产物到服务器
-                          # 其他：npx expo start --web | --android | --ios
+pnpm dev               # pnpm dlx expo start（交互式选择平台）
+pnpm build             # pnpm dlx expo export（Web 静态产物）
+pnpm lint              # ESLint 检测
+pnpm prod              # 构建 + 部署 Web 静态产物到服务器
+                       # 其他：pnpm dlx expo start --web | --android | --ios
 
-# ── 测试 ──
-npm run test              # playwright test
-npm run test:ui           # playwright test --ui
-npm run test:report       # playwright show-report
+# ── 单测 ──
+pnpm test:unit         # 运行前后端单测（Vitest + Jest）
+
+cd apps/mobile
+pnpm test:unit         # 前端 Vitest 单测
+pnpm test:unit:ui      # 前端单测 UI 模式
+pnpm test:unit:cov     # 前端单测 + 覆盖率报告
+
+cd apps/server
+pnpm test:unit         # 后端 Jest 单测
+pnpm test:unit:cov     # 后端单测 + 覆盖率报告
+
+# ── E2E 测试 ──
+pnpm test              # Playwright E2E 测试
+pnpm test:ui           # Playwright E2E 测试 UI 模式
+pnpm test:report       # 查看 E2E 测试报告
 ```
 
 ---
@@ -75,7 +87,7 @@ npm run test:report       # playwright show-report
 
 ```
 AIFlomo/
-├── package.json           # 根 package.json（npm workspaces）
+├── package.json           # 根 package.json（pnpm workspaces）
 ├── apps/
 │   ├── mobile/            # Expo 跨端应用（Web + Android + iOS）
 │   │   ├── app/           # Expo Router 页面（文件路由）
@@ -83,16 +95,17 @@ AIFlomo/
 │   │   ├── context/       # React Context 状态管理
 │   │   ├── hooks/         # 自定义 Hooks
 │   │   ├── lib/           # API client、工具函数
-│   │   └── assets/        # 图片、字体等静态资源
+│   │   ├── assets/        # 图片、字体等静态资源
+│   │   └── tests/         # Vitest 前端单测（*.test.js）
 │   ├── server/            # Node.js + Fastify 后端服务
 │   │   ├── src/
 │   │   │   ├── routes/    # API 路由（Fastify plugins）
 │   │   │   ├── db/        # Drizzle schema + 迁移文件
 │   │   │   ├── plugins/   # Fastify 插件（session、cors 等）
 │   │   │   └── lib/       # 服务层、工具函数
+│   │   ├── tests/         # Jest 后端单测（*.test.js）
 │   │   └── drizzle.config.js
-│   └── tests/             # Midscene E2E 测试
-│       └── *.yaml
+│   └── tests/             # Playwright E2E 测试（*.spec.js）
 ├── testcases/             # 测试用例描述文件
 ├── docs/                  # 详细技术文档
 │   ├── code-standards-frontend.md   # 前端代码规范
@@ -101,6 +114,19 @@ AIFlomo/
 │   ├── templates/         # Spec 模板
 │   ├── active/            # 当前进行中 Spec
 │   └── completed/         # 已完成 Spec
+├── scripts/
+│   └── ci/                # CI 接口脚本（技术栈无关，换栈只改这里）
+│       ├── install.sh         # 安装依赖
+│       ├── lint.sh            # 代码风格检测
+│       ├── build.sh           # 生产构建
+│       ├── test.sh            # 运行测试用例
+│       ├── db-reset.sh        # 清空数据库（幂等）
+│       ├── db-setup.sh        # 生成 schema 产物（非破坏性）
+│       ├── db-migrate.sh      # 执行迁移、创建/更新表结构
+│       ├── server-start.sh    # 启动后端服务器
+│       ├── server-url.sh      # 输出后端健康检查 URL
+│       ├── fullstack-start.sh # 同时启动前后端
+│       └── frontend-url.sh    # 输出前端健康检查 URL
 ├── .env                   # 环境配置（模型 + 业务，需提交 Git）
 ├── test.env               # 测试用例执行变量（WEB_URL、账号密码等，需提交 Git）
 ├── .github/               # Actions + Issue 模板
@@ -171,29 +197,193 @@ AIFlomo/
 ## 🧪 测试要求
 
 ### 测试框架
-- **midscene-pc** — AI 驱动的 PC 端 E2E 测试，内置 Playwright，无需单独安装
 
-### package.json 必须包含的测试依赖
+| 类型 | 框架 | 文件位置 | 配置文件 |
+|------|------|---------|---------|
+| 前端单测 | **Vitest** | `apps/mobile/tests/*.test.js` | `vitest.config.js` |
+| 后端单测 | **Jest** | `apps/server/tests/*.test.js` | `jest.config.js` |
+| E2E 测试 | **@playwright/test** | `apps/tests/*.spec.js` | `playwright.config.js` |
+
+### 前端单测（Vitest）
+
+#### 依赖配置
 
 ```json
 {
   "devDependencies": {
-    "midscene-pc": "^1.0.4",
-    "@midscene/cli": "^1.5.2",
-    "dotenv": "^16.6.1"
+    "vitest": "^2.1.0",
+    "@vitest/ui": "^2.1.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "jsdom": "^25.0.0"
   },
   "scripts": {
-    "test": "npx midscene apps/tests/*.yaml",
-    "test:ui": "npx midscene apps/tests/*.yaml",
-    "test:report": "playwright show-report"
+    "test:unit": "vitest",
+    "test:unit:ui": "vitest --ui",
+    "test:unit:cov": "vitest --coverage",
+    "test:unit:watch": "vitest --watch"
   }
 }
 ```
 
+#### vitest.config.js
+
+```javascript
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: [],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      lines: 80,
+      functions: 80,
+      branches: 80,
+      statements: 80,
+      exclude: [
+        'node_modules/',
+        'dist/',
+      ],
+    },
+  },
+});
+```
+
+### 后端单测（Jest）
+
+#### 依赖配置
+
+```json
+{
+  "devDependencies": {
+    "jest": "^30.0.0-alpha.0",
+    "@babel/preset-env": "^7.25.0"
+  },
+  "scripts": {
+    "test:unit": "jest",
+    "test:unit:watch": "jest --watch",
+    "test:unit:cov": "jest --coverage"
+  }
+}
+```
+
+#### jest.config.js
+
+```javascript
+export default {
+  testEnvironment: 'node',
+  testMatch: ['**/tests/**/*.test.js'],
+  collectCoverageFrom: [
+    'src/**/*.js',
+    '!src/**/*.d.js',
+    '!**/node_modules/**',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+  },
+};
+```
+
+### E2E 测试（Playwright）
+
+#### playwright.config.js
+
+```javascript
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './apps/tests',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  use: {
+    baseURL: process.env.BASE_URL || 'http://localhost:5173',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://127.0.0.1:5173',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
 ### 测试规范
-- 测试文件放在 `apps/tests/`，命名为 `*.yaml`
-- MVP 阶段允许测试为空，但新增重要功能必须补 E2E 测试
-- CI 质量门禁顺序：`lint` → `build` → `test`
+
+- **单测覆盖率** — 新代码必须达到 **80%** 覆盖率（行、分支、函数、语句）
+- **单测文件** — 放在模块同级 `tests/` 目录，命名为 `*.test.js`
+- **E2E 测试文件** — 放在 `apps/tests/`，命名为 `*.spec.js`
+- **命令分离** — `pnpm test` 执行 Playwright E2E 测试，`pnpm test:unit` 执行前后端单测
+- **CI 质量门禁顺序** — `lint` → `build` → `test:unit` → `test`（E2E）
+- **参考文档**
+  - [Vitest 官方文档](https://vitest.dev/)
+  - [Jest 官方文档](https://jestjs.io/)
+  - [Playwright 官方文档](https://playwright.dev/docs/intro)
+
+---
+
+## ⚙️ CI 脚本接口规范（AI 必读）
+
+CI workflow 通过 `scripts/ci/` 下的 shell 脚本与项目交互，**不直接调用技术栈命令**。
+换栈（npm → pip、SQLite → PostgreSQL 等）时只改对应脚本，workflow 文件不动。
+
+| 脚本 | 职责 | 当前实现 |
+|------|------|---------|
+| `install.sh` | 安装依赖 | `pnpm install` |
+| `lint.sh` | 代码风格检测 | `pnpm lint` |
+| `build.sh` | 生产构建 | `pnpm build` |
+| `test.sh` | 运行测试用例 | `pnpm test` |
+| `db-reset.sh` | 清空数据库（幂等） | `pnpm db:reset -w apps/server` |
+| `db-setup.sh` | 生成 schema 产物（非破坏性） | `pnpm db:generate -w apps/server` |
+| `db-migrate.sh` | 执行迁移、创建/更新表结构 | `pnpm db:migrate -w apps/server` |
+| `server-start.sh` | 启动后端（前台，调用方后台化） | `pnpm dev -w apps/server` |
+| `server-url.sh` | 输出后端健康检查 URL | `http://localhost:${PORT:-3000}` |
+| `fullstack-start.sh` | 同时启动前后端 | `pnpm dev` |
+| `frontend-url.sh` | 输出前端健康检查 URL | `http://localhost:8082` |
+
+### 禁止行为
+- ❌ 不要在 workflow `.yml` 文件中直接写 `pnpm install`、`rm -f *.db`、`pnpm dev` 等技术细节
+- ❌ 不要在 workflow 中硬编码端口号（`3000`、`8082` 等）
+- ✅ 统一通过 `bash scripts/ci/<script>.sh` 调用
+
+### 换栈示例
+切换到 Python + PostgreSQL 时，只需修改对应脚本：
+```bash
+# db-reset.sh
+psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+# server-start.sh
+exec uvicorn apps.server.main:app --reload --port 3000
+
+# server-url.sh
+echo "http://localhost:3000"
+```
 
 ---
 
@@ -206,9 +396,9 @@ AIFlomo/
 
 ```bash
 # 典型上线流程
-npm run build -w apps/server         # 编译后端
-npm run prod  -w apps/server         # pm2 启动 / 重载
-npm run build -w apps/mobile         # 编译前端 Web 产物
+pnpm build -w apps/server         # 编译后端
+pnpm prod  -w apps/server         # pm2 启动 / 重载
+pnpm build -w apps/mobile         # 编译前端 Web 产物
 # 将 apps/mobile/dist/ 同步到 Nginx 静态目录
 ```
 
