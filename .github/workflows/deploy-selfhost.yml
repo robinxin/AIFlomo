@@ -58,54 +58,60 @@ jobs:
           echo "PM2_SERVER_NAME=$PM2_SERVER_NAME" >> $GITHUB_ENV
           echo "PM2_MOBILE_NAME=$PM2_MOBILE_NAME" >> $GITHUB_ENV
 
+          # main 分支使用固定端口；非 main 分支从注册表动态分配
           # 注册表格式（存于 ECS /opt/port-registry.json）：
           # {
-          #   "main":       [8080, 3000],   # [frontend_port, backend_port]
-          #   "feat/test":  [8081, 3001],
-          #   "f": [8080, 8081, ...],        # 所有已分配的前端端口
-          #   "b": [3000, 3001, ...]         # 所有已分配的后端端口
+          #   "feat/test":  [8083, 3001],   # [frontend_port, backend_port]
+          #   "f": [8083, 8084, ...],        # 所有已分配的前端端口（非 main）
+          #   "b": [3001, 3002, ...]         # 所有已分配的后端端口（非 main）
           # }
-          REGISTRY=$(ssh -i ~/.ssh/deploy_key \
-            -p ${{ secrets.SSH_PORT || 22 }} \
-            -o StrictHostKeyChecking=no \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "cat /opt/port-registry.json 2>/dev/null || echo '{}'")
-          [ -z "$REGISTRY" ] && REGISTRY='{}'
-
-          # 检查分支是否已有端口分配
-          EXISTING=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b] // empty')
-
-          if [ -n "$EXISTING" ]; then
-            FRONTEND_PORT=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b][0]')
-            BACKEND_PORT=$(echo "$REGISTRY"  | jq -r --arg b "$BRANCH" '.[$b][1]')
-            echo "Reusing existing ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
+          if [ "$BRANCH" = "main" ]; then
+            echo "FRONTEND_PORT=8082" >> $GITHUB_ENV
+            echo "BACKEND_PORT=3000"  >> $GITHUB_ENV
+            echo "Main branch: fixed ports frontend=8082 backend=3000"
           else
-            # 从已用列表中找下一个可用端口
-            FRONTEND_PORT=$(echo "$REGISTRY" | jq \
-              '(.["f"] // []) as $used | [range(8080; 9000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
-            BACKEND_PORT=$(echo "$REGISTRY" | jq \
-              '(.["b"] // []) as $used | [range(3000; 4000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
-
-            # 写回注册表：更新分支条目 + 追加到已用端口列表
-            NEW_REGISTRY=$(echo "$REGISTRY" | jq \
-              --arg b "$BRANCH" \
-              --argjson fp "$FRONTEND_PORT" \
-              --argjson bp "$BACKEND_PORT" \
-              '
-              .[$b] = [$fp, $bp] |
-              .["f"] = ((.["f"] // []) | if contains([$fp]) then . else . + [$fp] end) |
-              .["b"] = ((.["b"] // []) | if contains([$bp]) then . else . + [$bp] end)
-              ')
-            echo "$NEW_REGISTRY" | ssh -i ~/.ssh/deploy_key \
+            REGISTRY=$(ssh -i ~/.ssh/deploy_key \
               -p ${{ secrets.SSH_PORT || 22 }} \
               -o StrictHostKeyChecking=no \
               ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-              "cat > /opt/port-registry.json"
-            echo "Allocated new ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
-          fi
+              "cat /opt/port-registry.json 2>/dev/null || echo '{}'")
+            [ -z "$REGISTRY" ] && REGISTRY='{}'
 
-          echo "FRONTEND_PORT=$FRONTEND_PORT" >> $GITHUB_ENV
-          echo "BACKEND_PORT=$BACKEND_PORT"   >> $GITHUB_ENV
+            # 检查分支是否已有端口分配
+            EXISTING=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b] // empty')
+
+            if [ -n "$EXISTING" ]; then
+              FRONTEND_PORT=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b][0]')
+              BACKEND_PORT=$(echo "$REGISTRY"  | jq -r --arg b "$BRANCH" '.[$b][1]')
+              echo "Reusing existing ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
+            else
+              # 非 main 分支：前端从 8083 起，后端从 3001 起
+              FRONTEND_PORT=$(echo "$REGISTRY" | jq \
+                '(.["f"] // []) as $used | [range(8083; 9000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+              BACKEND_PORT=$(echo "$REGISTRY" | jq \
+                '(.["b"] // []) as $used | [range(3001; 4000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+
+              # 写回注册表：更新分支条目 + 追加到已用端口列表
+              NEW_REGISTRY=$(echo "$REGISTRY" | jq \
+                --arg b "$BRANCH" \
+                --argjson fp "$FRONTEND_PORT" \
+                --argjson bp "$BACKEND_PORT" \
+                '
+                .[$b] = [$fp, $bp] |
+                .["f"] = ((.["f"] // []) | if contains([$fp]) then . else . + [$fp] end) |
+                .["b"] = ((.["b"] // []) | if contains([$bp]) then . else . + [$bp] end)
+                ')
+              echo "$NEW_REGISTRY" | ssh -i ~/.ssh/deploy_key \
+                -p ${{ secrets.SSH_PORT || 22 }} \
+                -o StrictHostKeyChecking=no \
+                ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+                "cat > /opt/port-registry.json"
+              echo "Allocated new ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
+            fi
+
+            echo "FRONTEND_PORT=$FRONTEND_PORT" >> $GITHUB_ENV
+            echo "BACKEND_PORT=$BACKEND_PORT"   >> $GITHUB_ENV
+          fi
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -253,7 +259,9 @@ jobs:
           if pm2 describe "$PM2_MOBILE_NAME" >/dev/null 2>&1; then
             pm2 restart "$PM2_MOBILE_NAME"
           else
-            pm2 start npm --name "$PM2_MOBILE_NAME" -- run prod -w apps/mobile
+            pm2 start "npx serve dist -l $FRONTEND_PORT --single" \
+              --name "$PM2_MOBILE_NAME" \
+              --cwd "$DEPLOY_PATH/apps/mobile"
           fi
           pm2 save
           pm2 list
