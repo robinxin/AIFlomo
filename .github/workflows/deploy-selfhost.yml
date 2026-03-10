@@ -82,9 +82,9 @@ jobs:
           else
             # 从已用列表中找下一个可用端口
             FRONTEND_PORT=$(echo "$REGISTRY" | jq \
-              '(.\"f\" // []) as $used | [range(8080; 9000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+              '(.["f"] // []) as $used | [range(8080; 9000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
             BACKEND_PORT=$(echo "$REGISTRY" | jq \
-              '(.\"b\" // []) as $used | [range(3000; 4000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+              '(.["b"] // []) as $used | [range(3000; 4000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
 
             # 写回注册表：更新分支条目 + 追加到已用端口列表
             NEW_REGISTRY=$(echo "$REGISTRY" | jq \
