@@ -46,10 +46,10 @@ tasks:
       - aiTap: "点击注册按钮"
       - aiWaitFor: "显示注册成功提示，并自动跳转"
         timeout: 5000
-      - aiAssert: "跳转到登录页面或直接进入主页面"
-        errorMessage: "注册成功后应该自动跳转"
+      - aiAssert: "跳转到登录页面或直接进入/memo页面"
+        errorMessage: "注册成功后应该自动跳转到登录页或直接进入/memo页"
 
-  - name: "登录成功后跳转到主页面"
+  - name: "登录成功后跳转到/memo页面"
     continueOnError: true
     flow:
       # 先注册
@@ -73,10 +73,10 @@ tasks:
       - aiInput: "找到密码输入框"
         value: "Pass123"
       - aiTap: "点击登录按钮"
-      - aiWaitFor: "登录成功，跳转到主页面"
+      - aiWaitFor: "登录成功，跳转到/memo页面"
         timeout: 5000
-      - aiAssert: "成功进入主应用页面"
-        errorMessage: "登录成功后应该跳转到主页面"
+      - aiAssert: "成功进入/memo页面"
+        errorMessage: "登录成功后应该跳转到/memo页面"
 
   # 异常场景
   - name: "在登录注册页面之间来回切换，之前填写的表单数据不保留"
