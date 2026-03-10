@@ -41,19 +41,19 @@
 - [x] T018 实现 POST `/api/auth/register` 端点，包含 email、password、nickname 校验
 - [x] T019 实现 POST `/api/auth/login` 端点，验证密码并创建 Session
 - [x] T020 实现 POST `/api/auth/logout` 端点，清除 Session
-- [ ] T021 实现 GET `/api/auth/me` 端点，返回当前登录用户信息（需认证）
+- [x] T021 实现 GET `/api/auth/me` 端点，返回当前登录用户信息（需认证）
 
 ### 前端认证模块
 
-- [ ] T022 创建 API Client 工具 `apps/mobile/lib/api-client.js`，封装 fetch 并配置 credentials
-- [ ] T023 创建 AuthContext `apps/mobile/context/AuthContext.jsx`，定义 initialState 和 4 个 action types
-- [ ] T024 创建 useAuth Hook `apps/mobile/hooks/use-auth.js`，封装 login/logout/register/checkSession
-- [ ] T025 创建 AuthForm 组件 `apps/mobile/components/AuthForm.jsx`，复用于登录和注册
-- [ ] T026 创建认证路由布局 `apps/mobile/app/(auth)/_layout.jsx`（Stack 布局）
-- [ ] T027 创建登录页面 `apps/mobile/app/(auth)/login.jsx`
-- [ ] T028 创建注册页面 `apps/mobile/app/(auth)/register.jsx`
-- [ ] T029 创建根布局 `apps/mobile/app/_layout.jsx`，挂载 AuthProvider
-- [ ] T030 创建重定向入口页 `apps/mobile/app/index.jsx`（已登录→/memo，未登录→/login）
+- [x] T022 创建 API Client 工具 `apps/mobile/lib/api-client.js`，封装 fetch 并配置 credentials
+- [x] T023 创建 AuthContext `apps/mobile/context/AuthContext.jsx`，定义 initialState 和 4 个 action types
+- [x] T024 创建 useAuth Hook `apps/mobile/hooks/use-auth.js`，封装 login/logout/register/checkSession
+- [x] T025 创建 AuthForm 组件 `apps/mobile/components/AuthForm.jsx`，复用于登录和注册
+- [x] T026 创建认证路由布局 `apps/mobile/app/(auth)/_layout.jsx`（Stack 布局）
+- [x] T027 创建登录页面 `apps/mobile/app/(auth)/login.jsx`
+- [x] T028 创建注册页面 `apps/mobile/app/(auth)/register.jsx`
+- [x] T029 创建根布局 `apps/mobile/app/_layout.jsx`，挂载 AuthProvider
+- [x] T030 创建重定向入口页 `apps/mobile/app/index.jsx`（已登录→/memo，未登录→/login）
 
 ---
 
