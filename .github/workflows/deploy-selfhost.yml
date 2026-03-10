@@ -19,7 +19,6 @@ jobs:
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
-      actions: write   # 允许读写 repository variables（端口注册表）
 
     steps:
       - name: Resolve deploy branch
@@ -40,11 +39,16 @@ jobs:
           fi
           echo "All required secrets are configured."
 
-      - name: Resolve deploy config
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup SSH key
         run: |
-          BRANCH="${{ env.DEPLOY_BRANCH }}"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Resolve deploy config
+        run: |
+          BRANCH="${{ github.ref_name }}"
           BRANCH_DIR=$(echo "$BRANCH" | tr '/' '-')
           echo "DEPLOY_PATH=/opt/$BRANCH_DIR" >> $GITHUB_ENV
 
@@ -54,14 +58,18 @@ jobs:
           echo "PM2_SERVER_NAME=$PM2_SERVER_NAME" >> $GITHUB_ENV
           echo "PM2_MOBILE_NAME=$PM2_MOBILE_NAME" >> $GITHUB_ENV
 
-          # 注册表格式（存于 vars.BRANCH_PORT_REGISTRY）：
+          # 注册表格式（存于 ECS /opt/port-registry.json）：
           # {
           #   "main":       [8080, 3000],   # [frontend_port, backend_port]
           #   "feat/test":  [8081, 3001],
           #   "f": [8080, 8081, ...],        # 所有已分配的前端端口
           #   "b": [3000, 3001, ...]         # 所有已分配的后端端口
           # }
-          REGISTRY='${{ vars.BRANCH_PORT_REGISTRY }}'
+          REGISTRY=$(ssh -i ~/.ssh/deploy_key \
+            -p ${{ secrets.SSH_PORT || 22 }} \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cat /opt/port-registry.json 2>/dev/null || echo '{}'")
           [ -z "$REGISTRY" ] && REGISTRY='{}'
 
           # 检查分支是否已有端口分配
@@ -74,9 +82,9 @@ jobs:
           else
             # 从已用列表中找下一个可用端口
             FRONTEND_PORT=$(echo "$REGISTRY" | jq \
-              '(."f" // []) as $used | [range(8080; 9000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+              '(.\"f\" // []) as $used | [range(8080; 9000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
             BACKEND_PORT=$(echo "$REGISTRY" | jq \
-              '(."b" // []) as $used | [range(3000; 4000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+              '(.\"b\" // []) as $used | [range(3000; 4000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
 
             # 写回注册表：更新分支条目 + 追加到已用端口列表
             NEW_REGISTRY=$(echo "$REGISTRY" | jq \
@@ -88,10 +96,11 @@ jobs:
               .["f"] = ((.["f"] // []) | if contains([$fp]) then . else . + [$fp] end) |
               .["b"] = ((.["b"] // []) | if contains([$bp]) then . else . + [$bp] end)
               ')
-            gh api repos/${{ github.repository }}/actions/variables/BRANCH_PORT_REGISTRY \
-              --method PATCH -f name=BRANCH_PORT_REGISTRY -f value="$NEW_REGISTRY" 2>/dev/null || \
-            gh api repos/${{ github.repository }}/actions/variables \
-              --method POST  -f name=BRANCH_PORT_REGISTRY -f value="$NEW_REGISTRY"
+            echo "$NEW_REGISTRY" | ssh -i ~/.ssh/deploy_key \
+              -p ${{ secrets.SSH_PORT || 22 }} \
+              -o StrictHostKeyChecking=no \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+              "cat > /opt/port-registry.json"
             echo "Allocated new ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
           fi
 
@@ -101,14 +110,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.DEPLOY_BRANCH }}
-
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ref: ${{ github.ref_name }}
 
       - name: Push code to ECS
         run: |
