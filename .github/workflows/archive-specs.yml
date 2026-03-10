@@ -69,17 +69,99 @@ jobs:
       )
     runs-on: [self-hosted, ai-runner]
     steps:
-      - uses: actions/checkout@v4
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Destroy feature pod
         env:
-          BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch_name || github.event.pull_request.head.ref }}
-          SSH_HOST:        ${{ secrets.SSH_HOST }}
-          SSH_PORT:        ${{ secrets.SSH_PORT }}
-          SSH_USER:        ${{ secrets.SSH_USER }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          DEPLOY_PATH:     ${{ secrets.DEPLOY_PATH_FEAT }}
-          SYSTEMD_SERVICE: ${{ secrets.SYSTEMD_SERVICE_FEAT }}
+          BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch_name || github.event.pull_request.head.ref }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT || 22 }}
         run: |
-          echo "🗑️ Destroying pod for branch: $BRANCH_NAME"
-          bash scripts/destroy-pod.sh "$BRANCH_NAME"
+          BRANCH_DIR=$(echo "$BRANCH" | tr '/' '-')
+          DEPLOY_PATH="/opt/$BRANCH_DIR"
+          PM2_SERVER_NAME="aiflomo-server-${BRANCH_DIR}"
+          PM2_MOBILE_NAME="aiflomo-mobile-${BRANCH_DIR}"
+
+          echo "🗑️ Destroying pod for branch: $BRANCH"
+
+          ssh -i ~/.ssh/deploy_key \
+            -p "$SSH_PORT" \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            BRANCH="$BRANCH" \
+            DEPLOY_PATH="$DEPLOY_PATH" \
+            PM2_SERVER_NAME="$PM2_SERVER_NAME" \
+            PM2_MOBILE_NAME="$PM2_MOBILE_NAME" \
+            bash << 'ENDSSH'
+          set -e
+
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+          export PATH="$PATH:$(npm prefix -g)/bin"
+
+          echo "── Ensure jq ─────────────────────────────────────"
+          command -v jq >/dev/null 2>&1 || sudo yum install -y jq
+
+          echo "── Query port registry ───────────────────────────"
+          REGISTRY=$(cat /opt/port-registry.json 2>/dev/null || echo '{}')
+          EXISTING=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b] // empty')
+          if [ -z "$EXISTING" ]; then
+            echo "::error::No port registry entry found for branch '$BRANCH' — cannot destroy."
+            exit 1
+          fi
+          FRONTEND_PORT=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b][0]')
+          BACKEND_PORT=$(echo "$REGISTRY"  | jq -r --arg b "$BRANCH" '.[$b][1]')
+          echo "Found ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
+
+          echo "── Stop pm2 processes ────────────────────────────"
+          pm2 delete "$PM2_SERVER_NAME" 2>/dev/null && echo "Deleted $PM2_SERVER_NAME" || echo "$PM2_SERVER_NAME not found, skipping"
+          pm2 delete "$PM2_MOBILE_NAME" 2>/dev/null && echo "Deleted $PM2_MOBILE_NAME" || echo "$PM2_MOBILE_NAME not found, skipping"
+          pm2 save
+
+          echo "── Free ports ────────────────────────────────────"
+          free_port() {
+            local PORT=$1
+            local PIDS
+            PIDS=$(lsof -ti :"$PORT" 2>/dev/null || true)
+            if [ -n "$PIDS" ]; then
+              echo "Port $PORT in use by PID(s) $PIDS — killing"
+              echo "$PIDS" | xargs kill -9 2>/dev/null || true
+            else
+              echo "Port $PORT already free"
+            fi
+          }
+          free_port "$BACKEND_PORT"
+          free_port "$FRONTEND_PORT"
+
+          echo "── Remove from port registry ─────────────────────"
+          NEW_REGISTRY=$(echo "$REGISTRY" | jq \
+            --arg b "$BRANCH" \
+            --argjson fp "$FRONTEND_PORT" \
+            --argjson bp "$BACKEND_PORT" \
+            '
+            del(.[$b]) |
+            .["f"] = ((.["f"] // []) | map(select(. != $fp))) |
+            .["b"] = ((.["b"] // []) | map(select(. != $bp)))
+            ')
+          echo "$NEW_REGISTRY" > /opt/port-registry.json
+          echo "Removed branch $BRANCH from port registry (freed frontend=$FRONTEND_PORT backend=$BACKEND_PORT)"
+
+          echo "── Delete deployment directory ───────────────────"
+          if [ -d "$DEPLOY_PATH" ]; then
+            rm -rf "$DEPLOY_PATH"
+            echo "Deleted $DEPLOY_PATH"
+          else
+            echo "$DEPLOY_PATH not found, already clean"
+          fi
+
+          echo "✅ Destroy complete — $BRANCH removed from ECS"
+          ENDSSH
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
