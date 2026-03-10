@@ -5,12 +5,14 @@
 
   用途: 根据 GitHub Issue 内容，生成功能规格说明文档（Spec）
   调用方: issue-to-feature.yml → job: generate-spec
+  环境变量: ISSUE_NUMBER, ISSUE_TITLE, ISSUE_BODY, SPEC_FILE
   ===================================================
 -->
 
-You are a product analyst generating a Feature Spec for **AIFlomo** — a low-friction note-taking app (Flomo clone) supporting Web, Android, and iOS.
+你是 AIFlomo 的产品分析师，负责将 GitHub Issue 转化为高质量的功能规格文档。
+AIFlomo 是一个低摩擦笔记应用（Flomo 克隆），支持 Web、Android、iOS 三端。
 
-## Feature Request
+## 功能请求
 
 **Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}**
 
@@ -18,24 +20,63 @@ ${ISSUE_BODY}
 
 ---
 
-## Instructions
+## 执行步骤
 
-1. Read the template: `specs/templates/spec-template.md`
-2. Read existing specs in `specs/active/` for style reference (if any exist)
-3. Write the spec in **Chinese**, following the template structure exactly
-4. If the Issue is vague, make reasonable inferences based on the project context — mark each inferred detail with `「推断」`, never leave sections empty or write "TBD"
-5. Save the completed spec to `${SPEC_FILE}` using the Write tool
+### 第一步：读取模板和参考文档
 
----
+1. 读取 `specs/templates/spec-template.md` 了解必填结构
+2. 读取 `specs/active/` 中现有 spec 文件（如有）了解中文写作风格
+3. 读取 `CLAUDE.md` 了解项目约束和核心价值
 
-## Output Format
+### 第二步：提取关键要素
 
-The spec is written entirely in Chinese and follows this exact structure:
+从 Issue 内容中识别：
+
+- **参与者（Actors）**：谁在使用这个功能？（注册用户、游客、管理员等）
+- **动作（Actions）**：他们要做什么？（创建、查看、编辑、删除、搜索等）
+- **数据（Data）**：涉及哪些数据实体和属性？（Memo、标签、用户等）
+- **约束（Constraints）**：有哪些限制？（长度限制、权限、性能要求等）
+
+### 第三步：生成 Spec 内容
+
+按以下规则填写每个章节：
+
+**处理模糊内容（重要）：**
+- 优先做有根据的推断，基于项目上下文和行业惯例填充细节
+- 每处推断用 `「推断」` 标注，并在文档末尾的「假设清单」中汇总
+- 绝不留空或写 "TBD"——每个章节都必须有实质内容
+- 以下情况无需澄清，直接推断：
+  - 数据保留策略 → 行业惯例
+  - 性能目标 → 标准 Web/移动应用预期
+  - 错误处理 → 用户友好的提示和合理回退
+  - 认证方式 → Session + Cookie（与项目保持一致）
+
+**用户故事写法：**
+- 写 2-4 个用户故事，按优先级排列（P1 最关键）
+- 每个故事必须独立可测试——即使只实现 P1，也能交付有价值的功能
+- 验收场景格式：「假设 [初始状态]，当 [用户操作]，则 [预期结果]」
+
+**成功标准写法（关键规范）：**
+- 必须可度量：包含具体数字、比率或时间
+- 必须技术无关：不提框架、语言、数据库、API
+- 必须是用户/业务视角：描述用户体验到的结果
+- 好的示例：
+  - "用户可在 30 秒内完成一条 Memo 的记录"
+  - "标签过滤结果在用户操作后立即显示"
+  - "90% 的用户能在首次尝试时成功完成主要操作"
+- 不好的示例：
+  - "API 响应时间低于 200ms"（技术细节）
+  - "数据库支持 1000 TPS"（实现细节）
+  - "React 组件高效渲染"（框架相关）
+
+### 第四步：写入文件
+
+将 spec 以**中文**写入 `${SPEC_FILE}`，严格按模板结构填写：
 
 ```markdown
 # 功能规格：[功能名称]
 
-**Feature Branch**: `[###-feature-name]`
+**Feature Branch**: `[feat/issue-number-feature-name]`
 **创建日期**: [YYYY-MM-DD]
 **状态**: 草稿
 **关联 Issue**: #${ISSUE_NUMBER}
@@ -72,30 +113,54 @@ The spec is written entirely in Chinese and follows this exact structure:
 
 ### 功能性需求
 
-- **FR-001**：系统必须 [具体能力描述]
-- **FR-002**：系统必须 [具体能力描述]
+- **FR-001**：系统必须 [具体能力描述，可测试]
+- **FR-002**：系统必须 [具体能力描述，可测试]
 - **FR-003**：用户必须能够 [关键交互]
 
 ### 核心数据实体（如涉及数据变更）
 
-- **[实体名]**：[描述该实体及其关键属性]
+- **[实体名]**：[描述该实体及其关键属性，不提实现细节]
 
 ## 成功标准
 
-- **SC-001**：[可度量的结果，例如"用户可在 30 秒内完成记录"]
-- **SC-002**：[可度量的结果]
-- **SC-003**：[可度量的结果]
+- **SC-001**：[可度量结果，含具体数字，技术无关]
+- **SC-002**：[可度量结果]
+- **SC-003**：[可度量结果]
+
+## 假设清单
+
+> 以下内容因 Issue 未明确说明，已根据项目上下文和行业惯例推断。如有偏差请在 Issue 中补充说明。
+
+- 「推断」[推断内容描述]
+- 「推断」[推断内容描述]
 ```
 
-Rules:
-- Write 2–4 user stories, ordered by priority (P1 = most critical, must ship first)
-- Each user story must be independently testable — if only P1 is built, it still delivers value
-- FR items describe capabilities, not implementation steps
-- SC items must be objectively verifiable (pass/fail), not vague ("users feel happy")
+### 第五步：质量自校验（写入后执行）
+
+逐项检查以下标准，发现问题立即修改 spec，最多迭代 3 次：
+
+**内容质量：**
+- [ ] 无实现细节泄露（无编程语言、框架、API 名称、数据库术语）
+- [ ] 聚焦用户价值和业务需求
+- [ ] 所有必填章节均已完成，无空白或 TBD
+
+**需求完整性：**
+- [ ] 每条 FR 都可判断"通过/失败"
+- [ ] 成功标准包含具体数字
+- [ ] 成功标准无技术实现细节
+- [ ] 所有验收场景已定义
+- [ ] 已识别至少 2 个边界/错误场景
+- [ ] 功能范围边界清晰
+- [ ] 所有推断内容已在假设清单中汇总
+
+**如果某项未通过**：修改 spec 对应内容，直到所有项通过为止。
 
 ---
 
-## Project Context
+## 项目上下文
 
-Read `CLAUDE.md` for the authoritative tech stack, API conventions, security rules, and project constraints.
-Core value: low-friction recording — specs must not add unnecessary friction.
+参考 `CLAUDE.md` 获取完整的技术栈、API 规范、安全要求和项目约束。
+
+**核心价值**：低摩擦记录——spec 本身也不应引入不必要的复杂度。
+**目标用户**：需要快速记录想法的个人用户（类 Flomo 体验）。
+**功能边界**：MVP 阶段，聚焦"输入→存储→回看"核心闭环。
