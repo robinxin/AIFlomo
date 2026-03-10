@@ -229,11 +229,27 @@ jobs:
 
           echo "── Start services (pm2) ──────────────────────────"
           cd "$DEPLOY_PATH"
+
+          # 如果端口被非预期进程占用，先 kill
+          free_port() {
+            local PORT=$1
+            local PIDS
+            PIDS=$(lsof -ti :"$PORT" 2>/dev/null || true)
+            if [ -n "$PIDS" ]; then
+              echo "Port $PORT in use by PID(s) $PIDS — killing"
+              echo "$PIDS" | xargs kill -9 2>/dev/null || true
+              sleep 1
+            fi
+          }
+
+          free_port "$BACKEND_PORT"
           if pm2 describe "$PM2_SERVER_NAME" >/dev/null 2>&1; then
             pm2 restart "$PM2_SERVER_NAME"
           else
             pm2 start npm --name "$PM2_SERVER_NAME" -- run prod -w apps/server
           fi
+
+          free_port "$FRONTEND_PORT"
           if pm2 describe "$PM2_MOBILE_NAME" >/dev/null 2>&1; then
             pm2 restart "$PM2_MOBILE_NAME"
           else
