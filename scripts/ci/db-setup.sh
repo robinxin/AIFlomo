@@ -5,4 +5,4 @@
 # SQLAlchemy / Alembic: alembic revision --autogenerate
 set -e
 
-npm run db:generate -w apps/server 2>/dev/null || true
+pnpm db:generate -w apps/server 2>/dev/null || true
