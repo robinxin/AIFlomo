@@ -61,16 +61,16 @@
 
 ### 笔记路由端点
 
-- [ ] T031 创建笔记路由文件 `apps/server/src/routes/memos.js`
-- [ ] T032 实现 GET `/api/memos` 端点，支持筛选（type、tagId）、搜索（q）、分页（page、limit）参数
-- [ ] T033 在 GET `/api/memos` 中实现标签和附件的关联查询，避免 N+1 问题
-- [ ] T034 实现 POST `/api/memos` 端点，支持创建笔记并解析 #标签名
-- [ ] T035 在 POST `/api/memos` 中实现标签自动创建逻辑（同名标签复用而非新建）
-- [ ] T036 在 POST `/api/memos` 中实现附件处理，同步更新 hasImage/hasLink 标志位
-- [ ] T037 实现标签数量校验（≤10 个），超过时抛出 TOO_MANY_TAGS 错误
-- [ ] T038 实现 PUT `/api/memos/:id` 端点，支持编辑笔记内容、标签和附件
-- [ ] T039 在 PUT 端点中实现笔记所有权校验（memo.userId === session.userId）
-- [ ] T040 实现 DELETE `/api/memos/:id` 端点，执行软删除（设置 deletedAt）
+- [x] T031 创建笔记路由文件 `apps/server/src/routes/memos.js`
+- [x] T032 实现 GET `/api/memos` 端点，支持筛选（type、tagId）、搜索（q）、分页（page、limit）参数
+- [x] T033 在 GET `/api/memos` 中实现标签和附件的关联查询，避免 N+1 问题
+- [x] T034 实现 POST `/api/memos` 端点，支持创建笔记并解析 #标签名
+- [x] T035 在 POST `/api/memos` 中实现标签自动创建逻辑（同名标签复用而非新建）
+- [x] T036 在 POST `/api/memos` 中实现附件处理，同步更新 hasImage/hasLink 标志位
+- [x] T037 实现标签数量校验（≤10 个），超过时抛出 TOO_MANY_TAGS 错误
+- [x] T038 实现 PUT `/api/memos/:id` 端点，支持编辑笔记内容、标签和附件
+- [x] T039 在 PUT 端点中实现笔记所有权校验（memo.userId === session.userId）
+- [x] T040 实现 DELETE `/api/memos/:id` 端点，执行软删除（设置 deletedAt）
 - [ ] T041 实现 GET `/api/memos/trash` 端点，返回回收站笔记列表
 - [ ] T042 实现 POST `/api/memos/:id/restore` 端点，将 deletedAt 置为 NULL
 - [ ] T043 实现 DELETE `/api/memos/:id/permanent` 端点，执行物理删除

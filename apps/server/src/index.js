@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { sessionPlugin } from './plugins/session.js';
 import { corsPlugin } from './plugins/cors.js';
 import { authRoutes } from './routes/auth.js';
+import { memoRoutes } from './routes/memos.js';
 
 const app = Fastify({
   logger: process.env.NODE_ENV !== 'test',
@@ -11,6 +12,7 @@ await app.register(corsPlugin);
 await app.register(sessionPlugin);
 
 await app.register(authRoutes, { prefix: '/api/auth' });
+await app.register(memoRoutes, { prefix: '/api/memos' });
 
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
