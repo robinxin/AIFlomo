@@ -104,7 +104,7 @@ jobs:
             echo "Waiting for frontend... ($i/30)"
             sleep 2
           done
-          sed -i.bak 's|url: "${WEB_URL}"|url: "'"$FRONTEND_URL"'"|g' apps/tests/*.yaml && rm -f apps/tests/*.bak
+          sed -i.bak 's|url: "${WEB_URL}"|url: "'"$FRONTEND_URL"'"|g' apps/tests/* && rm -f apps/tests/*.bak
 
       - name: Run SDD-generated test cases
         id: test
