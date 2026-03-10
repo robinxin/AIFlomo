@@ -500,7 +500,7 @@ jobs:
           export WRITTEN_FILES="N/A — 源码尚未生成，请根据 Spec 生成测试用例规格文档"
 
           FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
-          TESTCASE_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-testcases.md/')
+          export TESTCASE_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-testcases.md/')
           echo "testcase_file=$TESTCASE_FILE" >> "$GITHUB_OUTPUT"
 
           if [ -f "$TESTCASE_FILE" ]; then
