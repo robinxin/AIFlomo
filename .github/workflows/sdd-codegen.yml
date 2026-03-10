@@ -81,7 +81,7 @@ on:
 
 jobs:
   run:
-    runs-on: [self-hosted, ai-runner, runner-ss]
+    runs-on: [self-hosted, ai-runner]
     timeout-minutes: 7200   # 5 天，防止任务量大时超时丢失进度
     permissions:
       contents: write
