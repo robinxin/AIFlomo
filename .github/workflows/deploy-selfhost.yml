@@ -33,14 +33,6 @@ jobs:
           [ -z "${{ secrets.SSH_HOST }}"        ] && MISSING="$MISSING SSH_HOST"
           [ -z "${{ secrets.SSH_USER }}"        ] && MISSING="$MISSING SSH_USER"
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
-          BRANCH="${{ env.DEPLOY_BRANCH }}"
-          if [[ "$BRANCH" == feat/* ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH_FEAT }}" ] && MISSING="$MISSING DEPLOY_PATH_FEAT"
-          elif [[ "$BRANCH" == bugfix/* ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH_BUGFIX }}" ] && MISSING="$MISSING DEPLOY_PATH_BUGFIX"
-          elif [[ "$BRANCH" == 'main' ]]; then
-            [ -z "${{ secrets.DEPLOY_PATH }}" ] && MISSING="$MISSING DEPLOY_PATH"
-          fi
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:$MISSING"
             exit 1
@@ -50,12 +42,24 @@ jobs:
       - name: Resolve deploy config
         run: |
           BRANCH="${{ env.DEPLOY_BRANCH }}"
+          # 将分支名中的 / 替换为 - 作为目录名，例如 feat/my-feature → feat-my-feature
+          BRANCH_DIR=$(echo "$BRANCH" | tr '/' '-')
+          echo "DEPLOY_PATH=/opt/$BRANCH_DIR"                      >> $GITHUB_ENV
           if [[ "$BRANCH" == feat/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_FEAT }}" >> $GITHUB_ENV
+            echo "BACKEND_PORT=3001"                                >> $GITHUB_ENV
+            echo "FRONTEND_PORT=8081"                              >> $GITHUB_ENV
+            echo "PM2_SERVER_NAME=aiflomo-server-feat"             >> $GITHUB_ENV
+            echo "PM2_MOBILE_NAME=aiflomo-mobile-feat"             >> $GITHUB_ENV
           elif [[ "$BRANCH" == bugfix/* ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_BUGFIX }}" >> $GITHUB_ENV
+            echo "BACKEND_PORT=3002"                                >> $GITHUB_ENV
+            echo "FRONTEND_PORT=8082"                              >> $GITHUB_ENV
+            echo "PM2_SERVER_NAME=aiflomo-server-bugfix"           >> $GITHUB_ENV
+            echo "PM2_MOBILE_NAME=aiflomo-mobile-bugfix"           >> $GITHUB_ENV
           elif [[ "$BRANCH" == 'main' ]]; then
-            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}" >> $GITHUB_ENV
+            echo "BACKEND_PORT=3000"                                >> $GITHUB_ENV
+            echo "FRONTEND_PORT=8080"                              >> $GITHUB_ENV
+            echo "PM2_SERVER_NAME=aiflomo-server"                  >> $GITHUB_ENV
+            echo "PM2_MOBILE_NAME=aiflomo-mobile"                  >> $GITHUB_ENV
           fi
 
       - name: Checkout code
@@ -86,19 +90,27 @@ jobs:
 
       - name: Deploy on ECS
         env:
-          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-          RUN_MIGRATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
+          DEPLOY_PATH:     ${{ env.DEPLOY_PATH }}
+          BACKEND_PORT:    ${{ env.BACKEND_PORT }}
+          FRONTEND_PORT:   ${{ env.FRONTEND_PORT }}
+          PM2_SERVER_NAME: ${{ env.PM2_SERVER_NAME }}
+          PM2_MOBILE_NAME: ${{ env.PM2_MOBILE_NAME }}
+          RUN_MIGRATE:     ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrate == 'yes' }}
+          SESSION_SECRET:  ${{ secrets.SESSION_SECRET }}
+          SSH_HOST:        ${{ secrets.SSH_HOST }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p ${{ secrets.SSH_PORT || 22 }} \
             -o StrictHostKeyChecking=no \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             DEPLOY_PATH="$DEPLOY_PATH" \
+            BACKEND_PORT="$BACKEND_PORT" \
+            FRONTEND_PORT="$FRONTEND_PORT" \
+            PM2_SERVER_NAME="$PM2_SERVER_NAME" \
+            PM2_MOBILE_NAME="$PM2_MOBILE_NAME" \
             RUN_MIGRATE="$RUN_MIGRATE" \
             SESSION_SECRET="$SESSION_SECRET" \
-            CORS_ORIGIN="$CORS_ORIGIN" \
+            SSH_HOST="$SSH_HOST" \
             bash << 'ENDSSH'
           set -e
 
@@ -108,6 +120,13 @@ jobs:
           export PATH="$PATH:$(npm prefix -g)/bin"
 
           SERVER_DIR="$DEPLOY_PATH/apps/server"
+
+          echo "── Branch deploy config ──────────────────────────"
+          echo "  DEPLOY_PATH:     $DEPLOY_PATH"
+          echo "  BACKEND_PORT:    $BACKEND_PORT"
+          echo "  FRONTEND_PORT:   $FRONTEND_PORT"
+          echo "  PM2_SERVER_NAME: $PM2_SERVER_NAME"
+          echo "  PM2_MOBILE_NAME: $PM2_MOBILE_NAME"
 
           echo "── Clean macOS metadata files ────────────────────"
           find "$DEPLOY_PATH" -name '._*' -delete 2>/dev/null || true
@@ -130,11 +149,13 @@ jobs:
           ENV_FILE="$SERVER_DIR/.env"
           if [ ! -f "$ENV_FILE" ]; then
             SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
-            CORS="${CORS_ORIGIN:-http://localhost:8082}"
-            printf 'NODE_ENV=production\nPORT=3001\nSESSION_SECRET=%s\nDB_PATH=./data/aiflomo.db\nCORS_ORIGIN=%s\n' "$SECRET" "$CORS" > "$ENV_FILE"
+            printf 'NODE_ENV=production\nPORT=%s\nSESSION_SECRET=%s\nDB_PATH=./data/aiflomo.db\nCORS_ORIGIN=http://%s:%s\n' \
+              "$BACKEND_PORT" "$SECRET" "$SSH_HOST" "$FRONTEND_PORT" > "$ENV_FILE"
             echo "Created $ENV_FILE"
           else
-            echo ".env already exists"
+            echo ".env already exists, updating PORT and CORS_ORIGIN"
+            sed -i "s/^PORT=.*/PORT=$BACKEND_PORT/" "$ENV_FILE"
+            sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=http://$SSH_HOST:$FRONTEND_PORT|" "$ENV_FILE"
           fi
 
           echo "── Install dependencies ──────────────────────────"
@@ -164,24 +185,26 @@ jobs:
           npm run build -w apps/server
 
           echo "── Build frontend ────────────────────────────────"
-          EXPO_USE_METRO_WORKSPACE_ROOT=1 npm run build -w apps/mobile
+          EXPO_USE_METRO_WORKSPACE_ROOT=1 \
+          EXPO_PUBLIC_API_URL="http://$SSH_HOST:$BACKEND_PORT" \
+            npm run build -w apps/mobile
 
           echo "── Start services (pm2) ──────────────────────────"
           cd "$DEPLOY_PATH"
-          if pm2 describe aiflomo-server >/dev/null 2>&1; then
-            pm2 restart aiflomo-server
+          if pm2 describe "$PM2_SERVER_NAME" >/dev/null 2>&1; then
+            pm2 restart "$PM2_SERVER_NAME"
           else
-            pm2 start npm --name aiflomo-server -- run prod -w apps/server
+            pm2 start npm --name "$PM2_SERVER_NAME" -- run prod -w apps/server
           fi
-          if pm2 describe aiflomo-mobile >/dev/null 2>&1; then
-            pm2 restart aiflomo-mobile
+          if pm2 describe "$PM2_MOBILE_NAME" >/dev/null 2>&1; then
+            pm2 restart "$PM2_MOBILE_NAME"
           else
-            pm2 start npm --name aiflomo-mobile -- run prod -w apps/mobile
+            pm2 start npm --name "$PM2_MOBILE_NAME" -- run prod -w apps/mobile
           fi
           pm2 save
           pm2 list
 
-          echo "✅ Deploy complete"
+          echo "✅ Deploy complete — backend :$BACKEND_PORT / frontend :$FRONTEND_PORT"
           ENDSSH
 
       - name: Cleanup SSH key
