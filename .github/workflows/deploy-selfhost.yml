@@ -249,14 +249,13 @@ jobs:
           pm2_verify() {
             local NAME=$1
             sleep 2
-            STATUS=$(pm2 jlist 2>/dev/null | jq -r --arg n "$NAME" '.[] | select(.name==$n) | .pm2_env.status' 2>/dev/null || echo "unknown")
-            [ -z "$STATUS" ] && STATUS="not_found"
-            if [ "$STATUS" != "online" ]; then
-              echo "::error::pm2 process '$NAME' is not online (status=$STATUS)"
+            if pm2 describe "$NAME" 2>/dev/null | grep -q "online"; then
+              echo "✓ $NAME is online"
+            else
+              echo "::error::pm2 process '$NAME' is not online"
               pm2 logs "$NAME" --lines 30 --nostream 2>/dev/null || true
               exit 1
             fi
-            echo "✓ $NAME is online"
           }
 
           free_port "$BACKEND_PORT"
