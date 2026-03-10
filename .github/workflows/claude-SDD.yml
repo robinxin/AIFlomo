@@ -185,7 +185,7 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
             claude --print \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
           fi
@@ -335,7 +335,7 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
             claude --print \
-              --allowedTools "Read,Write,Bash(ls:*)" \
+              --allowedTools "Read,Write,Bash(ls:*),Task" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
 
