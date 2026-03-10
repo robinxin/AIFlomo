@@ -63,10 +63,22 @@ pnpm lint              # ESLint 检测
 pnpm prod              # 构建 + 部署 Web 静态产物到服务器
                        # 其他：pnpm dlx expo start --web | --android | --ios
 
-# ── 测试 ──
-pnpm test              # playwright test
-pnpm test:ui           # playwright test --ui
-pnpm test:report       # playwright show-report
+# ── 单测 ──
+pnpm test:unit         # 运行前后端单测（Vitest + Jest）
+
+cd apps/mobile
+pnpm test:unit         # 前端 Vitest 单测
+pnpm test:unit:ui      # 前端单测 UI 模式
+pnpm test:unit:cov     # 前端单测 + 覆盖率报告
+
+cd apps/server
+pnpm test:unit         # 后端 Jest 单测
+pnpm test:unit:cov     # 后端单测 + 覆盖率报告
+
+# ── E2E 测试 ──
+pnpm test              # Playwright E2E 测试
+pnpm test:ui           # Playwright E2E 测试 UI 模式
+pnpm test:report       # 查看 E2E 测试报告
 ```
 
 ---
@@ -83,16 +95,17 @@ AIFlomo/
 │   │   ├── context/       # React Context 状态管理
 │   │   ├── hooks/         # 自定义 Hooks
 │   │   ├── lib/           # API client、工具函数
-│   │   └── assets/        # 图片、字体等静态资源
+│   │   ├── assets/        # 图片、字体等静态资源
+│   │   └── tests/         # Vitest 前端单测（*.test.js）
 │   ├── server/            # Node.js + Fastify 后端服务
 │   │   ├── src/
 │   │   │   ├── routes/    # API 路由（Fastify plugins）
 │   │   │   ├── db/        # Drizzle schema + 迁移文件
 │   │   │   ├── plugins/   # Fastify 插件（session、cors 等）
 │   │   │   └── lib/       # 服务层、工具函数
+│   │   ├── tests/         # Jest 后端单测（*.test.js）
 │   │   └── drizzle.config.js
-│   └── tests/             # Playwright E2E 测试
-│       └── *.spec.js
+│   └── tests/             # Playwright E2E 测试（*.spec.js）
 ├── testcases/             # 测试用例描述文件
 ├── docs/                  # 详细技术文档
 │   ├── code-standards-frontend.md   # 前端代码规范
@@ -166,33 +179,106 @@ AIFlomo/
 ## 🧪 测试要求
 
 ### 测试框架
-- **@playwright/test** — Microsoft 官方跨浏览器 E2E 测试框架（Chromium / Firefox / WebKit）
 
-### package.json 必须包含的测试依赖
+| 类型 | 框架 | 文件位置 | 配置文件 |
+|------|------|---------|---------|
+| 前端单测 | **Vitest** | `apps/mobile/tests/*.test.js` | `vitest.config.js` |
+| 后端单测 | **Jest** | `apps/server/tests/*.test.js` | `jest.config.js` |
+| E2E 测试 | **@playwright/test** | `apps/tests/*.spec.js` | `playwright.config.js` |
+
+### 前端单测（Vitest）
+
+#### 依赖配置
 
 ```json
 {
   "devDependencies": {
-    "@playwright/test": "^1.51.0",
-    "dotenv": "^16.6.1"
+    "vitest": "^2.1.0",
+    "@vitest/ui": "^2.1.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "jsdom": "^25.0.0"
   },
   "scripts": {
-    "test": "playwright test",
-    "test:ui": "playwright test --ui",
-    "test:debug": "playwright test --debug",
-    "test:report": "playwright show-report"
+    "test:unit": "vitest",
+    "test:unit:ui": "vitest --ui",
+    "test:unit:cov": "vitest --coverage",
+    "test:unit:watch": "vitest --watch"
   }
 }
 ```
 
-### 安装 Playwright
+#### vitest.config.js
 
-```bash
-pnpm add -D @playwright/test dotenv
-pnpm dlx playwright install
+```javascript
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: [],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      lines: 80,
+      functions: 80,
+      branches: 80,
+      statements: 80,
+      exclude: [
+        'node_modules/',
+        'dist/',
+      ],
+    },
+  },
+});
 ```
 
-### package.json 必须包含 playwright.config.js
+### 后端单测（Jest）
+
+#### 依赖配置
+
+```json
+{
+  "devDependencies": {
+    "jest": "^30.0.0-alpha.0",
+    "@babel/preset-env": "^7.25.0"
+  },
+  "scripts": {
+    "test:unit": "jest",
+    "test:unit:watch": "jest --watch",
+    "test:unit:cov": "jest --coverage"
+  }
+}
+```
+
+#### jest.config.js
+
+```javascript
+export default {
+  testEnvironment: 'node',
+  testMatch: ['**/tests/**/*.test.js'],
+  collectCoverageFrom: [
+    'src/**/*.js',
+    '!src/**/*.d.js',
+    '!**/node_modules/**',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+  },
+};
+```
+
+### E2E 测试（Playwright）
+
+#### playwright.config.js
 
 ```javascript
 import { defineConfig, devices } from '@playwright/test';
@@ -231,10 +317,16 @@ export default defineConfig({
 ```
 
 ### 测试规范
-- 测试文件放在 `apps/tests/`，命名为 `*.spec.js`
-- MVP 阶段允许测试为空，但新增重要功能必须补 E2E 测试
-- CI 质量门禁顺序：`lint` → `build` → `test`
-- 参考文档：[Playwright 官方文档](https://playwright.dev/docs/intro)
+
+- **单测覆盖率** — 新代码必须达到 **80%** 覆盖率（行、分支、函数、语句）
+- **单测文件** — 放在模块同级 `tests/` 目录，命名为 `*.test.js`
+- **E2E 测试文件** — 放在 `apps/tests/`，命名为 `*.spec.js`
+- **命令分离** — `pnpm test` 执行 Playwright E2E 测试，`pnpm test:unit` 执行前后端单测
+- **CI 质量门禁顺序** — `lint` → `build` → `test:unit` → `test`（E2E）
+- **参考文档**
+  - [Vitest 官方文档](https://vitest.dev/)
+  - [Jest 官方文档](https://jestjs.io/)
+  - [Playwright 官方文档](https://playwright.dev/docs/intro)
 
 ---
 
