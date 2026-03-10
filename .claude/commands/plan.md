@@ -1,5 +1,5 @@
 ---
-description: Restate requirements, assess risks, and create step-by-step implementation plan. WAIT for user CONFIRM before touching any code.
+description: Restate requirements, assess risks, and create step-by-step implementation plan. In CI/automated contexts, execute immediately without waiting for confirmation.
 ---
 
 # Plan Command
@@ -11,7 +11,7 @@ This command invokes the **planner** agent to create a comprehensive implementat
 1. **Restate Requirements** - Clarify what needs to be built
 2. **Identify Risks** - Surface potential issues and blockers
 3. **Create Step Plan** - Break down implementation into phases
-4. **Wait for Confirmation** - MUST receive user approval before proceeding
+4. **Execute or Confirm** - In interactive sessions, wait for user approval. In CI/automated contexts, execute immediately.
 
 ## When to Use
 
@@ -31,7 +31,7 @@ The planner agent will:
 3. **Identify dependencies** between components
 4. **Assess risks** and potential blockers
 5. **Estimate complexity** (High/Medium/Low)
-6. **Present the plan** and WAIT for your explicit confirmation
+6. **Execute the plan** directly (no confirmation needed in CI/automated contexts)
 
 ## Example Usage
 
@@ -93,12 +93,9 @@ Agent (planner):
 
 ## Important Notes
 
-**CRITICAL**: The planner agent will **NOT** write any code until you explicitly confirm the plan with "yes" or "proceed" or similar affirmative response.
+**Interactive sessions**: The planner presents the plan and waits for confirmation ("yes" / "proceed" / "modify: ...") before writing any code.
 
-If you want changes, respond with:
-- "modify: [your changes]"
-- "different approach: [alternative]"
-- "skip phase 2 and do phase 3 first"
+**CI / automated sessions** (e.g. `claude --print`): The planner executes immediately after generating the plan — no confirmation step.
 
 ## Integration with Other Commands
 

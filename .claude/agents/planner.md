@@ -46,47 +46,49 @@ Create detailed steps with:
 ## Plan Format
 
 ```markdown
-# Implementation Plan: [Feature Name]
+# 任务清单: {功能名称（与 spec 标题完全一致）}
 
-## Overview
-[2-3 sentence summary]
+**来源 Spec**: {spec 文件路径}
+**技术方案**: {design 文件路径}
 
-## Requirements
-- [Requirement 1]
-- [Requirement 2]
+---
 
-## Architecture Changes
-- [Change 1: file path and description]
-- [Change 2: file path and description]
+## 阶段一: 基础准备（数据库 & 公共模块）
 
-## Implementation Steps
+> 所有用户故事共同依赖的底层准备，必须在所有故事前完成。
+> 如无需共享基础，省略此阶段直接进入用户故事。
 
-### Phase 1: [Phase Name]
-1. **[Step Name]** (File: path/to/file.ts)
-   - Action: Specific action to take
-   - Why: Reason for this step
-   - Dependencies: None / Requires step X
-   - Risk: Low/Medium/High
+- [ ] T001 [P] 扩展 Drizzle Schema，新增 xxx 表/字段 `apps/server/src/db/schema.js`
+- [ ] T002 [P] 实现 xxx 工具/辅助函数 `apps/server/src/lib/xxx.js`
 
-2. **[Step Name]** (File: path/to/file.ts)
-   ...
+---
 
-### Phase 2: [Phase Name]
-...
+## 阶段二: 用户故事 1 - {标题}（优先级: P1）
 
-## Testing Strategy
-- Unit tests: [files to test]
-- Integration tests: [flows to test]
-- E2E tests: [user journeys to test]
+**目标**: {这个故事交付了什么，一句话}
 
-## Risks & Mitigations
-- **Risk**: [Description]
-  - Mitigation: [How to address]
+- [ ] T003 [P] 实现 xxx 服务层，包含增删改查逻辑 `apps/server/src/lib/xxx.js`
+- [ ] T004 [P] 实现 GET/POST /xxx API 路由，含参数校验 `apps/server/src/routes/xxx.js`
+- [ ] T005 实现 xxx 列表页面，调用 API 展示数据 `apps/mobile/app/(tabs)/xxx.jsx`
+- [ ] T006 实现 xxx 输入组件，处理用户交互 `apps/mobile/components/XxxInput.jsx`
 
-## Success Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
+---
+
+## 依赖说明
+
+- **阶段一** 必须全部完成，方可开始任何用户故事
+- **标记 [P]** 的任务：操作不同文件、无互相依赖，可并行执行
+- **未标记 [P]** 的任务：依赖上一个任务的输出，须顺序执行
 ```
+
+**输出规则：**
+- 任务行格式必须为 `- [ ] T{3位数字} ...` — CI 通过 `grep "^- \[.\] T"` 解析
+- 实现顺序：Schema → 服务层 → API 路由 → 页面 → 组件
+- `[P]` 标记可并行任务（操作不同文件、无依赖关系）
+- 每个任务覆盖 1-3 个紧密相关的文件，描述中必须用反引号标注目标文件路径
+- 最少 2 个任务，最多 10 个任务
+- 禁止"全部实现"式的大任务，禁止单行改动级别的微任务
+- 使用 Write 工具写入输出文件，不输出解释、前言或代码块包裹
 
 ## Best Practices
 
