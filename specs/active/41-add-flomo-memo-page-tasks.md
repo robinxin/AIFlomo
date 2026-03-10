@@ -21,15 +21,15 @@
 - [x] T008 创建 Drizzle 实例导出文件 `apps/server/src/db/index.js`
 - [x] T009 配置 `drizzle.config.js`，设置迁移文件路径和数据库连接
 - [x] T010 执行 `pnpm db:generate` 生成首次迁移文件
-- [ ] T011 执行 `pnpm db:migrate` 应用迁移，创建数据库表结构
+- [x] T011 执行 `pnpm db:migrate` 应用迁移，创建数据库表结构
 
 ### 后端插件与中间件
 
-- [ ] T012 创建 Session 插件 `apps/server/src/plugins/session.js`，配置 SQLite session store 和 Cookie 安全选项
-- [ ] T013 创建 CORS 插件 `apps/server/src/plugins/cors.js`，设置白名单域名和 credentials
-- [ ] T014 创建认证中间件 `apps/server/src/plugins/auth.js`，实现 requireAuth preHandler
-- [ ] T015 创建错误类文件 `apps/server/src/lib/errors.js`，定义 AppError、NotFoundError、ForbiddenError
-- [ ] T016 创建密码工具文件 `apps/server/src/lib/password.js`，封装 bcrypt 哈希和校验函数
+- [x] T012 创建 Session 插件 `apps/server/src/plugins/session.js`，配置 SQLite session store 和 Cookie 安全选项
+- [x] T013 创建 CORS 插件 `apps/server/src/plugins/cors.js`，设置白名单域名和 credentials
+- [x] T014 创建认证中间件 `apps/server/src/plugins/auth.js`，实现 requireAuth preHandler
+- [x] T015 创建错误类文件 `apps/server/src/lib/errors.js`，定义 AppError、NotFoundError、ForbiddenError
+- [x] T016 创建密码工具文件 `apps/server/src/lib/password.js`，封装 bcrypt 哈希和校验函数
 
 ---
 
@@ -37,10 +37,10 @@
 
 ### 后端认证路由
 
-- [ ] T017 创建认证路由文件 `apps/server/src/routes/auth.js`
-- [ ] T018 实现 POST `/api/auth/register` 端点，包含 email、password、nickname 校验
-- [ ] T019 实现 POST `/api/auth/login` 端点，验证密码并创建 Session
-- [ ] T020 实现 POST `/api/auth/logout` 端点，清除 Session
+- [x] T017 创建认证路由文件 `apps/server/src/routes/auth.js`
+- [x] T018 实现 POST `/api/auth/register` 端点，包含 email、password、nickname 校验
+- [x] T019 实现 POST `/api/auth/login` 端点，验证密码并创建 Session
+- [x] T020 实现 POST `/api/auth/logout` 端点，清除 Session
 - [ ] T021 实现 GET `/api/auth/me` 端点，返回当前登录用户信息（需认证）
 
 ### 前端认证模块
