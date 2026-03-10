@@ -181,9 +181,8 @@ jobs:
             fi
             chmod +x "$VERIFY_SCRIPT"
 
-            npm install --silent
-            npm run db:generate -w apps/server --silent 2>/dev/null || true
-            npm run db:migrate -w apps/server --silent 2>/dev/null || true
+            bash scripts/ci/install.sh
+            bash scripts/ci/db-setup.sh
 
             # ── 1/2 未修复状态验证 ──────────────────────────────────────
             echo "--- [1/2] 未修复状态（期望失败）---"
@@ -193,10 +192,12 @@ jobs:
               exit 0
             fi
 
-            npm run dev -w apps/server > /tmp/server-before.log 2>&1 &
+            bash scripts/ci/db-reset.sh 2>/dev/null || true
+            bash scripts/ci/server-start.sh > /tmp/server-before.log 2>&1 &
             SERVER_PID=$!
+            SERVER_URL=$(bash scripts/ci/server-url.sh)
             for i in $(seq 1 15); do
-              curl -s http://localhost:3001 > /dev/null 2>&1 && break || sleep 2
+              curl -s "$SERVER_URL" > /dev/null 2>&1 && break || sleep 2
             done
 
             bash "$VERIFY_SCRIPT" && BEFORE_RESULT=0 || BEFORE_RESULT=1
@@ -211,10 +212,13 @@ jobs:
 
             # ── 2/2 修复后状态验证 ──────────────────────────────────────
             echo "--- [2/2] 修复后状态（期望通过）---"
-            npm run dev -w apps/server > /tmp/server-after.log 2>&1 &
+            bash scripts/ci/db-reset.sh 2>/dev/null || true
+            bash scripts/ci/db-migrate.sh 2>/dev/null || true
+            bash scripts/ci/server-start.sh > /tmp/server-after.log 2>&1 &
             SERVER_PID=$!
+            SERVER_URL=$(bash scripts/ci/server-url.sh)
             for i in $(seq 1 15); do
-              curl -s http://localhost:3001 > /dev/null 2>&1 && break || sleep 2
+              curl -s "$SERVER_URL" > /dev/null 2>&1 && break || sleep 2
             done
 
             bash "$VERIFY_SCRIPT" && AFTER_RESULT=0 || AFTER_RESULT=1
@@ -233,11 +237,11 @@ jobs:
               exit 0
             fi
 
-            npm install --silent
-            npm run dev > /tmp/dev-verify.log 2>&1 &
+            bash scripts/ci/install.sh
+            bash scripts/ci/fullstack-start.sh > /tmp/dev-verify.log 2>&1 &
             DEV_PID=$!
 
-            FRONTEND_URL="http://localhost:8082"
+            FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
             for i in $(seq 1 30); do
               if curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" | grep -qE '^[23]'; then
                 echo "✅ Frontend ready"
