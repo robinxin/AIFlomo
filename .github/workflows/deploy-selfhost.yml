@@ -19,6 +19,7 @@ jobs:
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: read
+      actions: write   # 允许读写 repository variables（端口注册表）
 
     steps:
       - name: Resolve deploy branch
@@ -40,27 +41,62 @@ jobs:
           echo "All required secrets are configured."
 
       - name: Resolve deploy config
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="${{ env.DEPLOY_BRANCH }}"
-          # 将分支名中的 / 替换为 - 作为目录名，例如 feat/my-feature → feat-my-feature
           BRANCH_DIR=$(echo "$BRANCH" | tr '/' '-')
-          echo "DEPLOY_PATH=/opt/$BRANCH_DIR"                      >> $GITHUB_ENV
-          if [[ "$BRANCH" == feat/* ]]; then
-            echo "BACKEND_PORT=3001"                                >> $GITHUB_ENV
-            echo "FRONTEND_PORT=8081"                              >> $GITHUB_ENV
-            echo "PM2_SERVER_NAME=aiflomo-server-feat"             >> $GITHUB_ENV
-            echo "PM2_MOBILE_NAME=aiflomo-mobile-feat"             >> $GITHUB_ENV
-          elif [[ "$BRANCH" == bugfix/* ]]; then
-            echo "BACKEND_PORT=3002"                                >> $GITHUB_ENV
-            echo "FRONTEND_PORT=8082"                              >> $GITHUB_ENV
-            echo "PM2_SERVER_NAME=aiflomo-server-bugfix"           >> $GITHUB_ENV
-            echo "PM2_MOBILE_NAME=aiflomo-mobile-bugfix"           >> $GITHUB_ENV
-          elif [[ "$BRANCH" == 'main' ]]; then
-            echo "BACKEND_PORT=3000"                                >> $GITHUB_ENV
-            echo "FRONTEND_PORT=8080"                              >> $GITHUB_ENV
-            echo "PM2_SERVER_NAME=aiflomo-server"                  >> $GITHUB_ENV
-            echo "PM2_MOBILE_NAME=aiflomo-mobile"                  >> $GITHUB_ENV
+          echo "DEPLOY_PATH=/opt/$BRANCH_DIR" >> $GITHUB_ENV
+
+          # pm2 进程名：aiflomo-server-<branch>，aiflomo-mobile-<branch>
+          PM2_SERVER_NAME="aiflomo-server-${BRANCH_DIR}"
+          PM2_MOBILE_NAME="aiflomo-mobile-${BRANCH_DIR}"
+          echo "PM2_SERVER_NAME=$PM2_SERVER_NAME" >> $GITHUB_ENV
+          echo "PM2_MOBILE_NAME=$PM2_MOBILE_NAME" >> $GITHUB_ENV
+
+          # 注册表格式（存于 vars.BRANCH_PORT_REGISTRY）：
+          # {
+          #   "main":       [8080, 3000],   # [frontend_port, backend_port]
+          #   "feat/test":  [8081, 3001],
+          #   "f": [8080, 8081, ...],        # 所有已分配的前端端口
+          #   "b": [3000, 3001, ...]         # 所有已分配的后端端口
+          # }
+          REGISTRY='${{ vars.BRANCH_PORT_REGISTRY }}'
+          [ -z "$REGISTRY" ] && REGISTRY='{}'
+
+          # 检查分支是否已有端口分配
+          EXISTING=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b] // empty')
+
+          if [ -n "$EXISTING" ]; then
+            FRONTEND_PORT=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b][0]')
+            BACKEND_PORT=$(echo "$REGISTRY"  | jq -r --arg b "$BRANCH" '.[$b][1]')
+            echo "Reusing existing ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
+          else
+            # 从已用列表中找下一个可用端口
+            FRONTEND_PORT=$(echo "$REGISTRY" | jq \
+              '(."f" // []) as $used | [range(8080; 9000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+            BACKEND_PORT=$(echo "$REGISTRY" | jq \
+              '(."b" // []) as $used | [range(3000; 4000) | select(. as $p | ($used | contains([$p])) | not)] | .[0]')
+
+            # 写回注册表：更新分支条目 + 追加到已用端口列表
+            NEW_REGISTRY=$(echo "$REGISTRY" | jq \
+              --arg b "$BRANCH" \
+              --argjson fp "$FRONTEND_PORT" \
+              --argjson bp "$BACKEND_PORT" \
+              '
+              .[$b] = [$fp, $bp] |
+              .["f"] = ((.["f"] // []) | if contains([$fp]) then . else . + [$fp] end) |
+              .["b"] = ((.["b"] // []) | if contains([$bp]) then . else . + [$bp] end)
+              ')
+            gh api repos/${{ github.repository }}/actions/variables/BRANCH_PORT_REGISTRY \
+              --method PATCH -f name=BRANCH_PORT_REGISTRY -f value="$NEW_REGISTRY" 2>/dev/null || \
+            gh api repos/${{ github.repository }}/actions/variables \
+              --method POST  -f name=BRANCH_PORT_REGISTRY -f value="$NEW_REGISTRY"
+            echo "Allocated new ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
           fi
+
+          echo "FRONTEND_PORT=$FRONTEND_PORT" >> $GITHUB_ENV
+          echo "BACKEND_PORT=$BACKEND_PORT"   >> $GITHUB_ENV
 
       - name: Checkout code
         uses: actions/checkout@v4
