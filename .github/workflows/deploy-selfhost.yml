@@ -248,21 +248,38 @@ jobs:
             fi
           }
 
+          # 统一用 delete + start 确保启动命令始终更新（避免 restart 复用旧命令）
+          pm2_restart() {
+            local NAME=$1
+            shift
+            pm2 delete "$NAME" 2>/dev/null || true
+            pm2 start "$@" --name "$NAME"
+          }
+
+          # 启动后验证进程是否 online，失败则打印日志并退出
+          pm2_verify() {
+            local NAME=$1
+            sleep 2
+            STATUS=$(pm2 jlist 2>/dev/null | jq -r --arg n "$NAME" '.[] | select(.name==$n) | .pm2_env.status' 2>/dev/null || echo "unknown")
+            [ -z "$STATUS" ] && STATUS="not_found"
+            if [ "$STATUS" != "online" ]; then
+              echo "::error::pm2 process '$NAME' is not online (status=$STATUS)"
+              pm2 logs "$NAME" --lines 30 --nostream 2>/dev/null || true
+              exit 1
+            fi
+            echo "✓ $NAME is online"
+          }
+
           free_port "$BACKEND_PORT"
-          if pm2 describe "$PM2_SERVER_NAME" >/dev/null 2>&1; then
-            pm2 restart "$PM2_SERVER_NAME"
-          else
-            pm2 start npm --name "$PM2_SERVER_NAME" -- run prod -w apps/server
-          fi
+          pm2_restart "$PM2_SERVER_NAME" npm -- run prod -w apps/server
+          pm2_verify  "$PM2_SERVER_NAME"
 
           free_port "$FRONTEND_PORT"
-          if pm2 describe "$PM2_MOBILE_NAME" >/dev/null 2>&1; then
-            pm2 restart "$PM2_MOBILE_NAME"
-          else
-            pm2 start "npx serve dist -l $FRONTEND_PORT --single" \
-              --name "$PM2_MOBILE_NAME" \
-              --cwd "$DEPLOY_PATH/apps/mobile"
-          fi
+          pm2_restart "$PM2_MOBILE_NAME" \
+            "npx serve dist -l $FRONTEND_PORT --single" \
+            --cwd "$DEPLOY_PATH/apps/mobile"
+          pm2_verify  "$PM2_MOBILE_NAME"
+
           pm2 save
           pm2 list
 
