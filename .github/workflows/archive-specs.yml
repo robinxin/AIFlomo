@@ -104,6 +104,9 @@ jobs:
           [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
           export PATH="$PATH:$(npm prefix -g)/bin"
 
+          echo "── Ensure jq ─────────────────────────────────────"
+          command -v jq >/dev/null 2>&1 || sudo yum install -y jq
+
           echo "── Query port registry ───────────────────────────"
           REGISTRY=$(cat /opt/port-registry.json 2>/dev/null || echo '{}')
           EXISTING=$(echo "$REGISTRY" | jq -r --arg b "$BRANCH" '.[$b] // empty')
