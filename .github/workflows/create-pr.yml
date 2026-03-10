@@ -267,15 +267,15 @@ jobs:
       - name: Install app dependencies
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
         run: |
-          npm install
-          npm run db:generate -w apps/server
+          bash scripts/ci/install.sh
+          bash scripts/ci/db-setup.sh
 
       - name: Run tests after merge
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
         run: |
           echo "🧪 Running build + tests after merge..."
-          npm run build
-          npm run test
+          bash scripts/ci/build.sh
+          bash scripts/ci/test.sh
           echo "✅ Build and tests passed after merge."
 
       # ── 创建 PR ────────────────────────────────────────────────────────

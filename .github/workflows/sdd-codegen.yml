@@ -291,8 +291,8 @@ jobs:
         run: |
           # 先跑 lint/build 抓当前错误（不依赖外部传入，保证信息最新）
           > /tmp/quality-errors.txt
-          npm run lint  2>&1 | tee -a /tmp/quality-errors.txt || true
-          npm run build 2>&1 | tee -a /tmp/quality-errors.txt || true
+          bash scripts/ci/lint.sh  2>&1 | tee -a /tmp/quality-errors.txt || true
+          bash scripts/ci/build.sh 2>&1 | tee -a /tmp/quality-errors.txt || true
 
           QUALITY_ERRORS=$(cat /tmp/quality-errors.txt)
 
