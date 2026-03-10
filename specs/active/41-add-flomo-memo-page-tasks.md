@@ -20,7 +20,7 @@
 - [x] T007 在 schema 中声明 sessions 表（供 @fastify/session 使用）
 - [x] T008 创建 Drizzle 实例导出文件 `apps/server/src/db/index.js`
 - [x] T009 配置 `drizzle.config.js`，设置迁移文件路径和数据库连接
-- [x] T010 执行 `pnpm db:generate` 生成首次迁移文件
+- [ ] T010 执行 `pnpm db:generate` 生成首次迁移文件
 - [ ] T011 执行 `pnpm db:migrate` 应用迁移，创建数据库表结构
 
 ### 后端插件与中间件

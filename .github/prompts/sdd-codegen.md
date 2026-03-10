@@ -288,13 +288,23 @@ WRITTEN: apps/mobile/components/MemoCard.jsx
 
 ---
 
+## 前置条件缺失处理规则
+
+发现目标文件所需的前置文件不存在时（如 package.json、drizzle.config.js、tsconfig.json 等配置文件）：
+- **直接创建**，无需询问，无需停止
+- 创建后继续执行当前任务
+- 额外创建的文件同样列入 Phase 4 的 WRITTEN: 输出
+- 不得以"前置条件不满足"或"需要您的决策"为由中止任务
+
+---
+
 ## 严禁事项
 
 - 禁止 TypeScript（不得出现 .ts/.tsx 或类型注解）
 - 禁止新增 npm 包（除非 spec 明确要求）
 - 禁止写测试文件
 - 禁止添加不必要注释
-- 禁止修改目标文件以外的任何代码
+- 禁止修改目标文件以外的任何代码（前置配置文件除外）
 - 禁止 Redux/Zustand — 只用 React Context + useReducer
 - 禁止原始 SQL 拼接 — 只用 Drizzle ORM
 - 禁止修改「禁止修改的文件」列表中的任何文件
