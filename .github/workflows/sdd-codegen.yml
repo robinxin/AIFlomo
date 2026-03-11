@@ -277,7 +277,9 @@ jobs:
             (set -o pipefail; claude --print --output-format stream-json --dangerously-skip-permissions \
               --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
-              "$PROMPT_TEXT" | python3 .github/scripts/stream-log.py)
+              --debug \
+              --verbose \
+              "$PROMPT_TEXT"
 
             update_task_status $IDX "completed"
             echo "| $i | $TASK_NAME | ✅ done | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
@@ -330,7 +332,12 @@ jobs:
             exit 0
           fi
 
-          FIX_PROMPT="## PROJECT CONSTITUTION
+          claude --print --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+            --model "$MODEL" \
+            --debug \
+            --verbose \
+            "## PROJECT CONSTITUTION
           ${CONSTITUTION}
 
           ---
