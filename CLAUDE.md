@@ -34,10 +34,10 @@
 >
 > | 脚本 | 作用 |
 > |------|------|
-> | `npm run dev` | 启动开发服务器 / 运行项目 |
-> | `npm run build` | 生产构建 |
-> | `npm run lint` | 语法与代码风格检测 |
-> | `npm run prod` | 启动线上服务器（pm2 管理） |
+> | `pnpm dev` | 启动开发服务器 / 运行项目 |
+> | `pnpm build` | 生产构建 |
+> | `pnpm lint` | 语法与代码风格检测 |
+> | `pnpm prod` | 启动线上服务器（pm2 管理） |
 
 ```bash
 # ── 根目录（Monorepo）──
@@ -309,7 +309,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: 'pnpm dev',
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: !process.env.CI,
   },
@@ -372,7 +372,7 @@ echo "http://localhost:3000"
 ## 🚀 部署规范
 
 - **目标环境**: 自有 VPS（阿里云 / 腾讯云）
-- **进程守护**: pm2（`npm run prod` 内部调用 `pm2 start`）
+- **进程守护**: pm2（`pnpm prod` 内部调用 `pm2 start`）
 - **静态文件**: Expo Web 产物由 Nginx 托管
 - **环境变量**: 通过 `.env.production` 注入，不得提交到 Git
 
