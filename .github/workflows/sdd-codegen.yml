@@ -274,10 +274,10 @@ jobs:
             export ALREADY="${ALREADY:-none}"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
 
-            claude --print --dangerously-skip-permissions \
+            (set -o pipefail; claude --print --output-format stream-json --dangerously-skip-permissions \
               --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
-              "$PROMPT_TEXT"
+              "$PROMPT_TEXT" | python3 .github/scripts/stream-log.py)
 
             update_task_status $IDX "completed"
             echo "| $i | $TASK_NAME | ✅ done | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
@@ -330,10 +330,7 @@ jobs:
             exit 0
           fi
 
-          claude --print --dangerously-skip-permissions \
-            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-            --model "$MODEL" \
-            "## PROJECT CONSTITUTION
+          FIX_PROMPT="## PROJECT CONSTITUTION
           ${CONSTITUTION}
 
           ---
@@ -355,6 +352,11 @@ jobs:
           3. 修复后确保 ESLint 检查通过
 
           ${EXTRA_PROMPT}"
+
+          (set -o pipefail; claude --print --output-format stream-json --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+            --model "$MODEL" \
+            "$FIX_PROMPT" | python3 .github/scripts/stream-log.py)
 
           echo "has_failure=false" >> "$GITHUB_OUTPUT"
           echo "failed_task=" >> "$GITHUB_OUTPUT"
