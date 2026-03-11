@@ -101,12 +101,7 @@ jobs:
 
       # ── 安装依赖，运行 lint/build 抓取最新错误 ─────────────────────────
       - name: Install dependencies
-        run: |
-          if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
-            npm install
-          else
-            echo "⏭ node_modules up to date, skipping install"
-          fi
+        run: bash scripts/ci/install.sh
 
       - name: Collect current quality errors
         id: collect-errors
@@ -117,8 +112,8 @@ jobs:
           PASSED_TEST_ERRORS: ${{ inputs.test_errors }}
         run: |
           # 只捕获真正失败的 lint/build 输出（非零退出码），避免成功日志污染错误上下文
-          npm run lint  2>&1 | tee /tmp/lint-live.txt  || LINT_FAILED=true
-          npm run build 2>&1 | tee /tmp/build-live.txt || BUILD_FAILED=true
+          bash scripts/ci/lint.sh  2>&1 | tee /tmp/lint-live.txt  || LINT_FAILED=true
+          bash scripts/ci/build.sh 2>&1 | tee /tmp/build-live.txt || BUILD_FAILED=true
 
           > /tmp/quality-errors.txt
           [ "${LINT_FAILED:-}"  = "true" ] && cat /tmp/lint-live.txt  >> /tmp/quality-errors.txt
@@ -170,8 +165,8 @@ jobs:
         run: |
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/autofix.md)
 
-          claude --print \
-            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(npm run lint:*),Bash(npm run build:*)" \
+          claude --print --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(bash scripts/ci/lint.sh:*),Bash(bash scripts/ci/build.sh:*)" \
             --model "$MODEL" \
             "$PROMPT_TEXT"
 

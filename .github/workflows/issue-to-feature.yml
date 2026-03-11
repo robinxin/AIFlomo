@@ -91,7 +91,7 @@ jobs:
           ISSUE_NUMBER="${{ github.event.issue.number }}"
 
           # 用 Claude 将标题翻译为英文 slug
-          RAW_SLUG=$(claude --print --model "$MODEL" \
+          RAW_SLUG=$(claude --print --dangerously-skip-permissions --model "$MODEL" \
             "Translate the following title to a short English slug (lowercase, hyphens, no spaces, max 40 chars, no quotes, no explanation, just the slug): ${ISSUE_TITLE}" \
             2>/dev/null || echo "")
 
@@ -133,7 +133,7 @@ jobs:
 
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/spec-gen.md)
 
-          claude --print \
+          claude --print --dangerously-skip-permissions \
             --allowedTools "Read,Write,Bash(ls:*)" \
             --model "$MODEL" \
             "$PROMPT_TEXT"

@@ -138,8 +138,8 @@ jobs:
 
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/bugfix.md)
 
-          CLAUDE_OUTPUT=$(claude --print \
-            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(npm run lint:*),Bash(npm run build:*)" \
+          CLAUDE_OUTPUT=$(claude --print --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(bash scripts/ci/lint.sh:*),Bash(bash scripts/ci/build.sh:*)" \
             --model "$MODEL" \
             "$PROMPT_TEXT")
           echo "$CLAUDE_OUTPUT"
