@@ -14,7 +14,6 @@ ${TASK_DESC}
 
 1. **code-reviewer** — 审查所有生成的文件（测试文件 + 业务代码）
 2. **security-reviewer** — 安全审查所有生成的文件
-3. 若发现问题，调用 **build-error-resolver** 修复，最多重试 5 次
 
 ## 已完成任务写入的文件 — 严禁修改
 
