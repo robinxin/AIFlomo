@@ -408,7 +408,7 @@ describe('搜索分页边界场景（useSearch）', () => {
 
   it('搜索关键词为 200 字符时，正常搜索', async () => {
     const longQuery = 'a'.repeat(200);
-    api.get.mockResolvedValue([]);
+    api.get.mockResolvedValue({ data: [], message: 'ok' });
     const { hookResult } = await renderHook(useSearch);
 
     await act(async () => {
@@ -445,7 +445,7 @@ describe('搜索分页边界场景（useSearch）', () => {
   });
 
   it('搜索关键词为空字符串时，清空搜索结果', async () => {
-    api.get.mockResolvedValue([{ id: '1', content: '结果' }]);
+    api.get.mockResolvedValue({ data: [{ id: '1', content: '结果' }], message: 'ok' });
     const { hookResult } = await renderHook(useSearch);
 
     await act(async () => {
@@ -481,7 +481,7 @@ describe('搜索分页边界场景（useSearch）', () => {
   });
 
   it('搜索返回空数组时，searchResults 为空数组', async () => {
-    api.get.mockResolvedValue([]);
+    api.get.mockResolvedValue({ data: [], message: 'ok' });
     const { hookResult } = await renderHook(useSearch);
 
     await act(async () => {
@@ -500,7 +500,7 @@ describe('搜索分页边界场景（useSearch）', () => {
   });
 
   it('clearSearch 后 isSearching 变为 false，searchResults 清空', async () => {
-    api.get.mockResolvedValue([{ id: '1', content: '结果' }]);
+    api.get.mockResolvedValue({ data: [{ id: '1', content: '结果' }], message: 'ok' });
     const { hookResult } = await renderHook(useSearch);
 
     await act(async () => {
@@ -558,8 +558,8 @@ describe('回收站清空边界场景（useTrash）', () => {
 
   it('永久删除最后一条回收站笔记后，trashCount 为 0', async () => {
     const trashMemos = [{ id: 'last-memo', content: '最后一条' }];
-    api.get.mockResolvedValue(trashMemos);
-    api.delete.mockResolvedValue({});
+    api.get.mockResolvedValue({ data: trashMemos, message: 'ok' });
+    api.delete.mockResolvedValue({ data: null, message: 'ok' });
 
     const { hookResult } = await renderHook(useTrash);
 
@@ -578,8 +578,8 @@ describe('回收站清空边界场景（useTrash）', () => {
 
   it('恢复最后一条回收站笔记后，trashCount 为 0', async () => {
     const trashMemos = [{ id: 'restore-memo', content: '待恢复' }];
-    api.get.mockResolvedValue(trashMemos);
-    api.post.mockResolvedValue({});
+    api.get.mockResolvedValue({ data: trashMemos, message: 'ok' });
+    api.post.mockResolvedValue({ data: null, message: 'ok' });
 
     const { hookResult } = await renderHook(useTrash);
 
@@ -602,8 +602,8 @@ describe('回收站清空边界场景（useTrash）', () => {
       { id: 'memo-2', content: '笔记 2' },
       { id: 'memo-3', content: '笔记 3' },
     ];
-    api.get.mockResolvedValue(trashMemos);
-    api.delete.mockResolvedValue({});
+    api.get.mockResolvedValue({ data: trashMemos, message: 'ok' });
+    api.delete.mockResolvedValue({ data: null, message: 'ok' });
 
     const { hookResult } = await renderHook(useTrash);
 
@@ -623,7 +623,7 @@ describe('回收站清空边界场景（useTrash）', () => {
   });
 
   it('trashCount 不会因对不存在的笔记操作而降到 0 以下', async () => {
-    api.delete.mockResolvedValue({});
+    api.delete.mockResolvedValue({ data: null, message: 'ok' });
     const { hookResult } = await renderHook(useTrash);
 
     expect(hookResult().trashCount).toBe(0);
@@ -636,7 +636,7 @@ describe('回收站清空边界场景（useTrash）', () => {
   });
 
   it('fetchTrash 返回空数组时，trashCount 为 0', async () => {
-    api.get.mockResolvedValue([]);
+    api.get.mockResolvedValue({ data: [], message: 'ok' });
     const { hookResult } = await renderHook(useTrash);
 
     await act(async () => {
@@ -650,7 +650,7 @@ describe('回收站清空边界场景（useTrash）', () => {
   it('fetchTrash API 报错后，回收站状态保持不变', async () => {
     const trashMemos = [{ id: 't1', content: '笔记' }];
     api.get
-      .mockResolvedValueOnce(trashMemos)
+      .mockResolvedValueOnce({ data: trashMemos, message: 'ok' })
       .mockRejectedValueOnce(new Error('fetch failed'));
 
     const { hookResult } = await renderHook(useTrash);
@@ -670,7 +670,7 @@ describe('回收站清空边界场景（useTrash）', () => {
 
   it('permanentDeleteMemo API 报错时，抛出异常，本地状态不变', async () => {
     const trashMemos = [{ id: 'err-memo', content: '报错笔记' }];
-    api.get.mockResolvedValue(trashMemos);
+    api.get.mockResolvedValue({ data: trashMemos, message: 'ok' });
     api.delete.mockRejectedValue(new Error('Delete failed'));
 
     const { hookResult } = await renderHook(useTrash);

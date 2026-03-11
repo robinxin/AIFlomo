@@ -400,7 +400,7 @@ describe('边界场景测试', () => {
       expect(response.statusCode).toBe(200);
     });
 
-    it('搜索分页：page=0 被当作 page=1 处理，返回 200', async () => {
+    it('搜索分页：page=0 低于最小值 1，返回 400', async () => {
       const { cookie } = await registerAndLogin(app);
 
       await createMemo(app, cookie, '测试笔记');
