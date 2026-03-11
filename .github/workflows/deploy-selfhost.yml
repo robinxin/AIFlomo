@@ -167,6 +167,10 @@ jobs:
             exit 1
           fi
 
+          echo "── Ensure pm2 ────────────────────────────────────"
+          command -v pm2 >/dev/null 2>&1 || npm install -g pm2
+          echo "pm2 $(pm2 --version) OK"
+
           SERVER_DIR="$DEPLOY_PATH/apps/server"
 
           echo "── Branch deploy config ──────────────────────────"
