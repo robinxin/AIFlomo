@@ -277,6 +277,8 @@ jobs:
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
+              --debug \
+              --verbose \
               "$PROMPT_TEXT"
 
             update_task_status $IDX "completed"
@@ -333,6 +335,8 @@ jobs:
           claude --print --dangerously-skip-permissions \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
             --model "$MODEL" \
+            --debug \
+            --verbose \
             "## PROJECT CONSTITUTION
           ${CONSTITUTION}
 

@@ -185,11 +185,11 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (sdd-plan / design)"
-            echo "   model=$MODEL  max-turns=10"
+            echo "   model=$MODEL"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
               --model "$MODEL" \
-              --max-turns 10 \
+              --debug \
               --verbose \
               "$PROMPT_TEXT"
             echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (sdd-plan / design)"
@@ -340,11 +340,11 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (sdd-task / decompose)"
-            echo "   model=$MODEL  max-turns=10"
+            echo "   model=$MODEL"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Task" \
               --model "$MODEL" \
-              --max-turns 10 \
+              --debug \
               --verbose \
               "$PROMPT_TEXT"
             echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (sdd-task / decompose)"
@@ -521,11 +521,11 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (testcase / gen)"
-            echo "   model=$MODEL  max-turns=10"
+            echo "   model=$MODEL"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
               --model "$MODEL" \
-              --max-turns 10 \
+              --debug \
               --verbose \
               "$PROMPT_TEXT"
             echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (testcase / gen)"
@@ -664,11 +664,11 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (testcase-code / codegen)"
-            echo "   model=$MODEL  max-turns=10"
+            echo "   model=$MODEL"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
-              --max-turns 10 \
+              --debug \
               --verbose \
               "${PROMPT_TEXT}
 
