@@ -91,19 +91,19 @@
 
 - [x] T049 创建 MemoContext `apps/mobile/context/MemoContext.jsx`，定义 initialState 和 15 个 action types
 - [x] T050 创建 useMemos Hook `apps/mobile/hooks/use-memos.js`，封装笔记 CRUD 和筛选逻辑
-- [ ] T051 创建 useTags Hook `apps/mobile/hooks/use-tags.js`，封装标签列表获取
-- [ ] T052 创建 useStats Hook `apps/mobile/hooks/use-stats.js`，封装统计数据和热力图获取
-- [ ] T053 创建 useSearch Hook `apps/mobile/hooks/use-search.js`，实现防抖搜索（300ms）
-- [ ] T054 创建 useTrash Hook `apps/mobile/hooks/use-trash.js`，封装回收站操作
-- [ ] T055 在根布局 `app/_layout.jsx` 中挂载 MemoProvider
+- [x] T051 创建 useTags Hook `apps/mobile/hooks/use-tags.js`，封装标签列表获取
+- [x] T052 创建 useStats Hook `apps/mobile/hooks/use-stats.js`，封装统计数据和热力图获取
+- [x] T053 创建 useSearch Hook `apps/mobile/hooks/use-search.js`，实现防抖搜索（300ms）
+- [x] T054 创建 useTrash Hook `apps/mobile/hooks/use-trash.js`，封装回收站操作
+- [x] T055 在根布局 `app/_layout.jsx` 中挂载 MemoProvider
 
 ### 笔记主页组件
 
-- [ ] T056 创建笔记输入组件 `apps/mobile/components/MemoInput.jsx`，支持文本、标签、图片、链接
-- [ ] T057 在 MemoInput 中实现输入长度校验（≤10,000 字符）和标签数量校验（≤10 个）
-- [ ] T058 在 MemoInput 中实现图片选择功能（expo-image-picker），校验文件大小≤5MB
-- [ ] T059 创建附件预览组件 `apps/mobile/components/AttachmentPreview.jsx`，显示缩略图和删除按钮
-- [ ] T060 创建笔记卡片组件 `apps/mobile/components/MemoCard.jsx`，显示内容、标签、操作菜单
+- [x] T056 创建笔记输入组件 `apps/mobile/components/MemoInput.jsx`，支持文本、标签、图片、链接
+- [x] T057 在 MemoInput 中实现输入长度校验（≤10,000 字符）和标签数量校验（≤10 个）
+- [x] T058 在 MemoInput 中实现图片选择功能（expo-image-picker），校验文件大小≤5MB
+- [x] T059 创建附件预览组件 `apps/mobile/components/AttachmentPreview.jsx`，显示缩略图和删除按钮
+- [x] T060 创建笔记卡片组件 `apps/mobile/components/MemoCard.jsx`，显示内容、标签、操作菜单
 - [ ] T061 创建笔记列表组件 `apps/mobile/components/MemoList.jsx`，使用 FlatList 渲染
 - [ ] T062 创建侧边筛选组件 `apps/mobile/components/SidebarFilter.jsx`，包含类型筛选和标签树
 - [ ] T063 创建标签树组件 `apps/mobile/components/TagList.jsx`，显示标签及笔记数量
