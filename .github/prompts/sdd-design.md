@@ -22,17 +22,6 @@
     ${DESIGN_FILE}.frontend.md    — frontend-developer 写入
   ===================================================
 -->
-
-## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-
-${CONSTITUTION}
-
----
-
-## PROJECT GUIDE (CLAUDE.md — tech stack, directory structure, naming rules, scripts)
-
-${CLAUDE_MD}
-
 ---
 
 你是 AIFlomo SDD Design 的 **Orchestrator（编排者）**。
@@ -45,8 +34,6 @@ ${CLAUDE_MD}
 ## 第一步 — 读取上下文（只读，不写）
 
 1. 读取每个 spec 文件：`${SPEC_FILES}`
-2. 读取 `apps/server/src/db/schema.js` — 当前数据模型（authoritative）
-3. 执行 `Bash(ls docs/standards/)` 了解规范文件列表
 
 ---
 
@@ -54,9 +41,13 @@ ${CLAUDE_MD}
 
 使用 `Task` 工具派生 architect subagent，**等待其返回结果后再继续**。
 
-确认 `${DESIGN_FILE}.architect.md` 已写入后方可进入 Phase 2。
+Task 返回后，用 Bash 检查文件是否写入成功：
+```bash
+ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1 WARN: architect.md not found"
+```
+若文件不存在，**重试一次 Task(architect)**（使用相同 prompt）。重试后仍无文件则继续 Phase 2，backend/frontend 将基于 spec 自行推断数据模型。
 
-**传给 architect subagent 的 prompt：**
+**传给 architect subagent 的 prompt（替换占位符后传入）：**
 
 ```
 你是 AIFlomo SDD Design 流程的 architect subagent。
@@ -65,15 +56,10 @@ ${CLAUDE_MD}
 分析 spec 和现有代码库，生成技术方案文档的 §1 功能概述 + §2 数据模型，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取每个 spec 文件：[SPEC_FILES]
-2. 读取 CLAUDE.md — 项目约束、目录结构、命名规范
-3. 读取 CONSTITUTION.md — 绝对禁止项和强制要求
-4. 执行 Bash(ls docs/standards/) 后逐一读取每个规范文件
-5. 扫描 apps/server/src/routes/ 了解现有路由
-6. 读取 apps/server/src/db/schema.js — 当前数据模型（authoritative）
+1. 读取每个 spec 文件：${SPEC_FILES}
 
 ## 第二步 — 生成内容并写入临时文件
-将以下内容写入 [DESIGN_FILE].architect.md（使用 Write 工具）：
+将以下内容写入 ${DESIGN_FILE}.architect.md（使用 Write 工具）：
 
 ### 1. 功能概述
 
@@ -90,11 +76,8 @@ ${CLAUDE_MD}
 
 ## 严禁事项
 - 禁止向用户提问或等待确认 — 全程自主运行，遇到歧义以 spec 为准
-- 禁止写 §3 API 端点、§4 前端、§5 文件清单、§6 约束、§7 边界
-- 禁止使用 TypeScript
-- 禁止新增 npm 包
 
-完成后输出一行：WRITTEN: [DESIGN_FILE].architect.md
+完成后输出一行：WRITTEN: ${DESIGN_FILE}.architect.md
 ```
 
 ---
@@ -116,15 +99,11 @@ ${CLAUDE_MD}
 基于 architect 的数据模型设计，生成 §3 API 端点设计，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 [DESIGN_FILE].architect.md — architect 已定义的数据模型（必须基于此设计 API）
-2. 读取每个 spec 文件：[SPEC_FILES]
-3. 读取 CLAUDE.md 和 CONSTITUTION.md
-4. 执行 Bash(ls docs/standards/) 后读取每个规范文件
-5. 扫描 apps/server/src/routes/ 了解现有路由模式
-6. 读取 apps/server/src/db/schema.js
+1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型（必须基于此设计 API）
+2. 读取每个 spec 文件：${SPEC_FILES}
 
 ## 第二步 — 生成内容并写入临时文件
-将以下内容写入 [DESIGN_FILE].backend.md（使用 Write 工具）：
+将以下内容写入 ${DESIGN_FILE}.backend.md（使用 Write 工具）：
 
 ### 3. API 端点设计
 
@@ -139,12 +118,9 @@ ${CLAUDE_MD}
 
 ## 严禁事项
 - 禁止向用户提问或等待确认 — 全程自主运行，遇到歧义以 spec 为准
-- 只写 §3，禁止写其他章节
-- 禁止使用 TypeScript
-- 禁止新增 npm 包
-- 禁止修改 [DESIGN_FILE].architect.md（只读）
+- 禁止修改 ${DESIGN_FILE}.architect.md（只读）
 
-完成后输出一行：WRITTEN: [DESIGN_FILE].backend.md
+完成后输出一行：WRITTEN: ${DESIGN_FILE}.backend.md
 ```
 
 ---
@@ -160,15 +136,11 @@ ${CLAUDE_MD}
 因此请直接基于 architect 的数据模型推断 API 路径，保持与 REST 惯例一致。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 [DESIGN_FILE].architect.md — architect 已定义的数据模型
-2. 读取每个 spec 文件：[SPEC_FILES]
-3. 读取 CLAUDE.md 和 CONSTITUTION.md
-4. 执行 Bash(ls docs/standards/) 后读取每个规范文件
-5. 扫描 apps/mobile/app/ 了解现有页面结构
-6. 扫描 apps/mobile/components/ 了解现有组件
+1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型
+2. 读取每个 spec 文件：${SPEC_FILES}
 
 ## 第二步 — 生成内容并写入临时文件
-将以下内容写入 [DESIGN_FILE].frontend.md（使用 Write 工具）：
+将以下内容写入 ${DESIGN_FILE}.frontend.md（使用 Write 工具）：
 
 ### 4. 前端页面与组件
 
@@ -181,12 +153,9 @@ ${CLAUDE_MD}
 
 ## 严禁事项
 - 禁止向用户提问或等待确认 — 全程自主运行，遇到歧义以 spec 为准
-- 只写 §4，禁止写其他章节
-- 禁止使用 TypeScript 或 Redux/Zustand
-- 禁止新增 npm 包
 - 禁止修改 architect 的临时文件（只读）
 
-完成后输出一行：WRITTEN: [DESIGN_FILE].frontend.md
+完成后输出一行：WRITTEN: ${DESIGN_FILE}.frontend.md
 ```
 
 ---
@@ -268,20 +237,13 @@ ${CLAUDE_MD}
 [§7 不包含]
 ```
 
-### 4.5 校验与归档
+### 4.5 校验
 
 写入完成后：
 
 1. 使用 Read 工具读取 `${DESIGN_FILE}`，确认包含以下所有章节标题：
    `### 1.`、`### 2.`、`### 3.`、`### 4.`、`改动文件清单`、`技术约束`、`不包含`
    若缺失任何一项，说明写入不完整，重新执行 4.4。
-
-2. 校验通过后，将临时文件移至归档目录（保留备份，不直接删除）：
-   ```bash
-   mkdir -p "$(dirname "${DESIGN_FILE}")/.sdd-archive"
-   mv "${DESIGN_FILE}.architect.md" "${DESIGN_FILE}.backend.md" "${DESIGN_FILE}.frontend.md" "$(dirname "${DESIGN_FILE}")/.sdd-archive/"
-   ```
-
 ---
 
 ## 第五步 — 最终报告
