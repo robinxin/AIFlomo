@@ -184,7 +184,7 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
-            claude --print \
+            claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -334,7 +334,7 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
-            claude --print \
+            claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Task" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -510,7 +510,7 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
-            claude --print \
+            claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -648,7 +648,7 @@ jobs:
           else
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
-            claude --print \
+            claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
               "${PROMPT_TEXT}
