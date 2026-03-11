@@ -184,12 +184,6 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
-<<<<<<< HEAD
-            (set -o pipefail; claude --print --output-format stream-json --dangerously-skip-permissions \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
-              --model "$MODEL" \
-              "$PROMPT_TEXT" | python3 .github/scripts/stream-log.py)
-=======
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (sdd-plan / design)"
             echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
@@ -199,7 +193,6 @@ jobs:
               --verbose \
               "$PROMPT_TEXT"
             echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (sdd-plan / design)"
->>>>>>> feat/wl-update
           fi
 
           {
@@ -346,12 +339,6 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
-<<<<<<< HEAD
-            (set -o pipefail; claude --print --output-format stream-json --dangerously-skip-permissions \
-              --allowedTools "Read,Write,Bash(ls:*),Task" \
-              --model "$MODEL" \
-              "$PROMPT_TEXT" | python3 .github/scripts/stream-log.py)
-=======
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (sdd-task / decompose)"
             echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
@@ -361,7 +348,6 @@ jobs:
               --verbose \
               "$PROMPT_TEXT"
             echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (sdd-task / decompose)"
->>>>>>> feat/wl-update
 
             # Validate Markdown task list, fallback to single task
             if ! grep -q "^- \[.\] T" "$TASKS_FILE" 2>/dev/null; then
@@ -534,12 +520,6 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
-<<<<<<< HEAD
-            (set -o pipefail; claude --print --output-format stream-json --dangerously-skip-permissions \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
-              --model "$MODEL" \
-              "$PROMPT_TEXT" | python3 .github/scripts/stream-log.py)
-=======
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (testcase / gen)"
             echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
@@ -549,7 +529,6 @@ jobs:
               --verbose \
               "$PROMPT_TEXT"
             echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (testcase / gen)"
->>>>>>> feat/wl-update
           fi
 
       - name: Commit test case specs
@@ -684,9 +663,6 @@ jobs:
           else
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
-<<<<<<< HEAD
-            TESTCASE_CODE_PROMPT="${PROMPT_TEXT}
-=======
             echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (testcase-code / codegen)"
             echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
@@ -695,7 +671,6 @@ jobs:
               --max-turns 10 \
               --verbose \
               "${PROMPT_TEXT}
->>>>>>> feat/wl-update
 
           ---
 
@@ -706,15 +681,7 @@ jobs:
           3. 根据测试用例文档中定义的每一个测试场景，生成对应的可执行测试代码
           4. 确保每个测试用例 ID 都有对应的 test function
           5. 测试文件放在 ${TEST_DIR}/ 目录下"
-<<<<<<< HEAD
-
-            (set -o pipefail; claude --print --output-format stream-json --dangerously-skip-permissions \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
-              --model "$MODEL" \
-              "$TESTCASE_CODE_PROMPT" | python3 .github/scripts/stream-log.py)
-=======
             echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (testcase-code / codegen)"
->>>>>>> feat/wl-update
           fi
 
       - name: Commit test code
