@@ -1,10 +1,10 @@
-/tdd 读取 Spec 文件（`${SPEC_FILES}`）、技术方案文档（`${DESIGN_FILE}`）和代码规范（`docs/standards/`），按 TDD 流程实现 Task ${TASK_INDEX} of ${TASK_COUNT}: **${TASK_NAME}**。
+/tdd 读取 Spec 文件（`${SPEC_FILES}`）、技术方案文档（`${DESIGN_FILE}`），按 TDD 流程实现 Task ${TASK_INDEX} of ${TASK_COUNT}: **${TASK_NAME}**。
 
 ${TASK_DESC}
 
 ## 开发 Agent 路由
 
-GREEN 阶段写实现代码时，根据目标文件路径调用对应 agent（Task 工具）：
+实现代码时，根据目标文件路径调用对应 agent（Task 工具）：
 
 - 路径仅含 `apps/server/` → **backend-developer**
 - 路径仅含 `apps/mobile/` → **frontend-developer**
@@ -19,3 +19,7 @@ GREEN 阶段写实现代码时，根据目标文件路径调用对应 agent（Ta
 ## 已完成任务写入的文件 — 严禁修改
 
 ${ALREADY}
+
+## 严禁事项
+
+- **禁止向用户提问或等待确认** — 全程自主运行，遇到歧义以 spec 和技术方案为准
