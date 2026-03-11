@@ -235,8 +235,8 @@
 ### 代码质量
 
 - [x] T134 运行 `pnpm lint` 确保前后端代码无风格错误
-- [ ] T135 运行 `pnpm build` 确保前后端生产构建成功
-- [ ] T136 确保所有代码符合 `docs/code-standards-frontend.md` 和 `docs/code-standards-backend.md` 规范
+- [x] T135 运行 `pnpm build` 确保前后端生产构建成功
+- [x] T136 确保所有代码符合 `docs/code-standards-frontend.md` 和 `docs/code-standards-backend.md` 规范
 
 ---
 
