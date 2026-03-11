@@ -159,8 +159,8 @@
 - [x] T088 编写 `/api/memos` 路由单元测试（创建、列表、筛选、搜索、软删除）
 - [x] T089 编写 `/api/memos/trash` 路由单元测试（回收站列表、恢复、永久删除）
 - [x] T090 编写 `/api/tags` 路由单元测试（标签列表及计数）
-- [ ] T091 编写 `/api/stats` 路由单元测试（统计数据和热力图）
-- [ ] T092 确保后端单元测试覆盖率达到 80% 以上
+- [x] T091 编写 `/api/stats` 路由单元测试（统计数据和热力图）
+- [x] T092 确保后端单元测试覆盖率达到 80% 以上
 
 ---
 
@@ -168,14 +168,14 @@
 
 ### 前端单元测试
 
-- [ ] T093 创建 Vitest 配置文件 `apps/mobile/vitest.config.js`
-- [ ] T094 编写 AuthContext 和 useAuth Hook 的单元测试
-- [ ] T095 编写 MemoContext 和 useMemos Hook 的单元测试
-- [ ] T096 编写 MemoInput 组件的单元测试（输入校验、标签解析、附件处理）
-- [ ] T097 编写 MemoCard 和 MemoList 组件的单元测试
-- [ ] T098 编写 SidebarFilter 和 TagList 组件的单元测试
-- [ ] T099 编写 Heatmap 和 StatsBar 组件的单元测试
-- [ ] T100 确保前端单元测试覆盖率达到 80% 以上
+- [x] T093 创建 Vitest 配置文件 `apps/mobile/vitest.config.js`
+- [x] T094 编写 AuthContext 和 useAuth Hook 的单元测试
+- [x] T095 编写 MemoContext 和 useMemos Hook 的单元测试
+- [x] T096 编写 MemoInput 组件的单元测试（输入校验、标签解析、附件处理）
+- [x] T097 编写 MemoCard 和 MemoList 组件的单元测试
+- [x] T098 编写 SidebarFilter 和 TagList 组件的单元测试
+- [x] T099 编写 Heatmap 和 StatsBar 组件的单元测试
+- [x] T100 确保前端单元测试覆盖率达到 80% 以上
 
 ### E2E 测试
 
