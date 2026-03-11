@@ -8,6 +8,20 @@
       "when": 1741564800000,
       "tag": "0000_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1741651200000,
+      "tag": "0001_memos_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1741737600000,
+      "tag": "0002_add_stats_indexes",
+      "breakpoints": true
     }
   ]
 }

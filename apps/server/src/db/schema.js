@@ -1,5 +1,5 @@
-import { sqliteTable, text, integer, uniqueIndex, primaryKey, check } from 'drizzle-orm/sqlite-core';
-import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, uniqueIndex, index, primaryKey, check } from 'drizzle-orm/sqlite-core';
+import { sql, relations } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
   id: text('id')
@@ -17,31 +17,38 @@ export const users = sqliteTable('users', {
     .default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 });
 
-export const memos = sqliteTable('memos', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
+export const memos = sqliteTable(
+  'memos',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
 
-  content: text('content').notNull(),
+    content: text('content').notNull(),
 
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
 
-  hasImage: integer('has_image').notNull().default(0),
+    hasImage: integer('has_image').notNull().default(0),
 
-  hasLink: integer('has_link').notNull().default(0),
+    hasLink: integer('has_link').notNull().default(0),
 
-  deletedAt: text('deleted_at').default(null),
+    deletedAt: text('deleted_at').default(null),
 
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 
-  updatedAt: text('updated_at')
-    .notNull()
-    .default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
-});
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  },
+  (table) => ({
+    userIdIdx: index('memos_user_id_idx').on(table.userId),
+    createdAtIdx: index('memos_created_at_idx').on(table.createdAt),
+  })
+);
 
 export const tags = sqliteTable(
   'tags',
@@ -110,3 +117,21 @@ export const sessions = sqliteTable('sessions', {
   sess: text('sess').notNull(),
   expired: text('expired').notNull(),
 });
+
+export const memosRelations = relations(memos, ({ many }) => ({
+  memoTags: many(memoTags),
+  attachments: many(memoAttachments),
+}));
+
+export const memoTagsRelations = relations(memoTags, ({ one }) => ({
+  memo: one(memos, { fields: [memoTags.memoId], references: [memos.id] }),
+  tag: one(tags, { fields: [memoTags.tagId], references: [tags.id] }),
+}));
+
+export const tagsRelations = relations(tags, ({ many }) => ({
+  memoTags: many(memoTags),
+}));
+
+export const memoAttachmentsRelations = relations(memoAttachments, ({ one }) => ({
+  memo: one(memos, { fields: [memoAttachments.memoId], references: [memos.id] }),
+}));

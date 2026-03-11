@@ -1,7 +1,7 @@
 import { requireAuth } from '../plugins/auth.js';
 import { db } from '../db/index.js';
 import { memos, tags, memoTags, memoAttachments } from '../db/schema.js';
-import { eq, desc, and, isNull, isNotNull, like, inArray, notInArray, sql } from 'drizzle-orm';
+import { eq, desc, and, isNull, isNotNull, inArray, notInArray, sql } from 'drizzle-orm';
 import { AppError, NotFoundError } from '../lib/errors.js';
 
 const MAX_TAGS_PER_MEMO = 10;
@@ -128,6 +128,15 @@ async function upsertTags(userId, tagNames, tx) {
   return tagNames.map((name) => existingMap.get(name));
 }
 
+function shapeRelationalMemo(row) {
+  const { memoTags: memoTagRels, attachments, ...memo } = row;
+  return {
+    ...memo,
+    tags: (memoTagRels ?? []).map((mt) => ({ id: mt.tag.id, name: mt.tag.name })),
+    attachments: attachments ?? [],
+  };
+}
+
 async function getMemoWithDetails(memoId, userId) {
   const [memo] = await db
     .select()
@@ -142,38 +151,23 @@ async function attachTagsAndAttachments(memoRows) {
 
   const memoIds = memoRows.map((m) => m.id);
 
-  const tagRows = await db
-    .select({
-      memoId: memoTags.memoId,
-      tagId: tags.id,
-      tagName: tags.name,
-    })
-    .from(memoTags)
-    .innerJoin(tags, eq(memoTags.tagId, tags.id))
-    .where(inArray(memoTags.memoId, memoIds));
+  const rows = await db.query.memos.findMany({
+    where: inArray(memos.id, memoIds),
+    with: {
+      memoTags: {
+        with: { tag: true },
+      },
+      attachments: true,
+    },
+  });
 
-  const attachmentRows = await db
-    .select()
-    .from(memoAttachments)
-    .where(inArray(memoAttachments.memoId, memoIds));
+  const byId = new Map(rows.map((r) => [r.id, r]));
 
-  const tagsByMemo = {};
-  for (const row of tagRows) {
-    if (!tagsByMemo[row.memoId]) tagsByMemo[row.memoId] = [];
-    tagsByMemo[row.memoId].push({ id: row.tagId, name: row.tagName });
-  }
-
-  const attachmentsByMemo = {};
-  for (const row of attachmentRows) {
-    if (!attachmentsByMemo[row.memoId]) attachmentsByMemo[row.memoId] = [];
-    attachmentsByMemo[row.memoId].push(row);
-  }
-
-  return memoRows.map((m) => ({
-    ...m,
-    tags: tagsByMemo[m.id] ?? [],
-    attachments: attachmentsByMemo[m.id] ?? [],
-  }));
+  return memoRows.map((m) => {
+    const row = byId.get(m.id);
+    if (!row) return { ...m, tags: [], attachments: [] };
+    return shapeRelationalMemo(row);
+  });
 }
 
 export async function memoRoutes(fastify) {

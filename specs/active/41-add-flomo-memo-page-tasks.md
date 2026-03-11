@@ -213,28 +213,28 @@
 ### 文档更新
 
 - [x] T123 更新根目录 README.md，补充项目功能说明和启动指南
-- [ ] T124 更新 CLAUDE.md，确保所有新增命令和脚本已记录
-- [ ] T125 创建或更新 `docs/api-reference.md`，记录所有 API 端点的请求/响应格式
+- [x] T124 更新 CLAUDE.md，确保所有新增命令和脚本已记录
+- [x] T125 创建或更新 `docs/api-reference.md`，记录所有 API 端点的请求/响应格式
 
 ### 功能验收
 
-- [ ] T126 在本地环境运行完整流程测试（注册 → 登录 → 创建笔记 → 筛选 → 搜索 → 回收站 → 统计）
-- [ ] T127 验证所有成功标准（SC-001 至 SC-008）
-- [ ] T128 验证所有边界场景（回收站清空、搜索分页、标签数量限制、图片大小校验）
-- [ ] T129 在 Chrome、Firefox、Safari 三种浏览器中执行 E2E 测试，确保通过
+- [x] T126 在本地环境运行完整流程测试（注册 → 登录 → 创建笔记 → 筛选 → 搜索 → 回收站 → 统计）
+- [x] T127 验证所有成功标准（SC-001 至 SC-008）
+- [x] T128 验证所有边界场景（回收站清空、搜索分页、标签数量限制、图片大小校验）
+- [x] T129 在 Chrome、Firefox、Safari 三种浏览器中执行 E2E 测试，确保通过
 ---
 
 ## 阶段 11：优化与收尾
 
 ### 性能优化
 
-- [ ] T131 优化 GET `/api/memos` 的 N+1 查询问题（使用 Drizzle 关联查询或 JOIN）
-- [ ] T132 为 `memos.created_at` 和 `memos.user_id` 创建数据库索引，提升查询性能
-- [ ] T133 优化热力图查询，确保在 2 秒内完成渲染（SC-005）
+- [x] T131 优化 GET `/api/memos` 的 N+1 查询问题（使用 Drizzle 关联查询或 JOIN）
+- [x] T132 为 `memos.created_at` 和 `memos.user_id` 创建数据库索引，提升查询性能
+- [x] T133 优化热力图查询，确保在 2 秒内完成渲染（SC-005）
 
 ### 代码质量
 
-- [ ] T134 运行 `pnpm lint` 确保前后端代码无风格错误
+- [x] T134 运行 `pnpm lint` 确保前后端代码无风格错误
 - [ ] T135 运行 `pnpm build` 确保前后端生产构建成功
 - [ ] T136 确保所有代码符合 `docs/code-standards-frontend.md` 和 `docs/code-standards-backend.md` 规范
 
