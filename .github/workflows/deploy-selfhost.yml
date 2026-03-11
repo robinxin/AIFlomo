@@ -300,6 +300,8 @@ jobs:
           echo "| Branch | \`${{ env.DEPLOY_BRANCH }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 前端地址 | http://${{ secrets.SSH_HOST }}:${{ env.FRONTEND_PORT }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 后端地址 | http://${{ secrets.SSH_HOST }}:${{ env.BACKEND_PORT }} |" >> $GITHUB_STEP_SUMMARY
 
   # ─── Deploy 成功 → 触发 Create Release PR ───────────────────────
   trigger-create-pr:
