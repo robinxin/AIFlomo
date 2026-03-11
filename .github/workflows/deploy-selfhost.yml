@@ -197,18 +197,13 @@ jobs:
           echo "── Ensure data directory ─────────────────────────"
           mkdir -p "$SERVER_DIR/data"
 
-          echo "── Ensure .env file ──────────────────────────────"
-          ENV_FILE="$SERVER_DIR/.env"
-          if [ ! -f "$ENV_FILE" ]; then
-            SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
-            printf 'NODE_ENV=production\nPORT=%s\nSESSION_SECRET=%s\nDB_PATH=./data/aiflomo.db\nCORS_ORIGIN=http://%s:%s\n' \
-              "$BACKEND_PORT" "$SECRET" "$SSH_HOST" "$FRONTEND_PORT" > "$ENV_FILE"
-            echo "Created $ENV_FILE"
-          else
-            echo ".env already exists, updating PORT and CORS_ORIGIN"
-            sed -i "s/^PORT=.*/PORT=$BACKEND_PORT/" "$ENV_FILE"
-            sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=http://$SSH_HOST:$FRONTEND_PORT|" "$ENV_FILE"
-          fi
+          echo "── Prepare env vars (no .env file) ───────────────"
+          export APP_PORT="$BACKEND_PORT"
+          export APP_CORS_ORIGIN="http://$SSH_HOST:$FRONTEND_PORT"
+          export APP_SESSION_SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
+          export APP_DB_PATH="$SERVER_DIR/data/aiflomo.db"
+          export APP_NODE_ENV="production"
+          echo "PORT=$APP_PORT, CORS_ORIGIN=$APP_CORS_ORIGIN, DB_PATH=$APP_DB_PATH"
 
           echo "── Install dependencies ──────────────────────────"
           cd "$DEPLOY_PATH"
@@ -269,11 +264,11 @@ jobs:
           free_port "$BACKEND_PORT"
           pm2 delete "$PM2_SERVER_NAME" 2>/dev/null || true
           pm2 delete aiflomo-server 2>/dev/null || true
-          PORT=$BACKEND_PORT \
-          CORS_ORIGIN="http://$SSH_HOST:$FRONTEND_PORT" \
-          SESSION_SECRET="$SESSION_SECRET" \
-          DB_PATH="$SERVER_DIR/data/aiflomo.db" \
-          NODE_ENV=production \
+          PORT=$APP_PORT \
+          CORS_ORIGIN=$APP_CORS_ORIGIN \
+          SESSION_SECRET=$APP_SESSION_SECRET \
+          DB_PATH=$APP_DB_PATH \
+          NODE_ENV=$APP_NODE_ENV \
           pm2 start "$DEPLOY_PATH/apps/server/src/index.js" \
             --name "$PM2_SERVER_NAME" \
             --cwd "$DEPLOY_PATH/apps/server" \
