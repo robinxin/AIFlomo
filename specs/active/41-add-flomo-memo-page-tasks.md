@@ -196,15 +196,15 @@
 
 - [x] T109 更新 `scripts/ci/install.sh`，确保支持前后端依赖安装
 - [x] T110 更新 `scripts/ci/lint.sh`，确保检测前后端代码风格
-- [ ] T111 更新 `scripts/ci/build.sh`，确保前后端生产构建成功
-- [ ] T112 更新 `scripts/ci/test.sh`，确保执行 E2E 测试
-- [ ] T113 更新 `scripts/ci/db-reset.sh`，实现 SQLite 数据库清空（幂等）
-- [ ] T114 更新 `scripts/ci/db-setup.sh`，实现 Drizzle schema 生成
-- [ ] T115 更新 `scripts/ci/db-migrate.sh`，实现数据库迁移执行
-- [ ] T116 更新 `scripts/ci/server-start.sh`，启动后端开发服务器
-- [ ] T117 更新 `scripts/ci/server-url.sh`，输出后端健康检查 URL
-- [ ] T118 更新 `scripts/ci/fullstack-start.sh`，同时启动前后端服务
-- [ ] T119 更新 `scripts/ci/frontend-url.sh`，输出前端健康检查 URL
+- [x] T111 更新 `scripts/ci/build.sh`，确保前后端生产构建成功
+- [x] T112 更新 `scripts/ci/test.sh`，确保执行 E2E 测试
+- [x] T113 更新 `scripts/ci/db-reset.sh`，实现 SQLite 数据库清空（幂等）
+- [x] T114 更新 `scripts/ci/db-setup.sh`，实现 Drizzle schema 生成
+- [x] T115 更新 `scripts/ci/db-migrate.sh`，实现数据库迁移执行
+- [x] T116 更新 `scripts/ci/server-start.sh`，启动后端开发服务器
+- [x] T117 更新 `scripts/ci/server-url.sh`，输出后端健康检查 URL
+- [x] T118 更新 `scripts/ci/fullstack-start.sh`，同时启动前后端服务
+- [x] T119 更新 `scripts/ci/frontend-url.sh`，输出前端健康检查 URL
 
 ---
 
@@ -212,7 +212,7 @@
 
 ### 文档更新
 
-- [ ] T123 更新根目录 README.md，补充项目功能说明和启动指南
+- [x] T123 更新根目录 README.md，补充项目功能说明和启动指南
 - [ ] T124 更新 CLAUDE.md，确保所有新增命令和脚本已记录
 - [ ] T125 创建或更新 `docs/api-reference.md`，记录所有 API 端点的请求/响应格式
 
