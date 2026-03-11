@@ -269,7 +269,12 @@ jobs:
           free_port "$BACKEND_PORT"
           pm2 delete "$PM2_SERVER_NAME" 2>/dev/null || true
           pm2 delete aiflomo-server 2>/dev/null || true
-          PORT=$BACKEND_PORT pm2 start "$DEPLOY_PATH/apps/server/src/index.js" \
+          PORT=$BACKEND_PORT \
+          CORS_ORIGIN="http://$SSH_HOST:$FRONTEND_PORT" \
+          SESSION_SECRET="$SESSION_SECRET" \
+          DB_PATH="$SERVER_DIR/data/aiflomo.db" \
+          NODE_ENV=production \
+          pm2 start "$DEPLOY_PATH/apps/server/src/index.js" \
             --name "$PM2_SERVER_NAME" \
             --cwd "$DEPLOY_PATH/apps/server" \
             -f
