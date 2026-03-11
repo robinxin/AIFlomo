@@ -139,7 +139,7 @@
 
 - [x] T079 创建 Pro 购买引导浮窗组件 `apps/mobile/components/ProUpgradeModal.jsx`
 - [x] T080 在浮窗中实现「立即购买」按钮跳转到占位页面逻辑
-- [ ] T081 在笔记主页中添加微信输入、每日回顾、AI 洞察、随机漫步功能入口（仅 UI，点击弹出浮窗）
+- [x] T081 在笔记主页中添加微信输入、每日回顾、AI 洞察、随机漫步功能入口（仅 UI，点击弹出浮窗）
 
 ---
 
@@ -147,18 +147,18 @@
 
 ### Fastify 应用入口
 
-- [ ] T082 创建 Fastify 应用入口 `apps/server/src/index.js`，注册所有插件和路由
-- [ ] T083 在入口文件中配置全局错误处理器，返回统一格式的错误响应
-- [ ] T084 在入口文件中配置日志插件（可选，生产环境需要）
-- [ ] T085 配置 package.json 的 dev/build/lint/prod 脚本，确保符合 CLAUDE.md 规范
+- [x] T082 创建 Fastify 应用入口 `apps/server/src/index.js`，注册所有插件和路由
+- [x] T083 在入口文件中配置全局错误处理器，返回统一格式的错误响应
+- [x] T084 在入口文件中配置日志插件（可选，生产环境需要）
+- [x] T085 配置 package.json 的 dev/build/lint/prod 脚本，确保符合 CLAUDE.md 规范
 
 ### 后端单元测试
 
-- [ ] T086 创建 Jest 配置文件 `apps/server/jest.config.js`
-- [ ] T087 编写 `/api/auth` 路由单元测试（注册、登录、登出、获取当前用户）
-- [ ] T088 编写 `/api/memos` 路由单元测试（创建、列表、筛选、搜索、软删除）
-- [ ] T089 编写 `/api/memos/trash` 路由单元测试（回收站列表、恢复、永久删除）
-- [ ] T090 编写 `/api/tags` 路由单元测试（标签列表及计数）
+- [x] T086 创建 Jest 配置文件 `apps/server/jest.config.js`
+- [x] T087 编写 `/api/auth` 路由单元测试（注册、登录、登出、获取当前用户）
+- [x] T088 编写 `/api/memos` 路由单元测试（创建、列表、筛选、搜索、软删除）
+- [x] T089 编写 `/api/memos/trash` 路由单元测试（回收站列表、恢复、永久删除）
+- [x] T090 编写 `/api/tags` 路由单元测试（标签列表及计数）
 - [ ] T091 编写 `/api/stats` 路由单元测试（统计数据和热力图）
 - [ ] T092 确保后端单元测试覆盖率达到 80% 以上
 

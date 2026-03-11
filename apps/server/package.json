@@ -7,13 +7,13 @@
     "dev": "node --watch src/index.js",
     "build": "mkdir -p dist && cp -r src/* dist/",
     "lint": "eslint src/",
-    "prod": "pm2 start src/index.js --name aiflomo-server",
+    "prod": "pm2 start dist/index.js --name aiflomo-server",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node src/db/migrate.js",
     "db:reset": "node -e \"import('./src/db/reset.js')\"",
-    "test:unit": "jest",
-    "test:unit:watch": "jest --watch",
-    "test:unit:cov": "jest --coverage"
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:unit:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:unit:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.1",
@@ -28,6 +28,7 @@
   "devDependencies": {
     "@babel/preset-env": "^7.25.0",
     "drizzle-kit": "^0.30.4",
+    "eslint": "^9.0.0",
     "jest": "^30.0.0-alpha.0"
   }
 }

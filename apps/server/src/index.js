@@ -1,11 +1,14 @@
 import Fastify from 'fastify';
+import { buildLoggerConfig } from './plugins/logger.js';
 import { sessionPlugin } from './plugins/session.js';
 import { corsPlugin } from './plugins/cors.js';
 import { authRoutes } from './routes/auth.js';
 import { memoRoutes } from './routes/memos.js';
+import { tagRoutes } from './routes/tags.js';
+import { statsRoutes } from './routes/stats.js';
 
 const app = Fastify({
-  logger: process.env.NODE_ENV !== 'test',
+  logger: buildLoggerConfig(),
 });
 
 await app.register(corsPlugin);
@@ -13,23 +16,33 @@ await app.register(sessionPlugin);
 
 await app.register(authRoutes, { prefix: '/api/auth' });
 await app.register(memoRoutes, { prefix: '/api/memos' });
+await app.register(tagRoutes, { prefix: '/api/tags' });
+await app.register(statsRoutes, { prefix: '/api/stats' });
+
+app.setNotFoundHandler((request, reply) => {
+  return reply.status(404).send({
+    data: null,
+    error: 'NOT_FOUND',
+    message: '接口不存在',
+  });
+});
 
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
-
-  if (error.statusCode) {
-    return reply.status(error.statusCode).send({
-      data: null,
-      error: error.code ?? 'ERROR',
-      message: error.message,
-    });
-  }
 
   if (error.validation) {
     return reply.status(400).send({
       data: null,
       error: 'VALIDATION_ERROR',
       message: '请求参数不合法',
+    });
+  }
+
+  if (error.statusCode) {
+    return reply.status(error.statusCode).send({
+      data: null,
+      error: error.code ?? 'ERROR',
+      message: error.message,
     });
   }
 

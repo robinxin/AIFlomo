@@ -8,6 +8,7 @@ import {
   Platform,
   Animated,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { useMemos } from '@/hooks/use-memos';
 import { useTags } from '@/hooks/use-tags';
@@ -18,6 +19,14 @@ import { SidebarFilter } from '@/components/SidebarFilter';
 import { StatsBar } from '@/components/StatsBar';
 import { Heatmap } from '@/components/Heatmap';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ProUpgradeModal } from '@/components/ProUpgradeModal';
+
+const PRO_ENTRY_ITEMS = [
+  { key: 'wechat', label: '微信输入', icon: '[微]' },
+  { key: 'daily', label: '每日回顾', icon: '[回]' },
+  { key: 'ai', label: 'AI 洞察', icon: '[AI]' },
+  { key: 'random', label: '随机漫步', icon: '[漫]' },
+];
 
 const SIDEBAR_WIDTH = 220;
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -32,6 +41,8 @@ export default function MemoIndexScreen() {
   const [pendingDeleteMemo, setPendingDeleteMemo] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [proModalVisible, setProModalVisible] = useState(false);
+  const [proFeatureName, setProFeatureName] = useState('');
 
   const sidebarAnim = useRef(new Animated.Value(IS_WIDE ? 0 : -SIDEBAR_WIDTH)).current;
 
@@ -78,6 +89,16 @@ export default function MemoIndexScreen() {
     setPendingDeleteMemo(null);
   }, []);
 
+  const handleProEntryPress = useCallback((featureName) => {
+    setProFeatureName(featureName);
+    setProModalVisible(true);
+  }, []);
+
+  const handleProModalClose = useCallback(() => {
+    setProModalVisible(false);
+    setProFeatureName('');
+  }, []);
+
   const toggleSidebar = useCallback(() => {
     const toValue = sidebarVisible ? -SIDEBAR_WIDTH : 0;
     Animated.timing(sidebarAnim, {
@@ -92,6 +113,30 @@ export default function MemoIndexScreen() {
     <View style={styles.listHeader}>
       <StatsBar />
       <Heatmap />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.proEntryBar}
+        contentContainerStyle={styles.proEntryBarContent}
+        testID="pro-entry-bar"
+      >
+        {PRO_ENTRY_ITEMS.map((item) => (
+          <Pressable
+            key={item.key}
+            style={({ pressed }) => [
+              styles.proEntryItem,
+              pressed && styles.proEntryItemPressed,
+            ]}
+            onPress={() => handleProEntryPress(item.label)}
+            accessibilityRole="button"
+            accessibilityLabel={item.label}
+            testID={`pro-entry-${item.key}`}
+          >
+            <Text style={styles.proEntryIcon}>{item.icon}</Text>
+            <Text style={styles.proEntryLabel}>{item.label}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
       <MemoInput onSuccess={handleMemoSuccess} />
     </View>
   );
@@ -162,6 +207,13 @@ export default function MemoIndexScreen() {
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
         testID="delete-confirm-dialog"
+      />
+
+      <ProUpgradeModal
+        visible={proModalVisible}
+        featureName={proFeatureName}
+        onClose={handleProModalClose}
+        testID="pro-upgrade-modal"
       />
     </SafeAreaView>
   );
@@ -255,5 +307,58 @@ const styles = StyleSheet.create({
   listHeader: {
     paddingHorizontal: 12,
     paddingTop: 12,
+  },
+  proEntryBar: {
+    marginBottom: 12,
+  },
+  proEntryBarContent: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  proEntryItem: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#e8e8e8',
+    minWidth: 72,
+    gap: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+      },
+    }),
+  },
+  proEntryItemPressed: {
+    backgroundColor: '#fef8ee',
+  },
+  proEntryIcon: {
+    fontSize: 14,
+    color: '#f5a623',
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  proEntryLabel: {
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '500',
+    lineHeight: 16,
   },
 });
