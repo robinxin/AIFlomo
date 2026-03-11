@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { AttachmentPreview } from './AttachmentPreview';
+import { HighlightText } from './HighlightText';
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -33,7 +34,7 @@ function formatDate(dateStr) {
   return `${y}-${mo}-${d} ${h}:${mi}`;
 }
 
-export function MemoCard({ memo, onEdit, onDelete }) {
+export function MemoCard({ memo, onEdit, onDelete, highlight }) {
   const [menuVisible, setMenuVisible] = useState(false);
 
   const handleOpenMenu = useCallback(() => {
@@ -74,13 +75,12 @@ export function MemoCard({ memo, onEdit, onDelete }) {
         </Pressable>
       </View>
 
-      <Text
+      <HighlightText
+        text={memo.content}
+        keyword={highlight}
         style={styles.content}
         testID={`memo-content-${memo.id}`}
-        selectable
-      >
-        {memo.content}
-      </Text>
+      />
 
       {tags.length > 0 ? (
         <ScrollView

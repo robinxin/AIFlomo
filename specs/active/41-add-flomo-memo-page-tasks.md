@@ -121,24 +121,24 @@
 ### 搜索页面
 
 - [x] T070 创建搜索输入组件 `apps/mobile/components/SearchBar.jsx`，实现防抖输入（300ms）
-- [ ] T071 创建搜索结果页 `apps/mobile/app/(app)/memo/search.jsx`，显示匹配笔记列表
-- [ ] T072 在搜索结果页中实现关键词高亮显示功能
-- [ ] T073 在搜索结果页中实现「未找到相关笔记」空状态提示
+- [x] T071 创建搜索结果页 `apps/mobile/app/(app)/memo/search.jsx`，显示匹配笔记列表
+- [x] T072 在搜索结果页中实现关键词高亮显示功能
+- [x] T073 在搜索结果页中实现「未找到相关笔记」空状态提示
 
 ### 回收站页面
 
-- [ ] T074 创建回收站卡片组件 `apps/mobile/components/TrashMemoCard.jsx`，包含恢复和永久删除按钮
-- [ ] T075 创建回收站页面 `apps/mobile/app/(app)/memo/trash.jsx`，显示已删除笔记列表
-- [ ] T076 在回收站页面中实现恢复笔记功能（二次确认）
-- [ ] T077 在回收站页面中实现永久删除功能（二次确认）
-- [ ] T078 在回收站页面中实现「回收站为空」空状态提示
+- [x] T074 创建回收站卡片组件 `apps/mobile/components/TrashMemoCard.jsx`，包含恢复和永久删除按钮
+- [x] T075 创建回收站页面 `apps/mobile/app/(app)/memo/trash.jsx`，显示已删除笔记列表
+- [x] T076 在回收站页面中实现恢复笔记功能（二次确认）
+- [x] T077 在回收站页面中实现永久删除功能（二次确认）
+- [x] T078 在回收站页面中实现「回收站为空」空状态提示
 
 ---
 
 ## 阶段 6：Pro 功能引导（P3）
 
-- [ ] T079 创建 Pro 购买引导浮窗组件 `apps/mobile/components/ProUpgradeModal.jsx`
-- [ ] T080 在浮窗中实现「立即购买」按钮跳转到占位页面逻辑
+- [x] T079 创建 Pro 购买引导浮窗组件 `apps/mobile/components/ProUpgradeModal.jsx`
+- [x] T080 在浮窗中实现「立即购买」按钮跳转到占位页面逻辑
 - [ ] T081 在笔记主页中添加微信输入、每日回顾、AI 洞察、随机漫步功能入口（仅 UI，点击弹出浮窗）
 
 ---
