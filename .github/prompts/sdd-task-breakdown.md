@@ -1,5 +1,7 @@
-/plan 请读取 Spec 文件（${SPEC_FILES}）和技术方案文档（${DESIGN_FILE}）。你的目标是将功能拆分为原子性的可实现任务
-请将最终的任务清单保存到文件 `${TASKS_FILE}` 中。
-
-### 重要格式要求：
-任务清单必须严格遵循 Markdown 格式，且每项任务必须以 "- [ ] T" 开头（例如：- [ ] T001 描述）。
+/plan 读取 Spec 文件（`${SPEC_FILES}`）和技术方案文档（`${DESIGN_FILE}`），将功能拆分为有序的原子性实现任务，生成 Markdown 任务清单，使用 Write 工具写入 `${TASKS_FILE}`。
+## 严禁事项
+- **禁止向用户提问或等待确认** — 全程自主运行，遇到歧义以 spec 为准
+- **禁止生成 GitHub Actions 和 CI-CD 配置相关任务**（如修改 .yml workflow 文件等）
+- **禁止生成 E2E 测试任务**（E2E 测试由独立的 testcase 流水线生成，与本环节无关）
+- **禁止生成 git 提交、创建 PR、代码合并相关任务**（这是 workflow 基础设施的职责）
+- **禁止生成部署、服务器配置、Nginx、pm2 相关任务**

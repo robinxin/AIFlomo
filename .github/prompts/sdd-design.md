@@ -22,17 +22,6 @@
     ${DESIGN_FILE}.frontend.md    — frontend-developer 写入
   ===================================================
 -->
-
-## PROJECT CONSTITUTION (MUST FOLLOW — HIGHEST PRIORITY)
-
-${CONSTITUTION}
-
----
-
-## PROJECT GUIDE (CLAUDE.md — tech stack, directory structure, naming rules, scripts)
-
-${CLAUDE_MD}
-
 ---
 
 你是 AIFlomo SDD Design 的 **Orchestrator（编排者）**。
@@ -45,8 +34,6 @@ ${CLAUDE_MD}
 ## 第一步 — 读取上下文（只读，不写）
 
 1. 读取每个 spec 文件：`${SPEC_FILES}`
-2. 读取 `apps/server/src/db/schema.js` — 当前数据模型（authoritative）
-3. 执行 `Bash(ls docs/standards/)` 了解规范文件列表
 
 ---
 
@@ -54,9 +41,13 @@ ${CLAUDE_MD}
 
 使用 `Task` 工具派生 architect subagent，**等待其返回结果后再继续**。
 
-确认 `${DESIGN_FILE}.architect.md` 已写入后方可进入 Phase 2。
+Task 返回后，用 Bash 检查文件是否写入成功：
+```bash
+ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1 WARN: architect.md not found"
+```
+若文件不存在，**重试一次 Task(architect)**（使用相同 prompt）。重试后仍无文件则继续 Phase 2，backend/frontend 将基于 spec 自行推断数据模型。
 
-**传给 architect subagent 的 prompt：**
+**传给 architect subagent 的 prompt（替换占位符后传入）：**
 
 ```
 你是 AIFlomo SDD Design 流程的 architect subagent。
@@ -65,15 +56,10 @@ ${CLAUDE_MD}
 分析 spec 和现有代码库，生成技术方案文档的 §1 功能概述 + §2 数据模型，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取每个 spec 文件：[SPEC_FILES]
-2. 读取 CLAUDE.md — 项目约束、目录结构、命名规范
-3. 读取 CONSTITUTION.md — 绝对禁止项和强制要求
-4. 执行 Bash(ls docs/standards/) 后逐一读取每个规范文件
-5. 扫描 apps/server/src/routes/ 了解现有路由
-6. 读取 apps/server/src/db/schema.js — 当前数据模型（authoritative）
+1. 读取每个 spec 文件：${SPEC_FILES}
 
 ## 第二步 — 生成内容并写入临时文件
-将以下内容写入 [DESIGN_FILE].architect.md（使用 Write 工具）：
+将以下内容写入 ${DESIGN_FILE}.architect.md（使用 Write 工具）：
 
 ### 1. 功能概述
 
@@ -84,22 +70,14 @@ ${CLAUDE_MD}
 ### 2. 数据模型变更
 
 - 列出需要新增或修改的 Drizzle 表及字段
-- 提供完整可直接复制的 schema 片段（JS 格式，参考 apps/server/src/db/schema.js 的写法）
+- 每张新增或修改的表，**必须提供完整的 `sqliteTable()` 代码块**（字段名、类型、约束、默认值逐行列出，参考 apps/server/src/db/schema.js 的写法），禁止用文字描述替代代码块
 - 说明 .references()、onDelete 的设计理由
 - 如本次无数据模型变更，明确写："本次无数据模型变更"
 
-## 项目宪法
-[粘贴 CONSTITUTION 全文]
-
-## 项目指南（CLAUDE.md）
-[粘贴 CLAUDE_MD 全文]
-
 ## 严禁事项
-- 禁止写 §3 API 端点、§4 前端、§5 文件清单、§6 约束、§7 边界
-- 禁止使用 TypeScript
-- 禁止新增 npm 包
+- 禁止向用户提问或等待确认 — 全程自主运行，遇到歧义以 spec 为准
 
-完成后输出一行：WRITTEN: [DESIGN_FILE].architect.md
+完成后输出一行：WRITTEN: ${DESIGN_FILE}.architect.md
 ```
 
 ---
@@ -121,15 +99,11 @@ ${CLAUDE_MD}
 基于 architect 的数据模型设计，生成 §3 API 端点设计，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 [DESIGN_FILE].architect.md — architect 已定义的数据模型（必须基于此设计 API）
-2. 读取每个 spec 文件：[SPEC_FILES]
-3. 读取 CLAUDE.md 和 CONSTITUTION.md
-4. 执行 Bash(ls docs/standards/) 后读取每个规范文件
-5. 扫描 apps/server/src/routes/ 了解现有路由模式
-6. 读取 apps/server/src/db/schema.js
+1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型（必须基于此设计 API）
+2. 读取每个 spec 文件：${SPEC_FILES}
 
 ## 第二步 — 生成内容并写入临时文件
-将以下内容写入 [DESIGN_FILE].backend.md（使用 Write 工具）：
+将以下内容写入 ${DESIGN_FILE}.backend.md（使用 Write 工具）：
 
 ### 3. API 端点设计
 
@@ -138,23 +112,15 @@ ${CLAUDE_MD}
 - 路径 + HTTP 方法（如 POST /api/memos）
 - 对应文件路径（如 apps/server/src/routes/memos.js）
 - 鉴权：preHandler: [requireAuth]（是否需要）
-- 请求验证：JSON Schema 格式（Fastify 原生，参考 code-standards-backend.md 写法）
-- 成功响应示例（符合 CLAUDE.md 中定义的统一 API 响应格式）
+- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代，参考 code-standards-backend.md 写法）
+- 成功响应示例（符合 CLAUDE.md 中定义的统一 API 响应格式，含完整 JSON 示例）
 - 失败响应清单（HTTP 状态码 + error 字段内容）
 
-## 项目宪法
-[粘贴 CONSTITUTION 全文]
-
-## 项目指南（CLAUDE.md）
-[粘贴 CLAUDE_MD 全文]
-
 ## 严禁事项
-- 只写 §3，禁止写其他章节
-- 禁止使用 TypeScript
-- 禁止新增 npm 包
-- 禁止修改 [DESIGN_FILE].architect.md（只读）
+- 禁止向用户提问或等待确认 — 全程自主运行，遇到歧义以 spec 为准
+- 禁止修改 ${DESIGN_FILE}.architect.md（只读）
 
-完成后输出一行：WRITTEN: [DESIGN_FILE].backend.md
+完成后输出一行：WRITTEN: ${DESIGN_FILE}.backend.md
 ```
 
 ---
@@ -170,54 +136,49 @@ ${CLAUDE_MD}
 因此请直接基于 architect 的数据模型推断 API 路径，保持与 REST 惯例一致。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 [DESIGN_FILE].architect.md — architect 已定义的数据模型
-2. 读取每个 spec 文件：[SPEC_FILES]
-3. 读取 CLAUDE.md 和 CONSTITUTION.md
-4. 执行 Bash(ls docs/standards/) 后读取每个规范文件
-5. 扫描 apps/mobile/app/ 了解现有页面结构
-6. 扫描 apps/mobile/components/ 了解现有组件
+1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型
+2. 读取每个 spec 文件：${SPEC_FILES}
 
 ## 第二步 — 生成内容并写入临时文件
-将以下内容写入 [DESIGN_FILE].frontend.md（使用 Write 工具）：
+将以下内容写入 ${DESIGN_FILE}.frontend.md（使用 Write 工具）：
 
 ### 4. 前端页面与组件
 
 - 需要新增的 Screen（文件路径在 apps/mobile/app/ 下，说明对应的 URL 路径）
-- 需要新增的组件（文件路径在 apps/mobile/components/，具名 export，说明职责）
-- Context/Reducer 变更（新增哪些 action type，影响哪个 Context 文件）
-- 自定义 Hook 变更（如有）
+- 需要新增的组件（文件路径在 apps/mobile/components/，具名 export；每个组件必须列出：职责、props 列表（名称/类型/是否必填）、负责的用户交互）
+- Context/Reducer 变更（新增哪些 action type，影响哪个 Context 文件，state 结构如何变更）
+- 自定义 Hook 变更（如有，列出 hook 名称、入参、返回值）
 - 用户交互流程：用户看到什么 → 操作什么 → 系统如何响应
-- 调用的 API 端点（根据数据模型推断，遵循 REST 惯例）
-
-## 项目宪法
-[粘贴 CONSTITUTION 全文]
-
-## 项目指南（CLAUDE.md）
-[粘贴 CLAUDE_MD 全文]
+- 调用的 API 端点（根据数据模型推断，遵循 REST 惯例，列出 method + path + 请求/响应关键字段）
 
 ## 严禁事项
-- 只写 §4，禁止写其他章节
-- 禁止使用 TypeScript 或 Redux/Zustand
-- 禁止新增 npm 包
+- 禁止向用户提问或等待确认 — 全程自主运行，遇到歧义以 spec 为准
 - 禁止修改 architect 的临时文件（只读）
 
-完成后输出一行：WRITTEN: [DESIGN_FILE].frontend.md
+完成后输出一行：WRITTEN: ${DESIGN_FILE}.frontend.md
 ```
 
 ---
 
 ## 第四步 — Orchestrator 合并生成最终文档
 
-两个 Phase 2 subagent 均完成后：
+两个 Phase 2 subagent 均完成后，按以下步骤执行：
 
-1. 读取三个临时文件：
-   - `${DESIGN_FILE}.architect.md`（含 §1 §2）
-   - `${DESIGN_FILE}.backend.md`（含 §3）
-   - `${DESIGN_FILE}.frontend.md`（含 §4）
+### 4.1 读取临时文件
 
-2. 校对 §3 与 §4 的 API 路径是否一致；若有出入，以 §3（backend-developer）为准，在 §4 备注中标明差异。
+使用 Read 工具逐一读取三个临时文件的**完整内容**：
+- `${DESIGN_FILE}.architect.md`（含 §1 §2）
+- `${DESIGN_FILE}.backend.md`（含 §3）
+- `${DESIGN_FILE}.frontend.md`（含 §4）
 
-3. 基于以上内容，Orchestrator 自行撰写：
+### 4.2 一致性校验
+
+比对 §3（backend）与 §4（frontend）中引用的 API 路径是否一致。
+若有出入，以 §3 为准，**记录差异列表**，将在写入时仅于 §4 对应位置追加一行备注（`⚠️ API 路径已更正，以 §3 为准：xxx`），不得修改 §3 或 §4 的任何其他内容。
+
+### 4.3 生成 §5/§6/§7
+
+基于对四个章节的完整理解，Orchestrator 撰写以下三个章节：
 
 **§5 改动文件清单**（综合 §3 API 文件路径 + §4 前端文件路径，必须与两章节完全一致）：
 ```
@@ -244,7 +205,15 @@ ${CLAUDE_MD}
 **§7 不包含（范围边界）**：
 明确列出本次设计不涉及的功能（至少 3 条），防止实现阶段范围蔓延。
 
-4. 使用 Write 工具将完整文档写入 `${DESIGN_FILE}`，格式：
+### 4.4 写入最终文档
+
+使用 Write 工具将完整文档写入 `${DESIGN_FILE}`。
+
+**⚠️ 写入规则（严格执行）：**
+- **§1–§4 必须原样保留**：将 Read 工具读取到的 architect.md / backend.md / frontend.md 原始文本**逐字写入**，禁止改写、禁止总结、禁止省略任何字段、代码块或列表项
+- **§5/§6/§7 使用 4.3 中生成的内容**（这是唯一由 Orchestrator 创作的部分）
+
+文档格式：
 
 ```markdown
 # 技术方案：[功能名称]
@@ -252,26 +221,29 @@ ${CLAUDE_MD}
 **关联 Spec**: [spec 文件名]
 **生成日期**: [YYYY-MM-DD]
 
-[§1 内容 from architect]
+<!-- §1 §2：原样复制 architect.md 的完整内容，不得改动 -->
+[architect.md 原文逐字写入]
 
-[§2 内容 from architect]
+<!-- §3：原样复制 backend.md 的完整内容，不得改动（差异处仅追加 ⚠️ 备注行） -->
+[backend.md 原文逐字写入]
 
-[§3 内容 from backend-developer]
+<!-- §4：原样复制 frontend.md 的完整内容，不得改动（差异处仅追加 ⚠️ 备注行） -->
+[frontend.md 原文逐字写入]
 
-[§4 内容 from frontend-developer]
+[§5 改动文件清单]
 
-[§5 改动文件清单 by orchestrator]
+[§6 技术约束与风险]
 
-[§6 技术约束与风险 by orchestrator]
-
-[§7 不包含 by orchestrator]
+[§7 不包含]
 ```
 
-5. 删除三个临时文件：
-   ```bash
-   rm -f "${DESIGN_FILE}.architect.md" "${DESIGN_FILE}.backend.md" "${DESIGN_FILE}.frontend.md"
-   ```
+### 4.5 校验
 
+写入完成后：
+
+1. 使用 Read 工具读取 `${DESIGN_FILE}`，确认包含以下所有章节标题：
+   `### 1.`、`### 2.`、`### 3.`、`### 4.`、`改动文件清单`、`技术约束`、`不包含`
+   若缺失任何一项，说明写入不完整，重新执行 4.4。
 ---
 
 ## 第五步 — 最终报告
@@ -289,6 +261,7 @@ WRITTEN: ${DESIGN_FILE}
 
 ## Orchestrator 严禁事项
 
+- **禁止向用户提问或等待确认** — 全程自主运行，遇到歧义以 spec 为准
 - **禁止自己写 §1–§4 任何章节** — 必须使用 subagent 输出
 - **禁止跳过阶段** — Phase 1（architect）必须在 Phase 2 之前完成
 - **Phase 2 两个 subagent 必须并行派生** — 先同时调用两次 Task，再等待两者结果

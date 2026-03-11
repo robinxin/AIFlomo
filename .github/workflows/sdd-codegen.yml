@@ -274,8 +274,8 @@ jobs:
             export ALREADY="${ALREADY:-none}"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
 
-            claude --print \
-              --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+            claude --print --dangerously-skip-permissions \
+              --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(pnpm:*)" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
 
@@ -330,7 +330,7 @@ jobs:
             exit 0
           fi
 
-          claude --print \
+          claude --print --dangerously-skip-permissions \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
             --model "$MODEL" \
             "## PROJECT CONSTITUTION

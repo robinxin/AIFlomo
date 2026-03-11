@@ -1,0 +1,436 @@
+name: Verify Loop
+
+# 验证工作流：调用 verify-loop.md 做全量检查 + 内联修复，通过后执行 E2E，
+# 失败则通过 autofix.md 最多重试 5 次后重新触发本 workflow。
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '要验证的分支名'
+        required: false
+        type: string
+        default: ''
+      fix_attempt:
+        description: '当前已执行修复次数（由流水线自动管理）'
+        required: false
+        type: string
+        default: '0'
+
+jobs:
+  # ─── Step 1: 运行 verify-loop.md，检查 + 自动修复，再确认 lint/build 状态 ──
+  verify:
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+    outputs:
+      verify_passed: ${{ steps.check.outputs.verify_passed }}
+      error_summary: ${{ steps.check.outputs.error_summary }}
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load CLAUDE.md
+        run: |
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: bash scripts/ci/install.sh
+
+      # 调用 verify-loop.md：Claude 执行 /verify，对每项错误自动修复，每项最多重试 5 次
+      - name: Run verify-loop
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          PROMPT_TEXT=$(cat .github/prompts/verify-loop.md)
+          claude --print --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(bash scripts/ci/lint.sh:*),Bash(bash scripts/ci/build.sh:*),Bash(pnpm lint:*),Bash(npx eslint:*)" \
+            --model "$MODEL" \
+            "$PROMPT_TEXT"
+
+      - name: Commit verify-loop fixes
+        run: |
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git add -u
+          if git diff --cached --quiet; then
+            echo "No changes from verify-loop"
+          else
+            git commit -m "fix: verify-loop auto-fix on ${BRANCH}"
+            git pull --rebase origin "${BRANCH}" || true
+            git push origin "HEAD:${BRANCH}"
+            echo "✅ Verify-loop fixes committed and pushed to ${BRANCH}"
+          fi
+
+      # 重新运行 lint/build 确认结果，不依赖 Claude 的主观判断
+      - name: Check verification status
+        id: check
+        run: |
+          bash scripts/ci/lint.sh  2>&1 | tee /tmp/verify-lint.txt  || LINT_FAILED=true
+          bash scripts/ci/build.sh 2>&1 | tee /tmp/verify-build.txt || BUILD_FAILED=true
+
+          if [ "${LINT_FAILED:-}" = "true" ] || [ "${BUILD_FAILED:-}" = "true" ]; then
+            echo "verify_passed=false" >> "$GITHUB_OUTPUT"
+            DELIM="VERIFY_ERR_$(openssl rand -hex 8)"
+            {
+              echo "error_summary<<${DELIM}"
+              [ "${LINT_FAILED:-}"  = "true" ] && echo "=== Lint Errors ===" && tail -100 /tmp/verify-lint.txt
+              [ "${BUILD_FAILED:-}" = "true" ] && echo "=== Build Errors ===" && tail -100 /tmp/verify-build.txt
+              echo "${DELIM}"
+            } >> "$GITHUB_OUTPUT"
+            echo "❌ Verification failed — lint or build errors remain."
+          else
+            echo "verify_passed=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Verification passed."
+          fi
+
+      - name: Write verify step summary
+        if: always()
+        run: |
+          FIX_ATTEMPT="${{ inputs.fix_attempt || '0' }}"
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          PASSED="${{ steps.check.outputs.verify_passed }}"
+          {
+            echo "## 🔍 Verify Loop — 第 $((FIX_ATTEMPT + 1)) 次"
+            echo ""
+            echo "- **分支**: \`${BRANCH}\`"
+            if [ "$PASSED" = "true" ]; then
+              echo "- **状态**: ✅ 通过，将执行 E2E 测试"
+            else
+              echo "- **状态**: ❌ 失败，将触发 Autofix"
+            fi
+            echo ""
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── Step 2（通过路径）: 执行 E2E 测试 ─────────────────────────────────────
+  run-e2e:
+    needs: verify
+    if: needs.verify.result == 'success' && needs.verify.outputs.verify_passed == 'true'
+    runs-on: [self-hosted, ai-runner]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: bash scripts/ci/install.sh
+
+      - name: Run database migrations
+        run: |
+          bash scripts/ci/db-reset.sh  2>&1 | tee /tmp/db-reset.txt
+          [ ${PIPESTATUS[0]} -eq 0 ] || exit 1
+          bash scripts/ci/db-setup.sh  2>&1 | tee /tmp/db-setup.txt
+          [ ${PIPESTATUS[0]} -eq 0 ] || exit 1
+          bash scripts/ci/db-migrate.sh 2>&1 | tee /tmp/db-migrate.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Start services for E2E
+        run: |
+          bash scripts/ci/server-start.sh   > /tmp/server-output.txt 2>&1 &
+          echo $! > /tmp/server.pid
+          bash scripts/ci/frontend-serve.sh > /tmp/frontend-output.txt 2>&1 &
+          echo $! > /tmp/frontend.pid
+
+          # 等待后端就绪
+          SERVER_URL=$(bash scripts/ci/server-url.sh)
+          for i in $(seq 1 30); do
+            curl -sf "$SERVER_URL/health" > /dev/null 2>&1 && { echo "✅ Backend ready at $SERVER_URL"; break; }
+            [ "$i" -eq 30 ] && { echo "❌ Backend did not respond within 60s"; cat /tmp/server-output.txt; exit 1; }
+            echo "Waiting for backend... ($i/30)"; sleep 2
+          done
+
+          # 等待前端就绪
+          FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
+          for i in $(seq 1 30); do
+            curl -sf "$FRONTEND_URL" > /dev/null 2>&1 && { echo "✅ Frontend ready at $FRONTEND_URL"; break; }
+            [ "$i" -eq 30 ] && { echo "❌ Frontend did not respond within 60s"; cat /tmp/frontend-output.txt; exit 1; }
+            echo "Waiting for frontend... ($i/30)"; sleep 2
+          done
+
+          sed -i.bak 's|url: "${WEB_URL}"|url: "'"$FRONTEND_URL"'"|g' apps/tests/* && rm -f apps/tests/*.bak
+
+      - name: Run E2E tests
+        id: e2e
+        run: |
+          echo "Waiting 10s for services to fully initialize..."
+          sleep 10
+          bash scripts/ci/test.sh 2>&1 | tee /tmp/e2e-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Stop services
+        if: always()
+        run: |
+          for PIDFILE in /tmp/server.pid /tmp/frontend.pid; do
+            if [ -f "$PIDFILE" ]; then
+              PID=$(cat "$PIDFILE")
+              kill -- "-$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true
+              echo "Stopped PID $PID"
+            fi
+          done
+
+      - name: Write E2E step summary
+        if: always()
+        run: |
+          STATUS="${{ steps.e2e.outcome }}"
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          {
+            echo "## 🧪 E2E Tests"
+            echo ""
+            echo "- **分支**: \`${BRANCH}\`"
+            echo "- **状态**: $([ "$STATUS" = "success" ] && echo '✅ 通过' || echo '❌ 失败')"
+            echo ""
+            echo '```'
+            tail -100 /tmp/e2e-output.txt 2>/dev/null || echo "(无输出)"
+            echo '```'
+            echo ""
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── Step 2（失败路径）: Autofix，最多 5 次，成功后重新触发 verify-loop ────
+  auto-fix:
+    needs: verify
+    if: needs.verify.result == 'success' && needs.verify.outputs.verify_passed != 'true'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      actions: write
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MAX_FIX_ROUNDS: '5'
+
+    steps:
+      - name: Check max fix attempts
+        id: check-attempts
+        run: |
+          FIX_ATTEMPT="${{ inputs.fix_attempt || '0' }}"
+          if [ "$FIX_ATTEMPT" -ge "$MAX_FIX_ROUNDS" ]; then
+            echo "⚠️ 已达最大修复次数（${FIX_ATTEMPT}/${MAX_FIX_ROUNDS}），停止自动修复，请人工介入。"
+            echo "should_fix=false" >> "$GITHUB_OUTPUT"
+          else
+            NEXT=$((FIX_ATTEMPT + 1))
+            echo "🔄 Autofix 第 ${NEXT}/${MAX_FIX_ROUNDS} 次，branch: ${{ inputs.branch || github.ref_name }}"
+            echo "should_fix=true"   >> "$GITHUB_OUTPUT"
+            echo "next_attempt=${NEXT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        with:
+          node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load CLAUDE.md
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        run: |
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        run: bash scripts/ci/install.sh
+
+      - name: Collect current errors for autofix context
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        id: collect-errors
+        env:
+          PASSED_ERRORS: ${{ needs.verify.outputs.error_summary }}
+        run: |
+          bash scripts/ci/lint.sh  2>&1 | tee /tmp/fix-lint.txt  || LINT_FAILED=true
+          bash scripts/ci/build.sh 2>&1 | tee /tmp/fix-build.txt || BUILD_FAILED=true
+
+          > /tmp/current-errors.txt
+          [ "${LINT_FAILED:-}"  = "true" ] && cat /tmp/fix-lint.txt  >> /tmp/current-errors.txt
+          [ "${BUILD_FAILED:-}" = "true" ] && cat /tmp/fix-build.txt >> /tmp/current-errors.txt
+
+          LIVE=$(cat /tmp/current-errors.txt)
+          FINAL="${LIVE:-$PASSED_ERRORS}"
+
+          DELIM="FIX_ERR_$(openssl rand -hex 8)"
+          {
+            echo "quality_errors<<${DELIM}"
+            printf '%s\n' "$FINAL"
+            echo "${DELIM}"
+          } >> "$GITHUB_ENV"
+
+      # 调用 autofix.md 对错误进行定点修复
+      - name: Run autofix
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRANCH: ${{ inputs.branch || github.ref_name }}
+          FIX_ATTEMPT: ${{ steps.check-attempts.outputs.next_attempt }}
+          EXTRA_FEEDBACK: ''
+          CONSTITUTION: ''
+        run: |
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/autofix.md)
+          claude --print --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(bash scripts/ci/lint.sh:*),Bash(bash scripts/ci/build.sh:*)" \
+            --model "$MODEL" \
+            "$PROMPT_TEXT"
+
+      - name: Commit autofix changes
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        run: |
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git add -u
+          if git diff --cached --quiet; then
+            echo "⚠️ No files modified by autofix — no commit needed."
+          else
+            git commit -m "fix: verify-loop autofix attempt #${NEXT} on ${BRANCH}"
+            git pull --rebase origin "${BRANCH}" || true
+            git push origin "HEAD:${BRANCH}"
+            echo "✅ Autofix #${NEXT} committed and pushed to ${BRANCH}"
+          fi
+
+      # 修复后重新触发 verify-loop（fix_attempt 递增），形成闭环
+      - name: Re-trigger verify-loop
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        run: |
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
+          gh workflow run verify-loop.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$BRANCH" \
+            --field branch="$BRANCH" \
+            --field fix_attempt="$NEXT"
+          echo "✅ Verify Loop re-triggered (attempt ${NEXT}/${MAX_FIX_ROUNDS}) on ${BRANCH}"
+
+      - name: Write autofix step summary
+        if: steps.check-attempts.outputs.should_fix == 'true' && always()
+        run: |
+          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          {
+            echo "## 🔧 Autofix — 第 ${NEXT}/${MAX_FIX_ROUNDS} 次"
+            echo ""
+            echo "- **分支**: \`${BRANCH}\`"
+            echo "- Verify Loop 将在修复提交后自动重新运行"
+            echo ""
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 达到上限，停止并报告
+      - name: Report failure — max attempts reached
+        if: steps.check-attempts.outputs.should_fix != 'true'
+        run: |
+          BRANCH="${{ inputs.branch || github.ref_name }}"
+          {
+            echo "## ❌ Verify Loop — 已达最大修复次数"
+            echo ""
+            echo "已尝试 **${MAX_FIX_ROUNDS}** 次自动修复，仍未通过验证，请人工介入。"
+            echo ""
+            echo "- **分支**: \`${BRANCH}\`"
+            echo ""
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "❌ Max autofix rounds (${MAX_FIX_ROUNDS}) reached. Manual intervention required."
+          exit 1
