@@ -184,10 +184,15 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
+            echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (sdd-plan / design)"
+            echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
               --model "$MODEL" \
+              --max-turns 10 \
+              --verbose \
               "$PROMPT_TEXT"
+            echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (sdd-plan / design)"
           fi
 
           {
@@ -334,10 +339,15 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
+            echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (sdd-task / decompose)"
+            echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Task" \
               --model "$MODEL" \
+              --max-turns 10 \
+              --verbose \
               "$PROMPT_TEXT"
+            echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (sdd-task / decompose)"
 
             # Validate Markdown task list, fallback to single task
             if ! grep -q "^- \[.\] T" "$TASKS_FILE" 2>/dev/null; then
@@ -510,10 +520,15 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
+            echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (testcase / gen)"
+            echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
               --model "$MODEL" \
+              --max-turns 10 \
+              --verbose \
               "$PROMPT_TEXT"
+            echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (testcase / gen)"
           fi
 
       - name: Commit test case specs
@@ -648,9 +663,13 @@ jobs:
           else
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
+            echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (testcase-code / codegen)"
+            echo "   model=$MODEL  max-turns=10"
             claude --print --dangerously-skip-permissions \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
+              --max-turns 10 \
+              --verbose \
               "${PROMPT_TEXT}
 
           ---
@@ -662,6 +681,7 @@ jobs:
           3. 根据测试用例文档中定义的每一个测试场景，生成对应的可执行测试代码
           4. 确保每个测试用例 ID 都有对应的 test function
           5. 测试文件放在 ${TEST_DIR}/ 目录下"
+            echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (testcase-code / codegen)"
           fi
 
       - name: Commit test code
