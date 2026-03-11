@@ -165,7 +165,7 @@ jobs:
         run: |
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/autofix.md)
 
-          claude --print \
+          claude --print --dangerously-skip-permissions \
             --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(bash scripts/ci/lint.sh:*),Bash(bash scripts/ci/build.sh:*)" \
             --model "$MODEL" \
             "$PROMPT_TEXT"
