@@ -72,14 +72,6 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.50
 
-      - name: Load CLAUDE.md
-        run: |
-          {
-            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
-            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
-            echo "CLAUDE_MD_EOF"
-          } >> "$GITHUB_ENV"
-
       - name: Install dependencies
         run: bash scripts/ci/install.sh
 
