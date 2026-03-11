@@ -256,7 +256,7 @@ jobs:
           # 启动后验证进程是否 online，失败则打印日志并退出
           pm2_verify() {
             local NAME=$1
-            sleep 2
+            sleep 10
             if pm2 describe "$NAME" 2>/dev/null | grep -q "online"; then
               echo "✓ $NAME is online"
             else
