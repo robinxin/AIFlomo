@@ -71,17 +71,17 @@
 - [x] T038 实现 PUT `/api/memos/:id` 端点，支持编辑笔记内容、标签和附件
 - [x] T039 在 PUT 端点中实现笔记所有权校验（memo.userId === session.userId）
 - [x] T040 实现 DELETE `/api/memos/:id` 端点，执行软删除（设置 deletedAt）
-- [ ] T041 实现 GET `/api/memos/trash` 端点，返回回收站笔记列表
-- [ ] T042 实现 POST `/api/memos/:id/restore` 端点，将 deletedAt 置为 NULL
-- [ ] T043 实现 DELETE `/api/memos/:id/permanent` 端点，执行物理删除
+- [x] T041 实现 GET `/api/memos/trash` 端点，返回回收站笔记列表
+- [x] T042 实现 POST `/api/memos/:id/restore` 端点，将 deletedAt 置为 NULL
+- [x] T043 实现 DELETE `/api/memos/:id/permanent` 端点，执行物理删除
 
 ### 标签与统计路由
 
-- [ ] T044 创建标签路由文件 `apps/server/src/routes/tags.js`
-- [ ] T045 实现 GET `/api/tags` 端点，返回标签列表并附带每个标签的笔记数量（GROUP BY）
-- [ ] T046 创建统计路由文件 `apps/server/src/routes/stats.js`
-- [ ] T047 实现 GET `/api/stats` 端点，返回全部笔记数、有标签笔记数、使用天数、回收站数量
-- [ ] T048 在 GET `/api/stats` 中实现热力图数据查询（最近 90 天每日笔记数）
+- [x] T044 创建标签路由文件 `apps/server/src/routes/tags.js`
+- [x] T045 实现 GET `/api/tags` 端点，返回标签列表并附带每个标签的笔记数量（GROUP BY）
+- [x] T046 创建统计路由文件 `apps/server/src/routes/stats.js`
+- [x] T047 实现 GET `/api/stats` 端点，返回全部笔记数、有标签笔记数、使用天数、回收站数量
+- [x] T048 在 GET `/api/stats` 中实现热力图数据查询（最近 90 天每日笔记数）
 
 ---
 
@@ -89,8 +89,8 @@
 
 ### 前端状态管理
 
-- [ ] T049 创建 MemoContext `apps/mobile/context/MemoContext.jsx`，定义 initialState 和 15 个 action types
-- [ ] T050 创建 useMemos Hook `apps/mobile/hooks/use-memos.js`，封装笔记 CRUD 和筛选逻辑
+- [x] T049 创建 MemoContext `apps/mobile/context/MemoContext.jsx`，定义 initialState 和 15 个 action types
+- [x] T050 创建 useMemos Hook `apps/mobile/hooks/use-memos.js`，封装笔记 CRUD 和筛选逻辑
 - [ ] T051 创建 useTags Hook `apps/mobile/hooks/use-tags.js`，封装标签列表获取
 - [ ] T052 创建 useStats Hook `apps/mobile/hooks/use-stats.js`，封装统计数据和热力图获取
 - [ ] T053 创建 useSearch Hook `apps/mobile/hooks/use-search.js`，实现防抖搜索（300ms）
