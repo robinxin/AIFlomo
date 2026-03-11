@@ -7,6 +7,12 @@ if [ ! -f "package.json" ]; then
   exit 1
 fi
 
+# 若 runner 上没有 pnpm，通过 corepack 或 npm 安装
+if ! command -v pnpm &> /dev/null; then
+  echo "⚙️ pnpm not found, installing via npm..."
+  npm install -g pnpm
+fi
+
 if [ ! -d node_modules ] || [ pnpm-lock.yaml -nt node_modules ]; then
   pnpm install
 else
