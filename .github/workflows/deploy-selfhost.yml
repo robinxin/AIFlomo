@@ -161,7 +161,11 @@ jobs:
           # SSH 非交互式 shell 不加载 ~/.bashrc，手动 source nvm 确保 node/npm/pm2 可用
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-          export PATH="$PATH:$(npm prefix -g)/bin"
+          command -v npm >/dev/null 2>&1 && export PATH="$PATH:$(npm prefix -g)/bin"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "::error::npm not found — please install Node.js (nvm) on ECS first"
+            exit 1
+          fi
 
           SERVER_DIR="$DEPLOY_PATH/apps/server"
 
