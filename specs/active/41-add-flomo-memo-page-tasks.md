@@ -104,15 +104,15 @@
 - [x] T058 在 MemoInput 中实现图片选择功能（expo-image-picker），校验文件大小≤5MB
 - [x] T059 创建附件预览组件 `apps/mobile/components/AttachmentPreview.jsx`，显示缩略图和删除按钮
 - [x] T060 创建笔记卡片组件 `apps/mobile/components/MemoCard.jsx`，显示内容、标签、操作菜单
-- [ ] T061 创建笔记列表组件 `apps/mobile/components/MemoList.jsx`，使用 FlatList 渲染
-- [ ] T062 创建侧边筛选组件 `apps/mobile/components/SidebarFilter.jsx`，包含类型筛选和标签树
-- [ ] T063 创建标签树组件 `apps/mobile/components/TagList.jsx`，显示标签及笔记数量
-- [ ] T064 创建统计信息条组件 `apps/mobile/components/StatsBar.jsx`，显示昵称、总数、使用天数
-- [ ] T065 创建热力图组件 `apps/mobile/components/Heatmap.jsx`，渲染最近 90 天笔记分布网格
-- [ ] T066 创建空状态组件 `apps/mobile/components/EmptyState.jsx`，用于无笔记时的占位提示
-- [ ] T067 创建确认对话框组件 `apps/mobile/components/ConfirmDialog.jsx`，用于删除确认
-- [ ] T068 创建主应用布局 `apps/mobile/app/(app)/_layout.jsx`（Tabs：记录/搜索/我的）
-- [ ] T069 创建笔记主页 `apps/mobile/app/(app)/memo/index.jsx`，集成以上所有组件
+- [x] T061 创建笔记列表组件 `apps/mobile/components/MemoList.jsx`，使用 FlatList 渲染
+- [x] T062 创建侧边筛选组件 `apps/mobile/components/SidebarFilter.jsx`，包含类型筛选和标签树
+- [x] T063 创建标签树组件 `apps/mobile/components/TagList.jsx`，显示标签及笔记数量
+- [x] T064 创建统计信息条组件 `apps/mobile/components/StatsBar.jsx`，显示昵称、总数、使用天数
+- [x] T065 创建热力图组件 `apps/mobile/components/Heatmap.jsx`，渲染最近 90 天笔记分布网格
+- [x] T066 创建空状态组件 `apps/mobile/components/EmptyState.jsx`，用于无笔记时的占位提示
+- [x] T067 创建确认对话框组件 `apps/mobile/components/ConfirmDialog.jsx`，用于删除确认
+- [x] T068 创建主应用布局 `apps/mobile/app/(app)/_layout.jsx`（Tabs：记录/搜索/我的）
+- [x] T069 创建笔记主页 `apps/mobile/app/(app)/memo/index.jsx`，集成以上所有组件
 
 ---
 
@@ -120,7 +120,7 @@
 
 ### 搜索页面
 
-- [ ] T070 创建搜索输入组件 `apps/mobile/components/SearchBar.jsx`，实现防抖输入（300ms）
+- [x] T070 创建搜索输入组件 `apps/mobile/components/SearchBar.jsx`，实现防抖输入（300ms）
 - [ ] T071 创建搜索结果页 `apps/mobile/app/(app)/memo/search.jsx`，显示匹配笔记列表
 - [ ] T072 在搜索结果页中实现关键词高亮显示功能
 - [ ] T073 在搜索结果页中实现「未找到相关笔记」空状态提示
