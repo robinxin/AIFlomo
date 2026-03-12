@@ -24,7 +24,7 @@
 
 **目标**: 新用户可通过邮箱、昵称、密码完成注册，同意隐私协议后创建账号并自动登录
 
-- [ ] T009 实现注册 API 端点（POST /api/auth/register，包含参数校验、邮箱唯一性检查、密码哈希、Session 创建） `apps/server/src/routes/auth.js`
+- [x] T009 实现注册 API 端点（POST /api/auth/register，包含参数校验、邮箱唯一性检查、密码哈希、Session 创建） `apps/server/src/routes/auth.js`
 - [x] T010 实现 Fastify 应用入口，注册全局插件（session、cors）和路由，配置全局错误处理 `apps/server/src/index.js`
 - [x] T011 创建统一 API Client（fetch 封装，支持 credentials: 'include'） `apps/mobile/lib/api-client.js`
 - [x] T012 创建 AuthContext（包含 user 状态、Reducer、Provider、useAuth Hook） `apps/mobile/context/AuthContext.jsx`

@@ -11,16 +11,17 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node src/db/migrate.js",
     "db:reset": "node src/db/reset.js",
-    "test:unit": "node --experimental-vm-modules ../../node_modules/.bin/jest",
-    "test:unit:watch": "node --experimental-vm-modules ../../node_modules/.bin/jest --watch",
-    "test:unit:cov": "node --experimental-vm-modules ../../node_modules/.bin/jest --coverage"
+    "test:unit": "node --experimental-vm-modules node_modules/.bin/jest --runInBand",
+    "test:unit:watch": "node --experimental-vm-modules node_modules/.bin/jest --runInBand --watch",
+    "test:unit:cov": "node --experimental-vm-modules node_modules/.bin/jest --runInBand --coverage"
   },
   "dependencies": {
     "@fastify/cookie": "^10.0.0",
     "@fastify/cors": "^10.0.0",
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/session": "^11.0.0",
     "bcrypt": "^5.1.1",
-    "better-sqlite3": "^9.4.3",
+    "better-sqlite3": "^11.10.0",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.30.0",
     "fastify": "^5.0.0"
