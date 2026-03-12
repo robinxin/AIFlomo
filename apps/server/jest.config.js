@@ -1,6 +1,7 @@
 export default {
   testEnvironment: 'node',
   testMatch: ['**/tests/**/*.test.js'],
+  globalSetup: './jest.globalSetup.js',
   collectCoverageFrom: [
     'src/**/*.js',
     '!src/**/*.d.js',

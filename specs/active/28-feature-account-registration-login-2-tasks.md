@@ -10,13 +10,13 @@
 > 所有用户故事共同依赖的底层准备，必须在所有故事前完成。
 
 - [x] T001 [P] 定义 users 和 sessions 数据表 Schema `apps/server/src/db/schema.js`
-- [ ] T002 [P] 创建 Drizzle 实例导出文件 `apps/server/src/db/index.js`
-- [ ] T003 [P] 配置 Drizzle Kit `apps/server/drizzle.config.js`
-- [ ] T004 [P] 实现密码哈希工具函数（bcrypt.hash 和 bcrypt.compare） `apps/server/src/lib/password.js`
-- [ ] T005 [P] 定义自定义错误类（AppError、UnauthorizedError、ConflictError） `apps/server/src/lib/errors.js`
-- [ ] T006 [P] 配置 Session 插件（@fastify/session + SQLite store） `apps/server/src/plugins/session.js`
-- [ ] T007 [P] 配置 CORS 插件（@fastify/cors） `apps/server/src/plugins/cors.js`
-- [ ] T008 实现 requireAuth 认证中间件（校验 Session 有效性） `apps/server/src/plugins/auth.js`
+- [x] T002 [P] 创建 Drizzle 实例导出文件 `apps/server/src/db/index.js`
+- [x] T003 [P] 配置 Drizzle Kit `apps/server/drizzle.config.js`
+- [x] T004 [P] 实现密码哈希工具函数（bcrypt.hash 和 bcrypt.compare） `apps/server/src/lib/password.js`
+- [x] T005 [P] 定义自定义错误类（AppError、UnauthorizedError、ConflictError） `apps/server/src/lib/errors.js`
+- [x] T006 [P] 配置 Session 插件（@fastify/session + SQLite store） `apps/server/src/plugins/session.js`
+- [x] T007 [P] 配置 CORS 插件（@fastify/cors） `apps/server/src/plugins/cors.js`
+- [x] T008 实现 requireAuth 认证中间件（校验 Session 有效性） `apps/server/src/plugins/auth.js`
 
 ---
 

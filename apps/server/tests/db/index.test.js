@@ -14,23 +14,39 @@
  *   - We rely on the fact that better-sqlite3 + Drizzle creates the DB file
  *     in the directory specified by DB_PATH (after mkdirSync creates it).
  *
+ * Path policy:
+ *   - DB_PATH must resolve inside the project root (apps/server/) due to the
+ *     path-traversal security check introduced in db/index.js (HIGH-3 fix).
+ *   - We use a project-relative test-data/ directory instead of OS tmpdir().
+ *
  * ESM note:
- *   Jest ESM mode does not inject `jest` as a global. We do not use
- *   jest.resetModules() here — module isolation is achieved by pointing
- *   DB_PATH at a temporary directory that is unique per test run.
+ *   Jest ESM mode does not inject `jest` as a global. Module isolation is
+ *   achieved by pointing DB_PATH at a directory that is unique per test run
+ *   (using a timestamp sub-directory to avoid collisions).
  */
 
-import { mkdtempSync, existsSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import { join, dirname } from 'path';
+import { existsSync, rmSync, mkdirSync } from 'fs';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // ---------------------------------------------------------------------------
-// Setup: point DB_PATH at a temporary location BEFORE the module is imported
+// Setup: point DB_PATH at an in-project location BEFORE the module is imported.
+//
+// The path must be inside the project root (apps/server/) to pass the
+// DB_PATH validation guard added in the HIGH-3 security fix.
+// We use a timestamped sub-directory so parallel test workers don't collide.
 // ---------------------------------------------------------------------------
 
-const TMP_ROOT = mkdtempSync(join(tmpdir(), 'aiflomo-db-test-'));
+const TEST_DATA_ROOT = resolve(__dirname, '../../test-data');
+const UNIQUE_DIR = join(TEST_DATA_ROOT, 'db-index-' + Date.now());
 // Nested path — the module must create the parent directories automatically
-const TEST_DB_PATH = join(TMP_ROOT, 'nested', 'sub', 'test.db');
+const TEST_DB_PATH = join(UNIQUE_DIR, 'nested', 'sub', 'test.db');
+
+// Ensure the parent test-data directory exists (module creates only DB_PATH parents)
+mkdirSync(TEST_DATA_ROOT, { recursive: true });
 
 // Set env var before importing the module under test
 process.env.DB_PATH = TEST_DB_PATH;
@@ -43,7 +59,10 @@ const { db } = await import('../../src/db/index.js');
 // ---------------------------------------------------------------------------
 
 afterAll(() => {
-  rmSync(TMP_ROOT, { recursive: true, force: true });
+  // Remove the unique test directory created for this run
+  if (existsSync(UNIQUE_DIR)) {
+    rmSync(UNIQUE_DIR, { recursive: true, force: true });
+  }
   delete process.env.DB_PATH;
 });
 
