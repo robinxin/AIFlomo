@@ -41,7 +41,6 @@ ${CLAUDE_MD}
 
 1. 使用 Read 工具逐一读取 Spec 文件（路径列表：`${SPEC_FILES}`，多个路径按空格分隔，需分别读取）
 2. 使用 Read 工具读取技术方案文档：`${DESIGN_FILE}`
-3. 列出 `docs/standards/` 下所有 `.md` 文件（`Bash: ls docs/standards/`），并逐一读取，理解后端和前端编码规范
 
 读取完成后，**不要写任何文件**，在脑中分别梳理两类测试点：
 

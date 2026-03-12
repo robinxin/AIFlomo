@@ -112,7 +112,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 - 路径 + HTTP 方法（如 POST /api/memos）
 - 对应文件路径（如 apps/server/src/routes/memos.js）
 - 鉴权：preHandler: [requireAuth]（是否需要）
-- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代，参考 code-standards-backend.md 写法）
+- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代）
 - 成功响应示例（符合 CLAUDE.md 中定义的统一 API 响应格式，含完整 JSON 示例）
 - 失败响应清单（HTTP 状态码 + error 字段内容）
 

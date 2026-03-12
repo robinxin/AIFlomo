@@ -107,9 +107,6 @@ AIFlomo/
 │   │   └── drizzle.config.js
 │   └── tests/             # Playwright E2E 测试（*.spec.js）
 ├── testcases/             # 测试用例描述文件
-├── docs/                  # 详细技术文档
-│   ├── code-standards-frontend.md   # 前端代码规范
-│   └── code-standards-backend.md    # 后端代码规范
 ├── specs/                 # 功能规格文档
 │   ├── templates/         # Spec 模板
 │   ├── active/            # 当前进行中 Spec
@@ -136,11 +133,6 @@ AIFlomo/
 ---
 
 ## 💻 编码规范
-
-详细规范见独立文档（AI Agent 实现前必须阅读）：
-
-- **前端**：[`docs/code-standards-frontend.md`](./docs/code-standards-frontend.md) — Expo Router、组件结构、Context、API Client
-- **后端**：[`docs/code-standards-backend.md`](./docs/code-standards-backend.md) — Fastify Plugin、路由、Drizzle Schema、错误处理、响应格式
 
 ### 核心命名规则（速查）
 
