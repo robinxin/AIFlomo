@@ -1,9 +1,23 @@
 import Fastify from 'fastify';
+import fastifyMultipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import { mkdirSync } from 'fs';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
 import { db } from './db/index.js';
 import { corsPlugin } from './plugins/cors.js';
 import { sessionPlugin } from './plugins/session.js';
 import { authRoutes } from './routes/auth.js';
+import { memosRoutes } from './routes/memos.js';
+import { tagsRoutes } from './routes/tags.js';
+import { attachmentsRoutes } from './routes/attachments.js';
 import { AppError } from './lib/errors.js';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const UPLOADS_DIR = join(__dirname, '../../../uploads');
+
+// 确保 uploads 目录存在
+mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const fastify = Fastify({
   logger: true,
@@ -36,7 +50,19 @@ fastify.setErrorHandler((error, request, reply) => {
 
 fastify.register(corsPlugin);
 fastify.register(sessionPlugin);
+fastify.register(fastifyMultipart, {
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+fastify.register(fastifyStatic, {
+  root: UPLOADS_DIR,
+  prefix: '/uploads/',
+  decorateReply: false,
+});
+
 fastify.register(authRoutes, { prefix: '/api/auth' });
+fastify.register(memosRoutes, { prefix: '/api/memos' });
+fastify.register(tagsRoutes, { prefix: '/api/tags' });
+fastify.register(attachmentsRoutes, { prefix: '/api/attachments' });
 
 fastify.get('/health', async () => {
   return { status: 'ok', message: 'AIFlomo server is running' };

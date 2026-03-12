@@ -24,4 +24,10 @@ export const api = {
   post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
   put: (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (path) => request(path, { method: 'DELETE' }),
+  upload: (path, formData) =>
+    request(path, {
+      method: 'POST',
+      body: formData,
+      headers: {}, // 不设置 Content-Type，让浏览器自动设置 multipart boundary
+    }),
 };
