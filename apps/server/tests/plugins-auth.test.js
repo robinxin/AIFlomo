@@ -12,9 +12,12 @@
  * 6. Session 有效但用户已删除 — 应返回 401 UNAUTHORIZED
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from '@jest/globals';
 import Fastify from 'fastify';
-import { db } from '../src/db/index.js';
+import { mkdirSync, rmSync, existsSync } from 'fs';
+import { dirname } from 'path';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { db, sqlite } from '../src/db/index.js';
 import { sessions, users } from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import authPlugin from '../src/plugins/auth.js';
@@ -24,6 +27,11 @@ describe('requireAuth middleware', () => {
   let app;
   let testUser;
   let validSessionId;
+
+  beforeAll(() => {
+    // 运行数据库迁移（创建 users 和 sessions 表）
+    migrate(db, { migrationsFolder: './src/db/migrations' });
+  });
 
   beforeEach(async () => {
     // 创建 Fastify 实例
@@ -160,12 +168,15 @@ describe('requireAuth middleware', () => {
     await db.delete(users).where(eq(users.id, testUser.id));
 
     // 手动创建孤立 Session（模拟级联删除失败场景）
+    // 暂时禁用外键约束以插入孤立记录
     const orphanSessionId = crypto.randomUUID();
+    sqlite.exec('PRAGMA foreign_keys = OFF;');
     await db.insert(sessions).values({
       id: orphanSessionId,
       userId: 'non-existent-user-id',
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000
     });
+    sqlite.exec('PRAGMA foreign_keys = ON;');
 
     const response = await app.inject({
       method: 'GET',
