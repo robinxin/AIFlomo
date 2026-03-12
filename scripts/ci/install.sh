@@ -7,8 +7,8 @@ if [ ! -f "package.json" ]; then
   exit 1
 fi
 
-if [ ! -d node_modules ] || [ pnpm-lock.yaml -nt node_modules ]; then
-  pnpm install
+if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+  npm install
 else
   echo "⏭ node_modules up to date, skipping install"
 fi
