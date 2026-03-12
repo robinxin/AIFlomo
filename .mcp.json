@@ -1,16 +1,5 @@
 {
   "mcpServers": {
-    "lsp-mcp": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@mseep/lsp-mcp",
-        "--lsp",
-        "typescript-language-server --stdio"
-      ],
-      "env": {}
-    },
     "lsp-mcp-python": {
       "type": "stdio",
       "command": "npx",
