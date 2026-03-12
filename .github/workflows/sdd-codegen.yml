@@ -275,7 +275,7 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
 
             claude --print --dangerously-skip-permissions \
-              --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
+              --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(pnpm:*)" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
 
@@ -284,7 +284,7 @@ jobs:
 
             # ── 每 10 个任务提交一次（防超时丢失进度）──
             if [ $((i % 10)) -eq 0 ] || [ "$i" -eq "$TASK_COUNT" ]; then
-              git add "$CODE_DIR" specs/active/
+              git add -A && git restore --staged .github/
               if ! git diff --cached --quiet; then
                 BATCH_START=$(( (i / 10) * 10 - 9 ))
                 [ "$BATCH_START" -lt 1 ] && BATCH_START=1
@@ -410,11 +410,7 @@ jobs:
           git remote set-url origin \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
 
-          if [ "$MODE" = "codegen" ]; then
-            git add "$CODE_DIR" specs/active/
-          else
-            git add -A
-          fi
+          git add -A && git restore --staged .github/
 
           if git diff --cached --quiet; then
             echo "Nothing to commit."
