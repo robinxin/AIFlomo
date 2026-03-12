@@ -1,0 +1,11 @@
+{
+  "name": "aiflomo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm dev -w apps/server & pnpm dev -w apps/mobile",
+    "build": "pnpm build -w apps/server && pnpm build -w apps/mobile",
+    "lint": "pnpm lint -w apps/server && pnpm lint -w apps/mobile",
+    "prod": "pnpm prod -w apps/server && pnpm prod -w apps/mobile"
+  }
+}

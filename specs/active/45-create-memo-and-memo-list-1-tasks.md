@@ -11,9 +11,9 @@
 
 > 从零搭建 apps/server 和 apps/mobile 子包骨架，配置 Monorepo workspace，建立数据库 Schema 并生成迁移产物。所有后续阶段均依赖本阶段完成。
 
-- [ ] T001 [P] 初始化 Monorepo 根配置及 apps/server 子包骨架：更新 `pnpm-workspace.yaml`（新增 apps/server、apps/mobile）、根目录 `package.json`（含 dev/build/lint 脚本）、`.env`（新增 DB_PATH、SESSION_SECRET、CORS_ORIGIN、EXPO_PUBLIC_API_URL 四个变量）；创建 `apps/server/package.json`（含 dev/build/lint/prod/db:generate/db:migrate 六条脚本，依赖 fastify、drizzle-orm、better-sqlite3、@fastify/session、@fastify/cookie、@fastify/cors、@fastify/multipart）及 `apps/server/drizzle.config.js`（Drizzle Kit 配置，指向 DB_PATH SQLite 文件）
+- [x] T001 [P] 初始化 Monorepo 根配置及 apps/server 子包骨架：更新 `pnpm-workspace.yaml`（新增 apps/server、apps/mobile）、根目录 `package.json`（含 dev/build/lint 脚本）、`.env`（新增 DB_PATH、SESSION_SECRET、CORS_ORIGIN、EXPO_PUBLIC_API_URL 四个变量）；创建 `apps/server/package.json`（含 dev/build/lint/prod/db:generate/db:migrate 六条脚本，依赖 fastify、drizzle-orm、better-sqlite3、@fastify/session、@fastify/cookie、@fastify/cors、@fastify/multipart）及 `apps/server/drizzle.config.js`（Drizzle Kit 配置，指向 DB_PATH SQLite 文件）
 
-- [ ] T002 定义 Drizzle Schema 并初始化数据库实例：按 design §2 在 `apps/server/src/db/schema.js` 中完整实现 users、memos、tags、memo_tags、memo_images 五张表（含外键 onDelete cascade、crypto.randomUUID() 主键、`sql\`(CURRENT_TIMESTAMP)\`` 时间戳）；在 `apps/server/src/db/index.js` 中导出 Drizzle 实例（better-sqlite3 驱动，读取 DB_PATH 环境变量）；执行 `pnpm db:generate -w apps/server` 生成迁移文件
+- [x] T002 定义 Drizzle Schema 并初始化数据库实例：按 design §2 在 `apps/server/src/db/schema.js` 中完整实现 users、memos、tags、memo_tags、memo_images 五张表（含外键 onDelete cascade、crypto.randomUUID() 主键、`sql\`(CURRENT_TIMESTAMP)\`` 时间戳）；在 `apps/server/src/db/index.js` 中导出 Drizzle 实例（better-sqlite3 驱动，读取 DB_PATH 环境变量）；执行 `pnpm db:generate -w apps/server` 生成迁移文件
 
 ---
 
@@ -21,7 +21,7 @@
 
 **目标**: 实现后端核心服务层——错误类、鉴权中间件、Session/CORS 插件、Memo API 路由，使 POST /api/memos 和 GET /api/memos 端点可正常工作并通过单元测试。
 
-- [ ] T003 [P] 实现后端共享基础设施（插件 & 错误类）：在 `apps/server/src/lib/errors.js` 中定义 AppError、NotFoundError、ForbiddenError 三个错误类；在 `apps/server/src/plugins/session.js` 中配置 @fastify/cookie + @fastify/session（httpOnly: true、sameSite: 'strict'、生产环境 secure: true、SQLite session store）；在 `apps/server/src/plugins/cors.js` 中配置 @fastify/cors（CORS_ORIGIN 环境变量白名单）；在 `apps/server/src/plugins/auth.js` 中实现 requireAuth preHandler（检查 request.session.userId，未登录返回 401 及统一错误格式）
+- [x] T003 [P] 实现后端共享基础设施（插件 & 错误类）：在 `apps/server/src/lib/errors.js` 中定义 AppError、NotFoundError、ForbiddenError 三个错误类；在 `apps/server/src/plugins/session.js` 中配置 @fastify/cookie + @fastify/session（httpOnly: true、sameSite: 'strict'、生产环境 secure: true、SQLite session store）；在 `apps/server/src/plugins/cors.js` 中配置 @fastify/cors（CORS_ORIGIN 环境变量白名单）；在 `apps/server/src/plugins/auth.js` 中实现 requireAuth preHandler（检查 request.session.userId，未登录返回 401 及统一错误格式）
 
 - [ ] T004 实现 Memo 路由及 Fastify 应用入口：在 `apps/server/src/routes/memos.js` 中实现 POST /api/memos（创建笔记含自动创建/复用标签逻辑、memo_tags 关联写入、memo_images 元数据写入，JSON Schema 校验 content 1-10000 字符、tagNames 格式 pattern 中英文数字下划线、imageUrls maxItems 9）、GET /api/memos（分页列表，filter=all/tagged/with-images 及 tagId 参数，LEFT JOIN 聚合 tags 和 images 避免 N+1，返回 data.memos/total/page/limit）、DELETE /api/memos/:id（校验笔记归属后执行删除，cascade 自动清理关联表）；在 `apps/server/src/index.js` 中注册所有 Plugin、路由（prefix: /api）、全局 setErrorHandler
 
