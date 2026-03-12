@@ -1,11 +1,12 @@
 // apps/server/src/db/schema.js
 import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 
 // ─── users ───────────────────────────────────────────────────────────────────
 // 系统注册用户。认证模块依赖此表，其他所有业务表通过 userId 外键关联到此表。
 export const users = sqliteTable('users', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   createdAt: text('created_at')
@@ -19,7 +20,7 @@ export const users = sqliteTable('users', {
 // 重要：updatedAt 不会由数据库自动更新。路由层执行 UPDATE 操作时，
 //        必须显式传入 updatedAt: new Date().toISOString() 以保证时间戳准确。
 export const memos = sqliteTable('memos', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   content: text('content').notNull(),
   userId: text('user_id')
     .notNull()
@@ -38,7 +39,7 @@ export const memos = sqliteTable('memos', {
 // onDelete: 'cascade' — 用户账号删除时，其所有标签随之删除。
 // 注意：tags 表不存储 memoCount，计数通过查询 memo_tags 实时聚合，避免数据不一致。
 export const tags = sqliteTable('tags', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   name: text('name').notNull(),
   userId: text('user_id')
     .notNull()
@@ -72,7 +73,7 @@ export const memoTags = sqliteTable('memo_tags', {
 // mimeType 记录图片格式（image/jpeg / image/png / image/gif），由路由层白名单校验。
 // onDelete: 'cascade' — 笔记删除时，其所有图片元数据随之删除。
 export const memoImages = sqliteTable('memo_images', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
   memoId: text('memo_id')
     .notNull()
     .references(() => memos.id, { onDelete: 'cascade' }),

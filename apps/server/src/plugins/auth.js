@@ -25,7 +25,7 @@ import { UnauthorizedError } from '../lib/errors.js';
  * @param {import('fastify').FastifyRequest} request
  * @param {import('fastify').FastifyReply} reply
  */
-export async function requireAuth(request, reply) {
+export async function requireAuth(request, _reply) {
   if (!request.session.userId) {
     throw new UnauthorizedError();
   }

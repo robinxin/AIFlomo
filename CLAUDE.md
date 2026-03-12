@@ -1,6 +1,6 @@
 # CLAUDE.md — AIFlomo 项目指南
 
-> **最后更新**: 2026-03-10
+> **最后更新**: 2026-03-12
 > **审核频率**: 每周
 
 ---
@@ -11,6 +11,7 @@
 **一句话描述**: 复刻 Flomo 体验的全栈 MVP，支持 Web、Android、iOS 三端（快速记录 + 标签 + 搜索）
 **核心理念**: 低摩擦记录，先打通"输入→存储→回看"闭环
 **参考产品**: https://v.flomoapp.com/mine
+**当前阶段**: 后端 API 实现中（前端 `apps/mobile` 尚未创建）
 
 ### 技术栈
 
@@ -42,9 +43,8 @@
 ```bash
 # ── 根目录（Monorepo）──
 pnpm install                          # 安装所有子包依赖
-pnpm dev                              # 同时启动后端和前端
-pnpm dev -w apps/server               # 启动后端
-pnpm dev -w apps/mobile               # 启动前端
+pnpm dev                              # 启动后端（前端尚未创建时）
+pnpm --filter @aiflomo/server dev     # 显式启动后端
 
 # ── 后端（apps/server）──
 cd apps/server
@@ -382,6 +382,36 @@ pnpm build -w apps/server         # 编译后端
 pnpm prod  -w apps/server         # pm2 启动 / 重载
 pnpm build -w apps/mobile         # 编译前端 Web 产物
 # 将 apps/mobile/dist/ 同步到 Nginx 静态目录
+```
+
+---
+
+## ⚙️ Workspace 配置注意事项
+
+### pnpm workspace 最佳实践
+
+1. **仅在 `pnpm-workspace.yaml` 中声明实际存在的子包** — 避免引用不存在的目录导致命令失败
+2. **根 `package.json` 脚本使用 `--filter` 参数** — 不使用 `-w` 参数，避免递归循环
+3. **子包命名规范** — 使用 scoped name（如 `@aiflomo/server`），便于 filter 引用
+
+示例配置：
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - 'apps/server'
+  # 当 apps/mobile 创建后再添加: - 'apps/mobile'
+```
+
+```json
+// package.json
+{
+  "scripts": {
+    "dev": "pnpm --filter @aiflomo/server dev",
+    "build": "pnpm --filter @aiflomo/server build",
+    "lint": "pnpm --filter @aiflomo/server lint"
+  }
+}
 ```
 
 ---
