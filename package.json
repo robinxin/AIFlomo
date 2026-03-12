@@ -1,0 +1,30 @@
+{
+  "name": "aiflomo-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AIFlomo - 复刻 Flomo 体验的全栈 MVP",
+  "workspaces": [
+    "apps/mobile",
+    "apps/server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w apps/server -- --clear\" \"npm run dev -w apps/mobile\"",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npx playwright test",
+    "test:ui": "npx playwright test --ui",
+    "test:report": "npx playwright show-report",
+    "test:unit": "npm run test:unit --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@fastify/cookie": "^10.0.1",
+    "@playwright/test": "^1.51.0",
+    "babel-preset-expo": "~12.0.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

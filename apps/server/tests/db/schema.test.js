@@ -97,6 +97,19 @@ describe('users table schema', () => {
     expect(col.name).toBe('updated_at');
   });
 
+  test('updatedAt column: has $onUpdateFn that returns an ISO 8601 timestamp string', () => {
+    const col = getColumn(users, 'updatedAt');
+    // $onUpdateFn is stored on col.onUpdateFn by the Drizzle Column base class
+    expect(typeof col.onUpdateFn).toBe('function');
+    const before = Date.now();
+    const result = col.onUpdateFn();
+    const after = Date.now();
+    // Must be a valid ISO 8601 date-time string
+    expect(typeof result).toBe('string');
+    expect(new Date(result).getTime()).toBeGreaterThanOrEqual(before);
+    expect(new Date(result).getTime()).toBeLessThanOrEqual(after);
+  });
+
   test('users table exports exactly the expected fields', () => {
     const columnNames = Object.keys(users[Symbol.for('drizzle:Columns')]);
     expect(columnNames.sort()).toEqual(

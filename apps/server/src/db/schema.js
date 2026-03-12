@@ -43,7 +43,8 @@ export const users = sqliteTable('users', {
 
   updatedAt: text('updated_at')
     .notNull()
-    .default(sql`(CURRENT_TIMESTAMP)`),
+    .default(sql`(CURRENT_TIMESTAMP)`)
+    .$onUpdateFn(() => new Date().toISOString()),
 });
 
 // ---------------------------------------------------------------------------
