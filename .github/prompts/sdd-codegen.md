@@ -30,27 +30,16 @@ ${TASK_DESC}
 
 ## TDD 完成后，执行质量门禁
 
-TDD 阶段结束（单测全通过、覆盖率 ≥ 80%）后，由 tdd-guide 按以下步骤编排：
+TDD 阶段结束（单测全通过、覆盖率 ≥ 80%）后，自行执行以下内容：
 
-### 第一步：代码审查 + 安全审查
-
-依次调用 **code-reviewer** 和 **security-reviewer**，在 prompt 中明确列出本次生成的所有文件路径（让 reviewer 直接 Read 文件，不依赖 git diff）。
-
-### 第二步：修复循环（最多重试 3 次）
-
-若审查结果存在任意 CRITICAL 或 HIGH 问题：
-
-1. 将问题列表传给原 developer agent（路由规则同上）修复
-2. 修复后重新运行 `pnpm test:unit`，确认单测仍全部通过
-3. 重新调用 code-reviewer + security-reviewer，验证问题已解决
-4. 无 CRITICAL / HIGH 问题则退出循环
-
-3 次重试后仍有未解决问题 → 输出剩余问题列表，继续完成 Task（不阻塞流程）。
-
-## 已完成任务写入的文件 — 严禁修改
-
-${ALREADY}
+### 循环修复（最多重试 5 次）
+1. 依次调用 **code-reviewer** agent 和 **security-reviewer** agent进行代码审查和安全审查
+2. 若审查结果存在任意 CRITICAL 或 HIGH 问题，将问题列表传给原 developer agent（路由规则同上）修复
+3. 修复后重新执行单测，确认全部通过
+4. 重新调用 **code-reviewer** agent 和 **security-reviewer** agent，验证问题已解决
+5. 无 CRITICAL / HIGH 问题则退出循环
 
 ## 严禁事项
-
 - **禁止向用户提问或等待确认** — 全程自主运行，遇到歧义以 spec 和技术方案为准
+- 已完成任务写入的文件，严禁修改
+${ALREADY}
