@@ -1,0 +1,1 @@
+/e2e 执行E2E 测试，对每个发现的问题自动调用对应 agent 修复，修复后重新运行验证，形成循环直至全部通过：后端或前端 build 失败调用 build-error-resolver agent，E2E 测试用例失败调用 tdd-guide agent，安全漏洞或硬编码密钥调用 security-reviewer agent，lint 格式问题直接运行 eslint --fix，console.log 直接用 Edit 删除。每个问题最多重试 5 次，5 次仍失败则报告并继续下一项。最后输出修复报告。所有修复操作直接执行，不询问用户确认，包括 tdd-guide 和 security-reviewer 也直接调用，无需等待用户同意。
