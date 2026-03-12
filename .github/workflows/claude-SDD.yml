@@ -169,6 +169,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EXTRA_PROMPT: ${{ github.event.inputs.extra_prompt }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1'
         run: |
           export SPEC_FILES="${{ needs.sdd-detect.outputs.spec_files }}"
 
@@ -182,11 +183,11 @@ jobs:
             echo "reused=true" >> "$GITHUB_OUTPUT"
           else
             echo "reused=false" >> "$GITHUB_OUTPUT"
-            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/team2.md)
 
-            claude --print \
-              --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
-              --model "$MODEL" \
+            claude --print --dangerously-skip-permissions \
+              --allowedTools "Read,Write,Task,TeamCreate,SendMessage,TaskCreate,TaskList,TaskUpdate,Bash(ls:*),Bash(find:*)" \
+              --model "claude-sonnet-4-6" \
               "$PROMPT_TEXT"
           fi
 
