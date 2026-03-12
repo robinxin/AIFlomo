@@ -101,6 +101,11 @@ AIFlomo/
 │   │   ├── src/
 │   │   │   ├── routes/    # API 路由（Fastify plugins）
 │   │   │   ├── db/        # Drizzle schema + 迁移文件
+│   │   │   │   ├── index.js      # Drizzle ORM 实例
+│   │   │   │   ├── schema.js     # 数据库表定义
+│   │   │   │   ├── migrate.js    # 迁移执行脚本（必需）
+│   │   │   │   ├── reset.js      # 数据库重置脚本（必需）
+│   │   │   │   └── migrations/   # Drizzle 生成的 SQL 迁移文件
 │   │   │   ├── plugins/   # Fastify 插件（session、cors 等）
 │   │   │   └── lib/       # 服务层、工具函数
 │   │   ├── tests/         # Jest 后端单测（*.test.js）
