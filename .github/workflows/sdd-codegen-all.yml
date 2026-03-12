@@ -1,0 +1,417 @@
+name: SDD Codegen All-at-Once (Reusable)
+
+# Reusable workflow for code generation and auto-fix.
+# Difference from sdd-codegen.yml: all tasks are sent to Claude in a single
+# invocation instead of looping task-by-task. Claude handles internal iteration.
+# - codegen mode: single Claude call processes all pending tasks sequentially
+# - fix mode: auto-fix code based on quality gate / code review feedback
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: 'codegen or fix'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to checkout and push to'
+        required: true
+        type: string
+      spec_files:
+        description: 'Spec file list (codegen mode)'
+        required: false
+        type: string
+        default: ''
+      design_file:
+        description: 'Design document path (codegen mode)'
+        required: false
+        type: string
+        default: ''
+      tasks_file:
+        description: 'Tasks Markdown path (codegen mode)'
+        required: false
+        type: string
+        default: ''
+      review_feedback:
+        description: 'Code review feedback (fix mode)'
+        required: false
+        type: string
+        default: ''
+      extra_prompt:
+        description: 'Optional extra prompt appended to Claude prompt'
+        required: false
+        type: string
+        default: ''
+      fix_attempt:
+        description: 'Current fix attempt number (for loop limiting)'
+        required: false
+        type: string
+        default: '0'
+    outputs:
+      written_files:
+        description: 'Files written during codegen'
+        value: ${{ jobs.run.outputs.written_files }}
+      has_failure:
+        description: 'Whether codegen had failures'
+        value: ${{ jobs.run.outputs.has_failure }}
+      failed_task:
+        description: 'Failed task identifier if any'
+        value: ${{ jobs.run.outputs.failed_task }}
+
+  # Manual trigger: fix mode or one-shot codegen
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to fix'
+        required: true
+        type: string
+      review_feedback:
+        description: 'Error details from quality gate'
+        required: false
+        type: string
+        default: ''
+      extra_prompt:
+        description: 'Optional extra prompt'
+        required: false
+        type: string
+        default: ''
+      fix_attempt:
+        description: 'Current fix attempt number (managed by pipeline)'
+        required: false
+        type: string
+        default: '0'
+
+jobs:
+  run:
+    runs-on: [self-hosted, ai-runner]
+    timeout-minutes: 7200   # 5 天，防止大任务量超时丢进度
+    permissions:
+      contents: write
+      issues: write
+      actions: write
+    outputs:
+      written_files: ${{ steps.result.outputs.written_files }}
+      has_failure:   ${{ steps.result.outputs.has_failure }}
+      failed_task:   ${{ steps.result.outputs.failed_task }}
+    env:
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
+      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
+      MODEL:              'claude-sonnet-4-5-20250929'
+      CODE_DIR:           'apps'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      # ── Shared setup ──────────────────────────────────────────────
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        env:
+          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
+        run: |
+          cat > /tmp/strip-proxy.js << 'EOF'
+          const http = require('http'), https = require('https');
+          const up = new URL(process.env.UPSTREAM_API_URL);
+          http.createServer((req, res) => {
+            let body = '';
+            req.on('data', c => body += c);
+            req.on('end', () => {
+              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
+              const opts = {
+                hostname: up.hostname, port: 443,
+                path: up.pathname + (req.url === '/' ? '' : req.url),
+                method: req.method,
+                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
+              };
+              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
+              r.on('error', e => { res.writeHead(502); res.end(e.message); });
+              r.write(body); r.end();
+            });
+          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
+          EOF
+          node /tmp/strip-proxy.js &
+          sleep 2
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.50
+
+      - name: Load Constitution
+        run: |
+          {
+            echo "CONSTITUTION<<CONSTITUTION_EOF"
+            cat CONSTITUTION.md 2>/dev/null || echo "# No constitution file found"
+            echo "CONSTITUTION_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Load CLAUDE.md
+        run: |
+          {
+            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
+            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
+            echo "CLAUDE_MD_EOF"
+          } >> "$GITHUB_ENV"
+
+      # ── Mode: codegen (all tasks in one Claude invocation) ────────
+      - name: Generate code (all tasks at once)
+        if: inputs.mode == 'codegen'
+        id: codegen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ inputs.extra_prompt }}
+        run: |
+          export SPEC_FILES="${{ inputs.spec_files }}"
+          export DESIGN_FILE="${{ inputs.design_file }}"
+          export TASKS_FILE="${{ inputs.tasks_file }}"
+
+          # ── Git 配置（最终提交需要）──
+          BRANCH="${{ inputs.branch }}"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+
+          # 记录本次 run 起点，用于收集所有写入文件
+          RUN_START_SHA=$(git rev-parse HEAD)
+
+          # ── Step Summary ──
+          TASK_COUNT=$(python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          total = len(re.findall(r'^- \[.\] T\d+', content, re.MULTILINE))
+          pending = len(re.findall(r'^- \[ \] T\d+', content, re.MULTILINE))
+          print(f'{pending}/{total}')
+          " 2>/dev/null || echo "?/?")
+
+          {
+            echo "## 📦 Codegen Summary (All-at-Once)"
+            echo ""
+            echo "**模式**: 单次 Claude 调用处理所有任务"
+            echo "**待完成任务**: ${TASK_COUNT}"
+            echo "**Tasks 文件**: \`$TASKS_FILE\`"
+            echo ""
+            echo "### 任务清单"
+            echo ""
+            python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          for line in re.findall(r'^- \[.\] .+$', content, re.MULTILINE):
+              print('-', line[2:])
+          " 2>/dev/null || cat "$TASKS_FILE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # ── 构建 Prompt 并发起单次 Claude 调用 ──
+          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen-all.md)
+
+          echo "🤖 [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation started (codegen-all)"
+          echo "   model=$MODEL  tasks=$TASK_COUNT"
+
+          claude --print --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(pnpm:*)" \
+            --model "$MODEL" \
+            --debug \
+            --verbose \
+            "$PROMPT_TEXT"
+
+          echo "✅ [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Claude invocation finished (codegen-all)"
+
+          echo "has_failure=false" >> "$GITHUB_OUTPUT"
+          echo "failed_task="      >> "$GITHUB_OUTPUT"
+
+          {
+            echo "written_files<<WRITTEN_EOF"
+            # 包含已提交和未提交的变更文件
+            { git diff --name-only "$RUN_START_SHA"...HEAD 2>/dev/null; git diff --name-only 2>/dev/null; } \
+              | sort -u
+            echo "WRITTEN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Mode: fix ─────────────────────────────────────────────────
+      - name: Fix code from quality failures
+        if: inputs.mode == 'fix' || github.event_name == 'workflow_dispatch'
+        id: fix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXTRA_PROMPT: ${{ inputs.extra_prompt }}
+        run: |
+          # 先跑 lint/build 抓当前错误（不依赖外部传入，保证信息最新）
+          > /tmp/quality-errors.txt
+          bash scripts/ci/lint.sh  2>&1 | tee -a /tmp/quality-errors.txt || true
+          bash scripts/ci/build.sh 2>&1 | tee -a /tmp/quality-errors.txt || true
+
+          QUALITY_ERRORS=$(cat /tmp/quality-errors.txt)
+
+          # 补充 code review 传入的额外反馈（workflow_call 场景）
+          EXTRA_FEEDBACK="${{ inputs.review_feedback }}"
+
+          if [ -z "$QUALITY_ERRORS" ] && [ -z "$EXTRA_FEEDBACK" ]; then
+            echo "ℹ️ No errors found — nothing to fix."
+            echo "has_failure=false" >> "$GITHUB_OUTPUT"
+            echo "failed_task="      >> "$GITHUB_OUTPUT"
+            { echo "written_files<<WRITTEN_EOF"; echo "WRITTEN_EOF"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          claude --print --dangerously-skip-permissions \
+            --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
+            --model "$MODEL" \
+            --debug \
+            --verbose \
+            "## PROJECT CONSTITUTION
+          ${CONSTITUTION}
+
+          ---
+
+          ## PROJECT GUIDE (CLAUDE.md)
+          ${CLAUDE_MD}
+
+          ---
+
+          以下是 Quality Gate 检测到的 Lint / Build 错误，请修复：
+
+          ${QUALITY_ERRORS}
+
+          ${EXTRA_FEEDBACK:+额外反馈：$EXTRA_FEEDBACK}
+
+          修复要求：
+          1. Read 相关源文件，理解当前实现
+          2. 针对每个 error 进行最小化定点修复，不要重写文件
+          3. 修复后确保 ESLint 检查通过
+
+          ${EXTRA_PROMPT}"
+
+          echo "has_failure=false" >> "$GITHUB_OUTPUT"
+          echo "failed_task=" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "written_files<<WRITTEN_EOF"
+            git diff --name-only 2>/dev/null | sort -u
+            echo "WRITTEN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Merge outputs ─────────────────────────────────────────────
+      - name: Set outputs
+        id: result
+        if: always()
+        env:
+          MODE: ${{ inputs.mode }}
+          CODEGEN_HAS_FAILURE: ${{ steps.codegen.outputs.has_failure }}
+          CODEGEN_FAILED_TASK: ${{ steps.codegen.outputs.failed_task }}
+          CODEGEN_WRITTEN:     ${{ steps.codegen.outputs.written_files }}
+          FIX_HAS_FAILURE:     ${{ steps.fix.outputs.has_failure }}
+          FIX_WRITTEN:         ${{ steps.fix.outputs.written_files }}
+        run: |
+          if [ "$MODE" = "codegen" ]; then
+            echo "has_failure=${CODEGEN_HAS_FAILURE:-false}" >> "$GITHUB_OUTPUT"
+            echo "failed_task=${CODEGEN_FAILED_TASK}"        >> "$GITHUB_OUTPUT"
+            {
+              echo "written_files<<WRITTEN_EOF"
+              echo "$CODEGEN_WRITTEN"
+              echo "WRITTEN_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "has_failure=${FIX_HAS_FAILURE:-false}" >> "$GITHUB_OUTPUT"
+            echo "failed_task="                           >> "$GITHUB_OUTPUT"
+            {
+              echo "written_files<<WRITTEN_EOF"
+              echo "$FIX_WRITTEN"
+              echo "WRITTEN_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Commit & push ─────────────────────────────────────────────
+      - name: Commit generated code
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE:         ${{ inputs.mode }}
+          HAS_FAILURE:  ${{ steps.result.outputs.has_failure }}
+          BRANCH:       ${{ inputs.branch }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+
+          git add -A && git restore --staged .github/
+
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            if [ "$MODE" = "fix" ]; then
+              MSG="sdd: auto-fix from code review"
+            elif [ "$HAS_FAILURE" = "true" ]; then
+              MSG="sdd: partial codegen-all (some tasks failed)"
+            else
+              MSG="sdd: auto-generate code (all-at-once, ${{ github.sha }})"
+            fi
+            git commit -m "$MSG"
+            git pull --rebase origin "${BRANCH}" || true
+            git push origin "HEAD:${BRANCH}"
+            echo "Committed to ${BRANCH}"
+          fi
+
+      # ── Failure comment to Issue ──────────────────────────────────
+      - name: Comment failure to Issue
+        if: always() && steps.result.outputs.has_failure == 'true'
+        env:
+          MODE:        ${{ inputs.mode }}
+          FAILED_TASK: ${{ steps.result.outputs.failed_task }}
+          BRANCH:      ${{ inputs.branch }}
+        run: |
+          ISSUE_NUMBER=$(echo "$BRANCH" | sed 's|feat/\([0-9]*\)-.*|\1|')
+          if [ "$ISSUE_NUMBER" = "$BRANCH" ] || [ -z "$ISSUE_NUMBER" ]; then
+            echo "Not a feat/<n>-* branch — skipping."
+            exit 0
+          fi
+
+          ERR_DETAIL=$(cat /tmp/failed-task-error.txt 2>/dev/null || echo "No error details available")
+
+          if [ "$MODE" = "codegen" ]; then
+            TITLE="SDD Codegen All-at-Once 失败"
+            DESC="一次性代码生成过程中发生错误，需要人工介入。"
+          else
+            TITLE="Code Review Auto-Fix 失败"
+            DESC="自动修复后仍未通过，需要人工介入。"
+          fi
+
+          {
+            printf '**%s**\n\n' "$TITLE"
+            printf '%s\n\n' "$DESC"
+            printf '**修复步骤：**\n'
+            printf '1. 切换到分支 `%s`\n' "$BRANCH"
+            printf '2. 根据下方错误信息修复代码\n'
+            printf '3. push 修复后重新触发 Pipeline\n\n'
+            printf '<details><summary>错误详情（点击展开）</summary>\n\n```\n'
+            printf '%s\n' "$ERR_DETAIL"
+            printf '```\n\n</details>\n\n'
+            printf '[查看完整日志](%s/%s/actions/runs/%s)\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } > /tmp/failure-comment.md
+
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/failure-comment.md
+
+      - name: Re-trigger Quality Gate after successful fix
+        if: >-
+          always() &&
+          steps.result.outputs.has_failure != 'true' &&
+          (inputs.mode == 'fix' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run quality-gate.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ inputs.branch }}" \
+            --field fix_attempt="${{ inputs.fix_attempt }}"
+          echo "✅ Quality Gate re-triggered on ${{ inputs.branch }} (fix_attempt=${{ inputs.fix_attempt }})"
+
+      - name: Fail job if there were failures
+        if: always() && steps.result.outputs.has_failure == 'true'
+        run: |
+          echo "Codegen-all had failures — failing job"
+          exit 1

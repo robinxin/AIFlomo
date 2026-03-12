@@ -412,7 +412,7 @@ jobs:
   # ─── SDD-Codegen（调用 Reusable Workflow）─────────────────────────
   sdd-codegen:
     needs: [sdd-detect, sdd-plan, sdd-task, task-gate]
-    uses: ./.github/workflows/sdd-codegen.yml
+    uses: ./.github/workflows/sdd-codegen-all.yml
     with:
       mode: codegen
       branch: ${{ github.ref_name }}
