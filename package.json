@@ -5,7 +5,6 @@
   "type": "module",
   "description": "AIFlomo - 复刻 Flomo 体验的全栈 MVP",
   "workspaces": [
-    "apps/mobile",
     "apps/server"
   ],
   "scripts": {
