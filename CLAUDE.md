@@ -251,13 +251,13 @@ export default defineConfig({
 ```json
 {
   "devDependencies": {
-    "jest": "^30.0.0-alpha.0",
+    "jest": "^30.0.0-alpha.6",
     "@babel/preset-env": "^7.25.0"
   },
   "scripts": {
-    "test:unit": "jest",
-    "test:unit:watch": "jest --watch",
-    "test:unit:cov": "jest --coverage"
+    "test:unit": "node --experimental-vm-modules ../../node_modules/.bin/jest",
+    "test:unit:watch": "node --experimental-vm-modules ../../node_modules/.bin/jest --watch",
+    "test:unit:cov": "node --experimental-vm-modules ../../node_modules/.bin/jest --coverage"
   }
 }
 ```
@@ -293,13 +293,14 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './apps/tests',
+  testMatch: '**/*.spec.js',  // ⚠️ 必须明确指定，防止扫描到 Jest 单测（*.test.js）
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:5173',
+    baseURL: process.env.WEB_URL || 'http://localhost:8082',
     trace: 'on-first-retry',
   },
   projects: [
@@ -307,20 +308,7 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
   ],
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
-  },
 });
 ```
 
