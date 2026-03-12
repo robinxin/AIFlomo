@@ -20,7 +20,7 @@ export function validateDbPath(dbPath) {
 
   const resolvedDbPath = resolve(dbPath);
   const resolvedDataDir = resolve('./data');
-  if (!resolvedDbPath.startsWith(resolvedDataDir + '/') && resolvedDbPath !== resolvedDataDir) {
+  if (!resolvedDbPath.startsWith(`${resolvedDataDir}/`) && resolvedDbPath !== resolvedDataDir) {
     throw new Error(
       `DB_PATH must resolve to a path within the ./data directory. Got: ${resolvedDbPath}`
     );

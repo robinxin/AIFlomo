@@ -162,6 +162,24 @@ AIFlomo/
 { data: null, error: string, message: string }
 ```
 
+### ESLint 配置规范
+
+| 项目 | 配置文件 | 格式 | 说明 |
+|------|---------|------|------|
+| 根目录 | - | - | 不需要 ESLint 配置 |
+| apps/server | `eslint.config.js` | **Flat Config** | ESLint 10.x 必须使用 flat config 格式 |
+| apps/mobile | `eslint.config.js` | **Flat Config** | ESLint 10.x 必须使用 flat config 格式 |
+
+**重要约定**：
+- 项目使用 ESLint **10.x**，必须使用 `eslint.config.js`（flat config 格式）
+- **禁止**使用旧格式 `.eslintrc.*` 文件
+- 每个子包（apps/server、apps/mobile）**必须**包含独立的 `eslint.config.js`
+- 配置文件必须：
+  - 导入 `@eslint/js` 和 `globals` 包
+  - 针对项目类型配置适当的 `languageOptions.globals`（Node.js 用 `globals.node`，浏览器用 `globals.browser`）
+  - 启用 `prefer-template`、`prefer-const`、`no-var` 等代码质量规则
+  - 忽略 `dist/`、`node_modules/`、`coverage/` 目录
+
 ---
 
 ## 🔒 安全红线
