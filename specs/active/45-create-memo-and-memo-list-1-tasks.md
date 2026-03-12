@@ -11,9 +11,9 @@
 
 > 从零搭建 apps/server 和 apps/mobile 子包骨架，配置 Monorepo workspace，建立数据库 Schema 并生成迁移产物。所有后续阶段均依赖本阶段完成。
 
-- [ ] T001 [P] 初始化 Monorepo 根配置及 apps/server 子包骨架：更新 `pnpm-workspace.yaml`（新增 apps/server、apps/mobile）、根目录 `package.json`（含 dev/build/lint 脚本）、`.env`（新增 DB_PATH、SESSION_SECRET、CORS_ORIGIN、EXPO_PUBLIC_API_URL 四个变量）；创建 `apps/server/package.json`（含 dev/build/lint/prod/db:generate/db:migrate 六条脚本，依赖 fastify、drizzle-orm、better-sqlite3、@fastify/session、@fastify/cookie、@fastify/cors、@fastify/multipart）及 `apps/server/drizzle.config.js`（Drizzle Kit 配置，指向 DB_PATH SQLite 文件）
+- [x] T001 [P] 初始化 Monorepo 根配置及 apps/server 子包骨架：更新 `pnpm-workspace.yaml`（新增 apps/server、apps/mobile）、根目录 `package.json`（含 dev/build/lint 脚本）、`.env`（新增 DB_PATH、SESSION_SECRET、CORS_ORIGIN、EXPO_PUBLIC_API_URL 四个变量）；创建 `apps/server/package.json`（含 dev/build/lint/prod/db:generate/db:migrate 六条脚本，依赖 fastify、drizzle-orm、better-sqlite3、@fastify/session、@fastify/cookie、@fastify/cors、@fastify/multipart）及 `apps/server/drizzle.config.js`（Drizzle Kit 配置，指向 DB_PATH SQLite 文件）
 
-- [ ] T002 定义 Drizzle Schema 并初始化数据库实例：按 design §2 在 `apps/server/src/db/schema.js` 中完整实现 users、memos、tags、memo_tags、memo_images 五张表（含外键 onDelete cascade、crypto.randomUUID() 主键、`sql\`(CURRENT_TIMESTAMP)\`` 时间戳）；在 `apps/server/src/db/index.js` 中导出 Drizzle 实例（better-sqlite3 驱动，读取 DB_PATH 环境变量）；执行 `pnpm db:generate -w apps/server` 生成迁移文件
+- [x] T002 定义 Drizzle Schema 并初始化数据库实例：按 design §2 在 `apps/server/src/db/schema.js` 中完整实现 users、memos、tags、memo_tags、memo_images 五张表（含外键 onDelete cascade、crypto.randomUUID() 主键、`sql\`(CURRENT_TIMESTAMP)\`` 时间戳）；在 `apps/server/src/db/index.js` 中导出 Drizzle 实例（better-sqlite3 驱动，读取 DB_PATH 环境变量）；执行 `pnpm db:generate -w apps/server` 生成迁移文件
 
 ---
 
