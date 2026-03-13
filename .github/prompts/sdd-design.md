@@ -11,12 +11,12 @@
   环境要求: 无特殊要求（不依赖实验性功能）
 
   执行顺序：
-    Phase 1（顺序）: architect subagent  → 读 spec + 已有设计文档 → 输出 §0 已有功能边界摘要 + §1 功能概述 + §2 数据模型
-    Phase 2（并行）: backend-developer   → 读 architect.md（含 §0）+ spec + 已有设计文档 → 输出 §3 API 端点设计
-                    frontend-developer  → 读 architect.md（含 §0）+ spec + 已有设计文档 → 输出 §4 前端页面与组件
+    Phase 1（顺序）: architect subagent  → 读 spec + 已有设计文档 → 输出 §1 功能概述 + §2 数据模型
+    Phase 2（并行）: backend-developer   → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §3 API 端点设计
+                    frontend-developer  → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §4 前端页面与组件
     Orchestrator   : 合并 §5 改动文件清单 + §6 技术约束 + §7 不包含 → 写入 ${DESIGN_FILE}
-    注：代码库无需任何 subagent 直接读取，已有设计文档（specs/templates/*.design.md）已完整记录现有功能边界
-    注：spec 和已有设计文档三个 subagent 各自直接读取，保证信息完整性，不经过 architect 二次提炼
+    注：代码库无需任何 subagent 直接读取，已有设计文档（specs/completed/*-design.md）已完整记录现有功能边界（路由/数据表/组件）
+    注：spec 和已有设计文档三个 subagent 各自直接读取，了解项目现有结构，无需经过 architect 二次提炼
 
   Subagent 间通信方式：临时文件（无需实验性 Agent Team 功能）
     ${DESIGN_FILE}.architect.md   — architect 写入，其他 subagent 只读
@@ -57,11 +57,11 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 你是 AIFlomo SDD Design 流程的 architect subagent。
 
 ## 你的任务
-分析 spec 和已有设计文档，提炼已有功能边界，生成技术方案文档的 §0 已有功能边界摘要 + §1 功能概述 + §2 数据模型，写入临时文件。
+分析 spec 和已有设计文档，生成技术方案文档的 §1 功能概述 + §2 数据模型，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码，禁止读取代码库）
 1. 读取每个 spec 文件：${SPEC_FILES}
-2. 读取 `specs/templates/` 下所有 `*.design.md` 文件 — 之前已生成的技术设计文档，完整记录了现有功能的路由、数据表、组件设计，**以此为准了解已有功能边界，禁止自行探索代码库**
+2. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录了现有功能的路由、数据表、组件设计，**以此了解项目现有结构，禁止自行探索代码库**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.architect.md（使用 Write 工具）：
@@ -113,9 +113,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 基于 architect 的数据模型设计，生成 §3 API 端点设计，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 ${DESIGN_FILE}.architect.md — 含已有功能边界摘要（§0）+ 数据模型（§1 §2），**所有已有路由/数据表信息以 §0 为准，禁止自行探索代码库**
+1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
 2. 读取每个 spec 文件：${SPEC_FILES}
-3. 读取 `specs/templates/` 下所有 `*.design.md` 文件 — 之前已生成的技术设计文档，用于保持 API 设计风格一致
+3. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录现有功能的路由和数据表，**以此了解项目现有结构**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.backend.md（使用 Write 工具）：
@@ -151,9 +151,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 因此请直接基于 architect 的数据模型推断 API 路径，保持与 REST 惯例一致。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 ${DESIGN_FILE}.architect.md — 含已有功能边界摘要（§0）+ 数据模型（§1 §2），**所有已有组件/Context 信息以 §0 为准，禁止自行探索代码库**
+1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
 2. 读取每个 spec 文件：${SPEC_FILES}
-3. 读取 `specs/templates/` 下所有 `*.design.md` 文件 — 之前已生成的技术设计文档，用于保持前端组件设计风格一致
+3. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录现有功能的组件和 Context，**以此了解项目现有结构**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.frontend.md（使用 Write 工具）：
@@ -187,7 +187,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 输出：`[SDD] 读取 architect.md / backend.md / frontend.md`
 
 使用 Read 工具逐一读取三个临时文件的**完整内容**：
-- `${DESIGN_FILE}.architect.md`（含 §1 §2）
+- `${DESIGN_FILE}.architect.md`（含 §1 功能概述 + §2 数据模型）
 - `${DESIGN_FILE}.backend.md`（含 §3）
 - `${DESIGN_FILE}.frontend.md`（含 §4）
 

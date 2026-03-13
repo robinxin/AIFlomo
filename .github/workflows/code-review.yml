@@ -104,7 +104,8 @@ jobs:
           RESULT=$(claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
             --allowedTools "Read,Bash(ls:*)" \
             --model "$MODEL" \
-            "$(cat /tmp/prompt.txt)")
+            "$(cat /tmp/prompt.txt)" \
+            | jq -rRj 'try fromjson catch empty | select(.type == "content_block_delta" and .delta.type == "text_delta") | .delta.text')
 
           echo "$RESULT"
           echo "$RESULT" > /tmp/review-result.txt

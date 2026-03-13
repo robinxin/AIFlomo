@@ -16,6 +16,13 @@ on:
       - 'apps/mobile/**'
       - 'apps/tests/**'
 
+# ── 公共环境变量（所有 job 继承）─────────────────────────────────────────────
+env:
+  MODEL:                'claude-sonnet-4-5-20250929'
+  CLAUDE_CODE_VERSION:  '2.1.50'
+  ANTHROPIC_BASE_URL:   'http://127.0.0.1:18080'
+  UPSTREAM_API_URL:     'https://claude.hatch.yinxiang.com/api'
+
 jobs:
   # ─── Step 1: Claude 运行 verify-loop.md，检查 + 修复，再确认 lint/build 状态 ──
   verify:
@@ -26,15 +33,12 @@ jobs:
       verify_passed: ${{ steps.check.outputs.verify_passed }}
       error_summary: ${{ steps.check.outputs.error_summary }}
     env:
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
-      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
-      MODEL:              'claude-sonnet-4-5-20250929'
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -42,34 +46,10 @@ jobs:
           node-version: '20'
 
       - name: Start proxy (strip context_management)
-        env:
-          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
-        run: |
-          cat > /tmp/strip-proxy.js << 'EOF'
-          const http = require('http'), https = require('https');
-          const up = new URL(process.env.UPSTREAM_API_URL);
-          http.createServer((req, res) => {
-            let body = '';
-            req.on('data', c => body += c);
-            req.on('end', () => {
-              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
-              const opts = {
-                hostname: up.hostname, port: 443,
-                path: up.pathname + (req.url === '/' ? '' : req.url),
-                method: req.method,
-                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
-              };
-              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
-              r.on('error', e => { res.writeHead(502); res.end(e.message); });
-              r.write(body); r.end();
-            });
-          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
-          EOF
-          node /tmp/strip-proxy.js &
-          sleep 2
+        run: bash scripts/ci/start-proxy.sh
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code@2.1.50
+        run: bash scripts/ci/install-claude.sh
 
       - name: Install dependencies
         run: bash scripts/ci/install.sh
@@ -143,22 +123,33 @@ jobs:
               "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ─── Step 2（通过路径）: 执行 E2E 测试 ─────────────────────────────────────
+  # ─── Step 2（通过路径）: 执行 E2E 测试（Claude e2e-loop 自动修复）──────────────
   run-e2e:
     needs: verify
     if: needs.verify.result == 'success' && needs.verify.outputs.verify_passed == 'true'
     runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
     outputs:
       test_errors: ${{ steps.collect-test-errors.outputs.test_errors }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        run: bash scripts/ci/start-proxy.sh
+
+      - name: Install Claude Code
+        run: bash scripts/ci/install-claude.sh
 
       - name: Install dependencies
         run: bash scripts/ci/install.sh
@@ -174,7 +165,7 @@ jobs:
 
       - name: Start services for testing
         run: |
-          # 后端：dev server
+          # 后端：dev server（node --watch，文件变更自动重载）
           bash scripts/ci/server-start.sh > /tmp/server-output.txt 2>&1 &
           echo $! > /tmp/server.pid
 
@@ -217,13 +208,86 @@ jobs:
             sleep 2
           done
 
-          sed -i.bak 's|url: "${WEB_URL}"|url: "'"$FRONTEND_URL"'"|g' apps/tests/* && rm -f apps/tests/*.bak
+          bash scripts/ci/patch-test-urls.sh "$FRONTEND_URL"
 
-      - name: Run SDD-generated test cases
+      # 记录 e2e-loop 前的 commit SHA，用于检测前端源码是否被 Claude 修改
+      - name: Record HEAD before e2e-loop
+        id: pre-loop
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # 调用 e2e-loop.md：Claude 执行 E2E，对每项失败自动调用对应 agent 修复，每项最多重试 5 次
+      - name: Run e2e-loop
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          PROMPT_TEXT=$(cat .github/prompts/e2e-loop.md)
+          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
+            --allowedTools "Task,Read,Write,Edit,Bash(bash scripts/ci/test.sh:*),Bash(bash scripts/ci/build.sh:*),Bash(bash scripts/ci/lint.sh:*),Bash(npx eslint:*),Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*)" \
+            --model "$MODEL" \
+            "$PROMPT_TEXT"
+
+      - name: Commit e2e-loop fixes
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git add -u
+          if git diff --cached --quiet; then
+            echo "No changes from e2e-loop"
+          else
+            git commit -m "fix: e2e-loop auto-fix on ${BRANCH}"
+            git pull --rebase origin "${BRANCH}" || true
+            git push origin "HEAD:${BRANCH}"
+            echo "✅ E2E-loop fixes committed and pushed to ${BRANCH}"
+          fi
+
+      # 若 Claude 修改了前端源码，重新构建并重启静态服务，确保 final E2E 跑新产物
+      - name: Rebuild frontend if source changed
+        run: |
+          BEFORE="${{ steps.pre-loop.outputs.sha }}"
+          AFTER=$(git rev-parse HEAD)
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "No commits made by e2e-loop, skip rebuild"
+            exit 0
+          fi
+          if ! bash scripts/ci/frontend-changed.sh "$BEFORE" "$AFTER"; then
+            echo "No mobile source changes, skip rebuild"
+            exit 0
+          fi
+          echo "Mobile source changed, rebuilding frontend..."
+          bash scripts/ci/build-frontend.sh
+          kill "$(cat /tmp/frontend.pid)" 2>/dev/null || true
+          bash scripts/ci/frontend-serve.sh > /tmp/frontend-output.txt 2>&1 &
+          echo $! > /tmp/frontend.pid
+          FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
+          for i in $(seq 1 20); do
+            if curl -sf "$FRONTEND_URL" > /dev/null 2>&1; then
+              echo "✅ Frontend restarted at $FRONTEND_URL"
+              break
+            fi
+            if [ "$i" -eq 20 ]; then
+              echo "❌ Frontend did not restart within 40s"
+              cat /tmp/frontend-output.txt
+              exit 1
+            fi
+            echo "Waiting for frontend... ($i/20)"
+            sleep 2
+          done
+
+      - name: Run final E2E verification
         id: test
         run: |
-          echo "Waiting 10s for frontend to fully initialize..."
-          sleep 10
+          FRONTEND_URL=$(bash scripts/ci/frontend-url.sh)
+          for i in $(seq 1 15); do
+            if curl -sf "$FRONTEND_URL" > /dev/null 2>&1; then
+              echo "✅ Frontend ready, starting tests"
+              break
+            fi
+            echo "Waiting for frontend... ($i/15)"
+            sleep 2
+          done
           bash scripts/ci/test.sh 2>&1 | tee /tmp/test-output.txt
           exit ${PIPESTATUS[0]}
 
@@ -238,7 +302,7 @@ jobs:
             fi
           done
 
-      # E2E 错误输出供 auto-fix 使用
+      # E2E 错误输出供下游诊断使用
       - name: Collect test errors
         id: collect-test-errors
         if: always()
@@ -259,7 +323,7 @@ jobs:
             echo "## 🧪 E2E Tests"
             echo ""
             echo "- **分支**: \`${{ github.ref_name }}\`"
-            echo "- **状态**: $([ "$STATUS" = "success" ] && echo '✅ 通过' || echo '❌ 失败')"
+            echo "- **状态**: $([ "$STATUS" = "success" ] && echo '✅ 通过' || echo '❌ 失败（e2e-loop 已尝试自动修复，仍未通过，请人工介入）')"
             echo ""
             echo '```'
             tail -100 /tmp/test-output.txt 2>/dev/null || echo "(无输出)"
@@ -286,25 +350,21 @@ jobs:
             --ref "${{ github.ref_name }}"
           echo "✅ Code Review triggered on ${{ github.ref_name }}"
 
-  # ─── verify 或 E2E 失败 → 内联 autofix，最多 5 次，成功后重触发本 workflow ──
+  # ─── verify 失败 → 内联 autofix，最多 5 次，成功后重触发本 workflow ──────────
+  # 注意：E2E 失败不触发 autofix（e2e-loop 已内部重试，再跑 autofix 无法执行 E2E）
   auto-fix:
     needs: [verify, run-e2e]
     if: |
       always() &&
       github.event_name == 'workflow_dispatch' &&
-      (
-        (needs.verify.result == 'success' && needs.verify.outputs.verify_passed != 'true') ||
-        needs.run-e2e.result == 'failure'
-      )
+      needs.verify.result == 'success' &&
+      needs.verify.outputs.verify_passed != 'true'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
       actions: write
       issues: write
     env:
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:18080'
-      UPSTREAM_API_URL:   'https://claude.hatch.yinxiang.com/api'
-      MODEL:              'claude-sonnet-4-5-20250929'
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MAX_FIX_ROUNDS: '5'
 
@@ -336,35 +396,11 @@ jobs:
 
       - name: Start proxy (strip context_management)
         if: steps.check-attempts.outputs.should_fix == 'true'
-        env:
-          UPSTREAM_API_URL: ${{ env.UPSTREAM_API_URL }}
-        run: |
-          cat > /tmp/strip-proxy.js << 'EOF'
-          const http = require('http'), https = require('https');
-          const up = new URL(process.env.UPSTREAM_API_URL);
-          http.createServer((req, res) => {
-            let body = '';
-            req.on('data', c => body += c);
-            req.on('end', () => {
-              try { const d = JSON.parse(body); delete d.context_management; body = JSON.stringify(d); } catch(e) {}
-              const opts = {
-                hostname: up.hostname, port: 443,
-                path: up.pathname + (req.url === '/' ? '' : req.url),
-                method: req.method,
-                headers: { ...req.headers, host: up.hostname, 'content-length': Buffer.byteLength(body) }
-              };
-              const r = https.request(opts, pr => { res.writeHead(pr.statusCode, pr.headers); pr.pipe(res); });
-              r.on('error', e => { res.writeHead(502); res.end(e.message); });
-              r.write(body); r.end();
-            });
-          }).listen(18080, '127.0.0.1', () => console.log('Proxy ready on :18080'));
-          EOF
-          node /tmp/strip-proxy.js &
-          sleep 2
+        run: bash scripts/ci/start-proxy.sh
 
       - name: Install Claude Code
         if: steps.check-attempts.outputs.should_fix == 'true'
-        run: npm install -g @anthropic-ai/claude-code@2.1.50
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}
 
       - name: Load CLAUDE.md
         if: steps.check-attempts.outputs.should_fix == 'true'
@@ -379,12 +415,11 @@ jobs:
         if: steps.check-attempts.outputs.should_fix == 'true'
         run: bash scripts/ci/install.sh
 
-      # 合并 verify 错误 + E2E 错误，优先用实时 lint/build 输出兜底
+      # 合并 verify 错误 + 实时 lint/build 输出（实时结果优先）
       - name: Collect errors for autofix context
         if: steps.check-attempts.outputs.should_fix == 'true'
         env:
           VERIFY_ERRORS: ${{ needs.verify.outputs.error_summary }}
-          TEST_ERRORS:   ${{ needs.run-e2e.outputs.test_errors }}
         run: |
           bash scripts/ci/lint.sh  2>&1 | tee /tmp/fix-lint.txt  || LINT_FAILED=true
           bash scripts/ci/build.sh 2>&1 | tee /tmp/fix-build.txt || BUILD_FAILED=true
@@ -396,10 +431,6 @@ jobs:
           LIVE=$(cat /tmp/live-errors.txt)
           # 实时 lint/build 有错误则用实时结果；否则回退到 verify job 的输出
           COMBINED="${LIVE:-$VERIFY_ERRORS}"
-          # 无论如何追加 E2E 失败信息（若有）
-          if [ -n "$TEST_ERRORS" ]; then
-            COMBINED=$(printf '%s\n\n=== E2E Test Errors ===\n%s' "$COMBINED" "$TEST_ERRORS")
-          fi
 
           DELIM="FIX_ERR_$(openssl rand -hex 8)"
           {
@@ -408,7 +439,7 @@ jobs:
             echo "${DELIM}"
           } >> "$GITHUB_ENV"
 
-      # 调用 autofix.md 对错误进行定点修复
+      # 调用 autofix.md 对 lint/build 错误进行定点修复
       - name: Run autofix
         if: steps.check-attempts.outputs.should_fix == 'true'
         env:
