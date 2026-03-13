@@ -1,0 +1,22 @@
+{
+  "name": "aiflomo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @aiflomo/server dev & pnpm --filter @aiflomo/mobile dev",
+    "build": "pnpm --filter @aiflomo/server build && pnpm --filter @aiflomo/mobile build",
+    "lint": "pnpm --filter @aiflomo/server lint && pnpm --filter @aiflomo/mobile lint",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report",
+    "test:unit": "pnpm --filter @aiflomo/server test:unit && pnpm --filter @aiflomo/mobile test:unit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
