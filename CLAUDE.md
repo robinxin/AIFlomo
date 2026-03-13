@@ -378,6 +378,90 @@ pnpm build -w apps/mobile         # 编译前端 Web 产物
 
 ---
 
+
+## ⚙️ Workspace 配置注意事项
+
+### pnpm workspace 最佳实践
+
+1. **仅在 `pnpm-workspace.yaml` 中声明实际存在的子包** — 避免引用不存在的目录导致命令失败
+2. **根 `package.json` 脚本使用 `--filter` 参数** — 不使用 `-w` 参数，避免递归循环
+3. **子包命名规范** — 使用 scoped name（如 `@aiflomo/server`），便于 filter 引用
+
+示例配置：
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - 'apps/server'
+  # 当 apps/mobile 创建后再添加: - 'apps/mobile'
+```
+
+```json
+// package.json
+{
+  "scripts": {
+    "dev": "pnpm --filter @aiflomo/server dev",
+    "build": "pnpm --filter @aiflomo/server build",
+    "lint": "pnpm --filter @aiflomo/server lint"
+  }
+}
+```
+
+---
+
+## ⚡ 故障排查指南
+
+### 模块找不到错误（Cannot find module）
+
+**问题症状**：运行代码或构建时出现 `Cannot find module 'xxx'` 错误
+
+**排查步骤**：
+
+1. **确认依赖是否在 `package.json` 中声明**
+   ```bash
+   # 在相关子包目录检查
+   cd apps/server  # 或 apps/mobile
+   grep -r "模块名" package.json
+   ```
+   - 如果**不存在**，先添加依赖
+
+2. **添加缺失的依赖**
+   ```bash
+   # 方式一：在子包目录安装
+   cd apps/server
+   pnpm add 模块名
+
+   # 方式二：在根目录为指定子包安装
+   pnpm --filter @aiflomo/server add 模块名
+   ```
+
+3. **刷新依赖树**
+   ```bash
+   # 重新安装所有依赖
+   pnpm install
+
+   # 或清除 node_modules 后重装
+   rm -rf node_modules pnpm-lock.yaml
+   pnpm install
+   ```
+
+4. **验证安装成功**
+   ```bash
+   # 确认模块存在
+   ls node_modules/模块名
+
+   # 重新运行构建/dev 命令
+   pnpm dev
+   ```
+
+**常见原因**：
+- ❌ 直接修改 `package.json`，未执行 `pnpm install`
+- ❌ 在 monorepo 中安装到错误的子包
+- ❌ `pnpm-lock.yaml` 与 `package.json` 不同步
+- ❌ Node.js 版本过旧导致某些包不兼容
+
+---
+
 ## 🔄 Git 规范
 
 ### 分支命名
