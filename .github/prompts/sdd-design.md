@@ -35,15 +35,21 @@
 
 ## 第一步 — Phase 1：派生 architect subagent（顺序，等待完成后再进入 Phase 2）
 
+> 🪵 **日志要求**：每个步骤开始前和完成后，必须输出一行状态文字（直接输出文字，无需 Bash），格式：`[SDD] <状态描述>`。这些文字会出现在 CI 日志中，用于追踪进度。
+
+输出：`[SDD] Phase 1 开始 — 派生 architect subagent`
+
 ⚠️ **严禁**：调用 Task(architect) 的同一个 response 中，绝对不得同时调用 Task(backend-developer) 或 Task(frontend-developer)。必须等 Task(architect) 返回且 Bash 检查通过后，才能进入第二步。
 
 使用 `Task` 工具派生 architect subagent，**等待其返回结果后再继续**。
 
-Task 返回后，用 Bash 检查文件是否写入成功：
+Task 返回后输出：`[SDD] architect subagent 返回，检查输出文件`
+
+用 Bash 检查文件是否写入成功：
 ```bash
-ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1 WARN: architect.md not found"
+ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architect.md 已生成" || echo "[SDD] Phase 1 WARN: architect.md not found"
 ```
-若文件不存在，**重试一次 Task(architect)**（使用相同 prompt）。重试后仍无文件则继续 Phase 2，backend/frontend 将基于 spec 自行推断数据模型。
+若文件不存在，输出 `[SDD] Phase 1 重试 architect subagent`，**重试一次 Task(architect)**（使用相同 prompt）。重试后仍无文件则输出 `[SDD] Phase 1 降级：architect.md 缺失，backend/frontend 将基于 spec 自行推断` 并继续 Phase 2。
 
 **传给 architect subagent 的 prompt（替换占位符后传入）：**
 
@@ -90,9 +96,11 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ## 第二步 — Phase 2：并行派生 backend-developer 和 frontend-developer
 
+输出：`[SDD] Phase 2 开始 — 并行派生 backend-developer 和 frontend-developer`
+
 **同时**使用两次 `Task` 工具派生这两个 subagent（并行，无需等待对方完成）。
 
-等待**两者都返回结果**后再进入下一步。
+等待**两者都返回结果**后输出：`[SDD] Phase 2 完成 — backend 和 frontend subagent 均已返回`，再进入下一步。
 
 ---
 
@@ -170,9 +178,13 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ## 第三步 — Orchestrator 合并生成最终文档
 
-所有subagent 均完成后，按以下步骤执行：
+输出：`[SDD] Phase 3 开始 — 读取临时文件并合并`
+
+所有 subagent 均完成后，按以下步骤执行：
 
 ### 4.1 读取临时文件
+
+输出：`[SDD] 读取 architect.md / backend.md / frontend.md`
 
 使用 Read 工具逐一读取三个临时文件的**完整内容**：
 - `${DESIGN_FILE}.architect.md`（含 §1 §2）
@@ -180,6 +192,8 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 - `${DESIGN_FILE}.frontend.md`（含 §4）
 
 ### 4.2 一致性校验
+
+输出：`[SDD] 校验 backend 与 frontend 的 API 路径一致性`
 
 比对 §3（backend）与 §4（frontend）中引用的 API 路径是否一致。
 若有出入，以 §3 为准，**记录差异列表**，将在写入时仅于 §4 对应位置追加一行备注（`⚠️ API 路径已更正，以 §3 为准：xxx`），不得修改 §3 或 §4 的任何其他内容。
@@ -215,6 +229,8 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ### 4.4 写入最终文档
 
+输出：`[SDD] 写入最终文档 ${DESIGN_FILE}`
+
 使用 Write 工具将完整文档写入 `${DESIGN_FILE}`。
 
 **⚠️ 写入规则（严格执行）：**
@@ -244,9 +260,14 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 [§7 不包含]
 ```
+
+写入完成后，输出：`[SDD] ✅ 最终文档写入完成`
+
 ---
 
 ## 第四步 — 最终报告
+
+输出：`[SDD] Pipeline 完成`
 
 ```
 DESIGN_COMPLETE

@@ -185,6 +185,8 @@ jobs:
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
             claude --print --dangerously-skip-permissions \
+              --verbose \
+              --output-format=stream-json \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
