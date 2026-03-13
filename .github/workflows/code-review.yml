@@ -101,7 +101,7 @@ jobs:
           # Unset large env var before spawning claude
           unset DIFF
 
-          RESULT=$(claude --print --dangerously-skip-permissions \
+          RESULT=$(claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
             --allowedTools "Read,Bash(ls:*)" \
             --model "$MODEL" \
             "$(cat /tmp/prompt.txt)")

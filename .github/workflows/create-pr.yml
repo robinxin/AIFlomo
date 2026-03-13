@@ -141,7 +141,7 @@ jobs:
         run: |
           CONFLICT_FILES=$(cat /tmp/conflict-files.txt | tr '\n' ' ')
 
-          claude --print --dangerously-skip-permissions \
+          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(git diff:*),Bash(git log:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
@@ -210,7 +210,7 @@ jobs:
             MERGE_CONTEXT="Merge was clean (no conflicts), but new code from main is now integrated with this feature branch."
           fi
 
-          claude --print --dangerously-skip-permissions \
+          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(git diff:*),Bash(git log:*)" \
             --model "$MODEL" \
             "$(cat << PROMPT
