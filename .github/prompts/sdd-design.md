@@ -11,10 +11,12 @@
   环境要求: 无特殊要求（不依赖实验性功能）
 
   执行顺序：
-    Phase 1（顺序）: architect subagent  → 输出 §1 功能概述 + §2 数据模型
-    Phase 2（并行）: backend-developer   → 输出 §3 API 端点设计
-                    frontend-developer  → 输出 §4 前端页面与组件
+    Phase 1（顺序）: architect subagent  → 读 spec + 已有设计文档 → 输出 §0 已有功能边界摘要 + §1 功能概述 + §2 数据模型
+    Phase 2（并行）: backend-developer   → 读 architect.md（含 §0）+ spec + 已有设计文档 → 输出 §3 API 端点设计
+                    frontend-developer  → 读 architect.md（含 §0）+ spec + 已有设计文档 → 输出 §4 前端页面与组件
     Orchestrator   : 合并 §5 改动文件清单 + §6 技术约束 + §7 不包含 → 写入 ${DESIGN_FILE}
+    注：代码库无需任何 subagent 直接读取，已有设计文档（specs/templates/*.design.md）已完整记录现有功能边界
+    注：spec 和已有设计文档三个 subagent 各自直接读取，保证信息完整性，不经过 architect 二次提炼
 
   Subagent 间通信方式：临时文件（无需实验性 Agent Team 功能）
     ${DESIGN_FILE}.architect.md   — architect 写入，其他 subagent 只读
@@ -31,13 +33,9 @@
 
 ---
 
-## 第一步 — 读取上下文（只读，不写）
+## 第一步 — Phase 1：派生 architect subagent（顺序，等待完成后再进入 Phase 2）
 
-1. 读取每个 spec 文件：`${SPEC_FILES}`
-
----
-
-## 第二步 — Phase 1：派生 architect subagent（顺序，等待完成后再进入 Phase 2）
+⚠️ **严禁**：调用 Task(architect) 的同一个 response 中，绝对不得同时调用 Task(backend-developer) 或 Task(frontend-developer)。必须等 Task(architect) 返回且 Bash 检查通过后，才能进入第二步。
 
 使用 `Task` 工具派生 architect subagent，**等待其返回结果后再继续**。
 
@@ -53,13 +51,21 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 你是 AIFlomo SDD Design 流程的 architect subagent。
 
 ## 你的任务
-分析 spec 和现有代码库，生成技术方案文档的 §1 功能概述 + §2 数据模型，写入临时文件。
+分析 spec 和已有设计文档，提炼已有功能边界，生成技术方案文档的 §0 已有功能边界摘要 + §1 功能概述 + §2 数据模型，写入临时文件。
 
-## 第一步 — 读取上下文（只读，不写代码）
+## 第一步 — 读取上下文（只读，不写代码，禁止读取代码库）
 1. 读取每个 spec 文件：${SPEC_FILES}
+2. 读取 `specs/templates/` 下所有 `*.design.md` 文件 — 之前已生成的技术设计文档，完整记录了现有功能的路由、数据表、组件设计，**以此为准了解已有功能边界，禁止自行探索代码库**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.architect.md（使用 Write 工具）：
+
+### 0. 已有功能边界摘要（供 backend/frontend subagent 使用，不进入最终文档）
+
+基于已有设计文档，提炼与本次功能直接相关的现有设计信息：
+- **已有相关路由**：与本功能交互的现有 API 路径和所在文件（来源于已有设计文档）
+- **已有相关数据表**：与本功能相关的现有表名和关键字段（来源于已有设计文档）
+- **已有相关 Context/组件**：与本功能相关的现有 Context 和组件（来源于已有设计文档）
 
 ### 1. 功能概述
 
@@ -82,7 +88,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ---
 
-## 第三步 — Phase 2：并行派生 backend-developer 和 frontend-developer
+## 第二步 — Phase 2：并行派生 backend-developer 和 frontend-developer
 
 **同时**使用两次 `Task` 工具派生这两个 subagent（并行，无需等待对方完成）。
 
@@ -99,8 +105,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 基于 architect 的数据模型设计，生成 §3 API 端点设计，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型（必须基于此设计 API）
+1. 读取 ${DESIGN_FILE}.architect.md — 含已有功能边界摘要（§0）+ 数据模型（§1 §2），**所有已有路由/数据表信息以 §0 为准，禁止自行探索代码库**
 2. 读取每个 spec 文件：${SPEC_FILES}
+3. 读取 `specs/templates/` 下所有 `*.design.md` 文件 — 之前已生成的技术设计文档，用于保持 API 设计风格一致
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.backend.md（使用 Write 工具）：
@@ -112,7 +119,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 - 路径 + HTTP 方法（如 POST /api/memos）
 - 对应文件路径（如 apps/server/src/routes/memos.js）
 - 鉴权：preHandler: [requireAuth]（是否需要）
-- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代）
+- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代，参考 code-standards-backend.md 写法）
 - 成功响应示例（符合 CLAUDE.md 中定义的统一 API 响应格式，含完整 JSON 示例）
 - 失败响应清单（HTTP 状态码 + error 字段内容）
 
@@ -136,8 +143,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 因此请直接基于 architect 的数据模型推断 API 路径，保持与 REST 惯例一致。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型
+1. 读取 ${DESIGN_FILE}.architect.md — 含已有功能边界摘要（§0）+ 数据模型（§1 §2），**所有已有组件/Context 信息以 §0 为准，禁止自行探索代码库**
 2. 读取每个 spec 文件：${SPEC_FILES}
+3. 读取 `specs/templates/` 下所有 `*.design.md` 文件 — 之前已生成的技术设计文档，用于保持前端组件设计风格一致
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.frontend.md（使用 Write 工具）：
@@ -160,9 +168,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ---
 
-## 第四步 — Orchestrator 合并生成最终文档
+## 第三步 — Orchestrator 合并生成最终文档
 
-两个 Phase 2 subagent 均完成后，按以下步骤执行：
+所有subagent 均完成后，按以下步骤执行：
 
 ### 4.1 读取临时文件
 
@@ -236,17 +244,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 [§7 不包含]
 ```
-
-### 4.5 校验
-
-写入完成后：
-
-1. 使用 Read 工具读取 `${DESIGN_FILE}`，确认包含以下所有章节标题：
-   `### 1.`、`### 2.`、`### 3.`、`### 4.`、`改动文件清单`、`技术约束`、`不包含`
-   若缺失任何一项，说明写入不完整，重新执行 4.4。
 ---
 
-## 第五步 — 最终报告
+## 第四步 — 最终报告
 
 ```
 DESIGN_COMPLETE
