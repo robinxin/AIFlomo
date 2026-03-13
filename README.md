@@ -1,64 +1,62 @@
-# AIFlomo
+# Frontend Project
 
-Flomo 核心功能的全栈复刻，采用 AI 优先开发流程——开发者编写 Spec，CI 自动完成代码生成、测试、审查与发布。
+前端项目，采用 AI 优先开发流程（SDD）——开发者编写 Spec，CI 自动完成代码生成、测试、审查与发布。
 
 ## 技术栈
 
-| 层 | 技术 |
-|---|---|
-| 前端 | Next.js 14 (App Router) + TypeScript |
-| 后端 | Next.js Route Handlers |
-| 数据库 | SQLite + Prisma |
-| 认证 | Session Cookie |
-| 测试 | Vitest + coverage |
+| 层级 | 技术 |
+|------|------|
+| 前端（跨端） | Expo (React Native) + JavaScript — Web / Android / iOS |
+| 后端 | Node.js + Fastify + JavaScript |
+| 数据库 | SQLite（MVP 阶段）|
+| ORM | Drizzle ORM |
+| 认证 | Session + Cookie |
+| 状态管理 | React Context + useReducer |
+| 前端测试 | Vitest |
+| 后端测试 | Jest |
+| E2E 测试 | @playwright/test |
+| 包管理 | pnpm workspaces（Monorepo）|
+| 进程守护 | pm2（VPS 部署）|
 | CI/CD | GitHub Actions + Claude Code |
-
-## 计划功能
-
-以下功能通过 SDD Pipeline 逐步生成，main 分支为骨架状态：
-
-- 用户注册 / 登录 / 登出
-- 快速记录 Memo（Notes CRUD）
-- 标签自动创建与关联
-- 全文搜索
 
 ## 本地开发
 
 ```bash
-cd apps/flomo
-
 # 安装依赖
-npm install
+pnpm install
 
-# 初始化数据库
-npm run db:migrate
+# 启动开发服务器（前后端）
+pnpm dev
 
-# 启动开发服务器
-npm run dev
+# 仅启动后端
+pnpm dev -w apps/server
+
+# 仅启动前端
+pnpm dev -w apps/mobile
 ```
 
-运行测试（SDD 生成测试文件后）：
+运行测试：
 
 ```bash
-npm run test           # 单次运行
-npm run test:coverage  # 带覆盖率
+pnpm test              # E2E 测试
+pnpm test:unit         # 前后端单测
 ```
 
 ## 项目结构
 
 ```
 .
-├── apps/flomo/          # Next.js 应用骨架
-│   ├── app/             # App Router（API routes 由 SDD 生成）
-│   ├── lib/
-│   │   └── prisma.ts    # Prisma client 单例
-│   ├── prisma/          # 数据模型与迁移
-│   └── tests/           # 测试（由 SDD 生成）
+├── apps/
+│   ├── mobile/        # Expo 跨端前端（Web + Android + iOS）
+│   ├── server/        # Node.js + Fastify 后端
+│   └── tests/         # Playwright E2E 测试
 ├── specs/
-│   ├── active/          # 待实现的 Feature Spec（触发 SDD Pipeline）
-│   └── templates/       # Spec 模板
-├── docs/                # 开发文档
-└── .github/workflows/   # CI/CD 工作流
+│   ├── active/        # 待实现的 Feature Spec（触发 SDD Pipeline）
+│   ├── templates/     # Spec 模板
+│   └── completed/     # 已完成归档
+├── scripts/ci/        # CI 接口脚本（技术栈无关）
+├── testcases/         # 测试用例描述文件
+└── .github/workflows/ # CI/CD 工作流
 ```
 
 ## AI 优先开发流程（SDD Pipeline）
@@ -69,11 +67,13 @@ npm run test:coverage  # 带覆盖率
 开发者写 Spec
     └── push 到 feat/** 分支
           └── SDD Pipeline 自动运行
-                ├── 1. Spec Review   — AI 检查规格完整性
-                ├── 2. Code Gen      — AI 生成功能代码
-                ├── 3. Test Gen      — AI 生成测试用例
-                ├── 4. Quality Gate  — build + test:coverage
-                └── 5. Release PR    — 自动创建 PR 到 main
+                ├── 1. Spec Review    — AI 检查规格完整性
+                ├── 2. Design         — AI 生成技术方案（人工审批）
+                ├── 3. Task Breakdown — AI 拆解任务清单（人工审批）
+                ├── 4. Code Gen       — AI 生成功能代码
+                ├── 5. Testcase Gen   — AI 生成测试用例（人工审批）
+                ├── 6. Test Code Gen  — AI 生成可执行测试代码（人工审批）
+                └── 7. Quality Gate   — lint → build → test:unit → E2E → Release PR
 ```
 
 ### 新增功能
@@ -104,24 +104,7 @@ git push origin feat/your-feature
 ## CI/CD 工作流
 
 | 工作流 | 触发条件 | 说明 |
-|---|---|---|
+|--------|---------|------|
 | SDD Pipeline | push `feat/**`（specs 有变更）/ workflow_dispatch | Spec → 代码生成 → 质量门禁 → Release PR |
 | Claude Code Review | push `feat/**`（apps/scripts 有变更）/ PR 到 main | AI 自动代码审查，结果发布为 PR 评论或 Issue |
 | Deploy | push `main` | 自动部署到自托管服务器 |
-
-## API 设计（待实现）
-
-以下接口通过 SDD Pipeline 生成，详见 `apps/flomo/SDD.md`：
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | /api/auth/register | 注册 |
-| POST | /api/auth/login | 登录 |
-| POST | /api/auth/logout | 登出 |
-| GET | /api/notes | 获取笔记列表 |
-| POST | /api/notes | 创建笔记 |
-| GET | /api/notes/:id | 获取单条笔记 |
-| PATCH | /api/notes/:id | 更新笔记 |
-| DELETE | /api/notes/:id | 删除笔记 |
-| GET | /api/tags | 获取标签列表 |
-| GET | /api/search?q= | 全文搜索 |
