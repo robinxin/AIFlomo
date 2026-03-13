@@ -150,7 +150,7 @@ async function loginHandler(request, reply) {
     if (rows.length === 0) {
       return reply.code(401).send({
         data: null,
-        error: '邮箱或密码错误，请重试',
+        error: '登录信息有误，请重试',
         message: '登录失败',
       });
     }
@@ -162,7 +162,7 @@ async function loginHandler(request, reply) {
     if (!match) {
       return reply.code(401).send({
         data: null,
-        error: '邮箱或密码错误，请重试',
+        error: '登录信息有误，请重试',
         message: '登录失败',
       });
     }
