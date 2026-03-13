@@ -7,13 +7,10 @@
 | 层级 | 技术 |
 |------|------|
 | 前端（跨端） | Expo (React Native) + JavaScript — Web / Android / iOS |
-| 后端 | Node.js + Fastify + JavaScript |
-| 数据库 | SQLite（MVP 阶段）|
-| ORM | Drizzle ORM |
+| 工具 | Node.js |
 | 认证 | Session + Cookie |
 | 状态管理 | React Context + useReducer |
 | 前端测试 | Vitest |
-| 后端测试 | Jest |
 | E2E 测试 | @playwright/test |
 | 包管理 | pnpm workspaces（Monorepo）|
 | 进程守护 | pm2（VPS 部署）|
@@ -27,9 +24,6 @@ pnpm install
 
 # 启动开发服务器（前后端）
 pnpm dev
-
-# 仅启动后端
-pnpm dev -w apps/server
 
 # 仅启动前端
 pnpm dev -w apps/mobile
@@ -48,7 +42,6 @@ pnpm test:unit         # 前后端单测
 .
 ├── apps/
 │   ├── mobile/        # Expo 跨端前端（Web + Android + iOS）
-│   ├── server/        # Node.js + Fastify 后端
 │   └── tests/         # Playwright E2E 测试
 ├── specs/
 │   ├── active/        # 待实现的 Feature Spec（触发 SDD Pipeline）
