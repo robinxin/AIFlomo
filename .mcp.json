@@ -10,17 +10,6 @@
         "typescript-language-server --stdio"
       ],
       "env": {}
-    },
-    "lsp-mcp-python": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@mseep/lsp-mcp",
-        "--lsp",
-        "pylsp"
-      ],
-      "env": {}
     }
   }
 }
