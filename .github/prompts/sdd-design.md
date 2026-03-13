@@ -11,10 +11,12 @@
   环境要求: 无特殊要求（不依赖实验性功能）
 
   执行顺序：
-    Phase 1（顺序）: architect subagent  → 输出 §1 功能概述 + §2 数据模型
-    Phase 2（并行）: backend-developer   → 输出 §3 API 端点设计
-                    frontend-developer  → 输出 §4 前端页面与组件
+    Phase 1（顺序）: architect subagent  → 读 spec + 已有设计文档 → 输出 §1 功能概述 + §2 数据模型
+    Phase 2（并行）: backend-developer   → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §3 API 端点设计
+                    frontend-developer  → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §4 前端页面与组件
     Orchestrator   : 合并 §5 改动文件清单 + §6 技术约束 + §7 不包含 → 写入 ${DESIGN_FILE}
+    注：代码库无需任何 subagent 直接读取，已有设计文档（specs/completed/*-design.md）已完整记录现有功能边界（路由/数据表/组件）
+    注：spec 和已有设计文档三个 subagent 各自直接读取，了解项目现有结构，无需经过 architect 二次提炼
 
   Subagent 间通信方式：临时文件（无需实验性 Agent Team 功能）
     ${DESIGN_FILE}.architect.md   — architect 写入，其他 subagent 只读
@@ -31,21 +33,23 @@
 
 ---
 
-## 第一步 — 读取上下文（只读，不写）
+## 第一步 — Phase 1：派生 architect subagent（顺序，等待完成后再进入 Phase 2）
 
-1. 读取每个 spec 文件：`${SPEC_FILES}`
+> 🪵 **日志要求**：每个步骤开始前和完成后，必须输出一行状态文字（直接输出文字，无需 Bash），格式：`[SDD] <状态描述>`。这些文字会出现在 CI 日志中，用于追踪进度。
 
----
+输出：`[SDD] Phase 1 开始 — 派生 architect subagent`
 
-## 第二步 — Phase 1：派生 architect subagent（顺序，等待完成后再进入 Phase 2）
+⚠️ **严禁**：调用 Task(architect) 的同一个 response 中，绝对不得同时调用 Task(backend-developer) 或 Task(frontend-developer)。必须等 Task(architect) 返回且 Bash 检查通过后，才能进入第二步。
 
 使用 `Task` 工具派生 architect subagent，**等待其返回结果后再继续**。
 
-Task 返回后，用 Bash 检查文件是否写入成功：
+Task 返回后输出：`[SDD] architect subagent 返回，检查输出文件`
+
+用 Bash 检查文件是否写入成功：
 ```bash
-ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1 WARN: architect.md not found"
+ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architect.md 已生成" || echo "[SDD] Phase 1 WARN: architect.md not found"
 ```
-若文件不存在，**重试一次 Task(architect)**（使用相同 prompt）。重试后仍无文件则继续 Phase 2，backend/frontend 将基于 spec 自行推断数据模型。
+若文件不存在，输出 `[SDD] Phase 1 重试 architect subagent`，**重试一次 Task(architect)**（使用相同 prompt）。重试后仍无文件则输出 `[SDD] Phase 1 降级：architect.md 缺失，backend/frontend 将基于 spec 自行推断` 并继续 Phase 2。
 
 **传给 architect subagent 的 prompt（替换占位符后传入）：**
 
@@ -53,10 +57,11 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 你是 AIFlomo SDD Design 流程的 architect subagent。
 
 ## 你的任务
-分析 spec 和现有代码库，生成技术方案文档的 §1 功能概述 + §2 数据模型，写入临时文件。
+分析 spec 和已有设计文档，生成技术方案文档的 §1 功能概述 + §2 数据模型，写入临时文件。
 
-## 第一步 — 读取上下文（只读，不写代码）
+## 第一步 — 读取上下文（只读，不写代码，禁止读取代码库）
 1. 读取每个 spec 文件：${SPEC_FILES}
+2. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录了现有功能的路由、数据表、组件设计，**以此了解项目现有结构，禁止自行探索代码库**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.architect.md（使用 Write 工具）：
@@ -82,11 +87,13 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ---
 
-## 第三步 — Phase 2：并行派生 backend-developer 和 frontend-developer
+## 第二步 — Phase 2：并行派生 backend-developer 和 frontend-developer
+
+输出：`[SDD] Phase 2 开始 — 并行派生 backend-developer 和 frontend-developer`
 
 **同时**使用两次 `Task` 工具派生这两个 subagent（并行，无需等待对方完成）。
 
-等待**两者都返回结果**后再进入下一步。
+等待**两者都返回结果**后输出：`[SDD] Phase 2 完成 — backend 和 frontend subagent 均已返回`，再进入下一步。
 
 ---
 
@@ -99,8 +106,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 基于 architect 的数据模型设计，生成 §3 API 端点设计，写入临时文件。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型（必须基于此设计 API）
+1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
 2. 读取每个 spec 文件：${SPEC_FILES}
+3. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录现有功能的路由和数据表，**以此了解项目现有结构**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.backend.md（使用 Write 工具）：
@@ -112,7 +120,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 - 路径 + HTTP 方法（如 POST /api/memos）
 - 对应文件路径（如 apps/server/src/routes/memos.js）
 - 鉴权：preHandler: [requireAuth]（是否需要）
-- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代）
+- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代，参考 code-standards-backend.md 写法）
 - 成功响应示例（符合 CLAUDE.md 中定义的统一 API 响应格式，含完整 JSON 示例）
 - 失败响应清单（HTTP 状态码 + error 字段内容）
 
@@ -136,8 +144,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 因此请直接基于 architect 的数据模型推断 API 路径，保持与 REST 惯例一致。
 
 ## 第一步 — 读取上下文（只读，不写代码）
-1. 读取 ${DESIGN_FILE}.architect.md — architect 已定义的数据模型
+1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
 2. 读取每个 spec 文件：${SPEC_FILES}
+3. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录现有功能的组件和 Context，**以此了解项目现有结构**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.frontend.md（使用 Write 工具）：
@@ -160,18 +169,24 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ---
 
-## 第四步 — Orchestrator 合并生成最终文档
+## 第三步 — Orchestrator 合并生成最终文档
 
-两个 Phase 2 subagent 均完成后，按以下步骤执行：
+输出：`[SDD] Phase 3 开始 — 读取临时文件并合并`
+
+所有 subagent 均完成后，按以下步骤执行：
 
 ### 4.1 读取临时文件
 
+输出：`[SDD] 读取 architect.md / backend.md / frontend.md`
+
 使用 Read 工具逐一读取三个临时文件的**完整内容**：
-- `${DESIGN_FILE}.architect.md`（含 §1 §2）
+- `${DESIGN_FILE}.architect.md`（含 §1 功能概述 + §2 数据模型）
 - `${DESIGN_FILE}.backend.md`（含 §3）
 - `${DESIGN_FILE}.frontend.md`（含 §4）
 
 ### 4.2 一致性校验
+
+输出：`[SDD] 校验 backend 与 frontend 的 API 路径一致性`
 
 比对 §3（backend）与 §4（frontend）中引用的 API 路径是否一致。
 若有出入，以 §3 为准，**记录差异列表**，将在写入时仅于 §4 对应位置追加一行备注（`⚠️ API 路径已更正，以 §3 为准：xxx`），不得修改 §3 或 §4 的任何其他内容。
@@ -207,6 +222,8 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 
 ### 4.4 写入最终文档
 
+输出：`[SDD] 写入最终文档 ${DESIGN_FILE}`
+
 使用 Write 工具将完整文档写入 `${DESIGN_FILE}`。
 
 **⚠️ 写入规则（严格执行）：**
@@ -237,16 +254,13 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "Phase1 OK" || echo "Phase1
 [§7 不包含]
 ```
 
-### 4.5 校验
+写入完成后，输出：`[SDD] ✅ 最终文档写入完成`
 
-写入完成后：
-
-1. 使用 Read 工具读取 `${DESIGN_FILE}`，确认包含以下所有章节标题：
-   `### 1.`、`### 2.`、`### 3.`、`### 4.`、`改动文件清单`、`技术约束`、`不包含`
-   若缺失任何一项，说明写入不完整，重新执行 4.4。
 ---
 
-## 第五步 — 最终报告
+## 第四步 — 最终报告
+
+输出：`[SDD] Pipeline 完成`
 
 ```
 DESIGN_COMPLETE
