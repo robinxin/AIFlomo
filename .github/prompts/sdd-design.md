@@ -15,7 +15,7 @@
     Phase 2（并行）: backend-developer   → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §3 API 端点设计
                     frontend-developer  → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §4 前端页面与组件
     Orchestrator   : 合并 §5 改动文件清单 + §6 技术约束 + §7 不包含 → 写入 ${DESIGN_FILE}
-    注：代码库无需任何 subagent 直接读取，已有设计文档（specs/completed/*-design.md）已完整记录现有功能边界（路由/数据表/组件）
+    注：代码库无需任何 subagent 直接读取，已有设计文档（specs/completed/*-design.md）已完整记录现有功能边界
     注：spec 和已有设计文档三个 subagent 各自直接读取，了解项目现有结构，无需经过 architect 二次提炼
 
   Subagent 间通信方式：临时文件（无需实验性 Agent Team 功能）
@@ -26,7 +26,7 @@
 -->
 ---
 
-你是 AIFlomo SDD Design 的 **Orchestrator（编排者）**。
+你是 SDD Design 的 **Orchestrator（编排者）**。
 
 你的职责：按阶段派生 subagent、等待每阶段完成、读取各自输出、合并写入最终文档。
 **你自己不写 §1–§4 任何章节内容。** 所有章节由 subagent 生成，你只负责合并 §5/§6/§7 和最终文件写入。
@@ -54,7 +54,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 **传给 architect subagent 的 prompt（替换占位符后传入）：**
 
 ```
-你是 AIFlomo SDD Design 流程的 architect subagent。
+你是 SDD Design 流程的 architect subagent。
 
 ## 你的任务
 分析 spec 和已有设计文档，生成技术方案文档的 §1 功能概述 + §2 数据模型，写入临时文件。
@@ -76,14 +76,14 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 ### 1. 功能概述
 
 - 本次功能的核心目标（一句话概括）
-- 在系统中的定位（与哪些已有路由、数据表、Context 产生交互）
+- 在系统中的定位（与哪些已有路由、数据表、状态管理产生交互）
 - 用户价值：解决什么问题，带来什么体验提升
 
 ### 2. 数据模型变更
 
-- 列出需要新增或修改的 Drizzle 表及字段
-- 每张新增或修改的表，**必须提供完整的 `sqliteTable()` 代码块**（字段名、类型、约束、默认值逐行列出，参考 apps/server/src/db/schema.js 的写法），禁止用文字描述替代代码块
-- 说明 .references()、onDelete 的设计理由
+- 列出需要新增或修改的数据表及字段（技术栈参考 CLAUDE.md）
+- 每张新增或修改的表，**必须提供完整的 schema 定义代码块**（字段名、类型、约束、默认值逐行列出，参考项目现有 schema 文件的写法），禁止用文字描述替代代码块
+- 说明外键关联、级联删除的设计理由
 - 如本次无数据模型变更，明确写："本次无数据模型变更"
 
 ## 严禁事项
@@ -107,7 +107,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 ### 传给 backend-developer subagent 的 prompt：
 
 ```
-你是 AIFlomo SDD Design 流程的 backend-developer subagent。
+你是 SDD Design 流程的 backend-developer subagent。
 
 ## 你的任务
 基于 architect 的数据模型设计，生成 §3 API 端点设计，写入临时文件。
@@ -115,19 +115,19 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 ## 第一步 — 读取上下文（只读，不写代码）
 1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
 2. 读取每个 spec 文件：${SPEC_FILES}
-3. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录现有功能的路由和数据表，**以此了解项目现有结构**
+3. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，**以此了解项目现有结构**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.backend.md（使用 Write 工具）：
 
 ### 3. API 端点设计
 
-每个新增或修改的 Fastify 路由必须包含：
+每个新增或修改的路由必须包含：
 
-- 路径 + HTTP 方法（如 POST /api/memos）
-- 对应文件路径（如 apps/server/src/routes/memos.js）
-- 鉴权：preHandler: [requireAuth]（是否需要）
-- 请求验证：**完整的 JSON Schema 代码块**（body/querystring 每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代，参考 code-standards-backend.md 写法）
+- 路径 + HTTP 方法（如 POST /api/resources）
+- 对应文件路径（参考 CLAUDE.md 目录结构）
+- 鉴权：是否需要认证中间件（参考 CLAUDE.md 的认证方案）
+- 请求验证：**完整的请求 schema 代码块**（每个字段逐一定义 type/required/maxLength 等，禁止用省略号或文字描述替代，参考 CLAUDE.md 规范写法）
 - 成功响应示例（符合 CLAUDE.md 中定义的统一 API 响应格式，含完整 JSON 示例）
 - 失败响应清单（HTTP 状态码 + error 字段内容）
 
@@ -143,7 +143,7 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 ### 传给 frontend-developer subagent 的 prompt：
 
 ```
-你是 AIFlomo SDD Design 流程的 frontend-developer subagent。
+你是 SDD Design 流程的 frontend-developer subagent。
 
 ## 你的任务
 基于 architect 的数据模型，生成 §4 前端页面与组件设计，写入临时文件。
@@ -153,16 +153,17 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 ## 第一步 — 读取上下文（只读，不写代码）
 1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
 2. 读取每个 spec 文件：${SPEC_FILES}
-3. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，完整记录现有功能的组件和 Context，**以此了解项目现有结构**
+3. 读取 CLAUDE.md — 了解前端目录结构、状态管理方案、组件命名规范
+4. 读取 `specs/completed/` 下所有 `*-design.md` 文件 — 之前已生成的技术设计文档，**以此了解项目现有结构**
 
 ## 第二步 — 生成内容并写入临时文件
 将以下内容写入 ${DESIGN_FILE}.frontend.md（使用 Write 工具）：
 
 ### 4. 前端页面与组件
 
-- 需要新增的 Screen（文件路径在 apps/mobile/app/ 下，说明对应的 URL 路径）
-- 需要新增的组件（文件路径在 apps/mobile/components/，具名 export；每个组件必须列出：职责、props 列表（名称/类型/是否必填）、负责的用户交互）
-- Context/Reducer 变更（新增哪些 action type，影响哪个 Context 文件，state 结构如何变更）
+- 需要新增的 Screen/页面（文件路径参考 CLAUDE.md 目录结构，说明对应的 URL 路径）
+- 需要新增的组件（参考 CLAUDE.md 命名规范；每个组件必须列出：职责、props 列表（名称/类型/是否必填）、负责的用户交互）
+- 状态管理变更（新增哪些 action type，影响哪个 Context/Store 文件，state 结构如何变更）
 - 自定义 Hook 变更（如有，列出 hook 名称、入参、返回值）
 - 用户交互流程：用户看到什么 → 操作什么 → 系统如何响应
 - 调用的 API 端点（根据数据模型推断，遵循 REST 惯例，列出 method + path + 请求/响应关键字段）
@@ -206,16 +207,16 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 ```
 新增:
   后端:
-    - apps/server/src/routes/xxx.js       — [说明]
+    - [后端文件路径]       — [说明]
   前端:
-    - apps/mobile/app/(app)/xxx.jsx       — [说明]
-    - apps/mobile/components/XxxCard.jsx  — [说明]
+    - [前端页面路径]       — [说明]
+    - [前端组件路径]       — [说明]
 
 修改:
   后端:
-    - apps/server/src/db/schema.js        — [说明具体改动]
+    - [后端文件路径]       — [说明具体改动]
   前端:
-    - apps/mobile/context/XxxContext.jsx  — [说明具体改动]
+    - [状态管理文件路径]   — [说明具体改动]
 ```
 
 **§6 技术约束与风险**：
