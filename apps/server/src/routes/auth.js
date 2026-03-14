@@ -7,7 +7,7 @@
  *   POST /logout    — user logout (requires auth)
  *   GET  /me        — get current user info (requires auth)
  */
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { requireAuth } from '../lib/auth.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';

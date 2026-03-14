@@ -23,7 +23,7 @@ jest.mock('../src/db/index.js', () => ({
   },
 }));
 
-jest.mock('bcrypt', () => ({
+jest.mock('bcryptjs', () => ({
   hash: jest.fn(),
   compare: jest.fn(),
 }));
@@ -35,7 +35,7 @@ jest.mock('bcrypt', () => ({
 import Fastify from 'fastify';
 import authRoutes from '../src/routes/auth.js';
 import { db } from '../src/db/index.js';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // ---------------------------------------------------------------------------
 // Test helpers
