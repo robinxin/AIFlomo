@@ -1,6 +1,14 @@
-/tdd 读取 Spec 文件（`${SPEC_FILES}`）、技术方案文档（`${DESIGN_FILE}`），按 TDD 流程实现 Task ${TASK_INDEX} of ${TASK_COUNT}: **${TASK_NAME}**。
+/tdd 读取 Spec 文件（`${SPEC_FILES}`）、技术方案文档（`${DESIGN_FILE}`），按 TDD 流程依次实现以下所有任务。
 
-${TASK_DESC}
+## 前置检查（必须最先执行）
+
+在做任何实现之前，检查下方任务列表是否还存在未完成项（`- [ ]`）：
+- 若**所有任务均已标记为 `- [x]`**，输出 "✅ 所有任务已完成，跳过 codegen" 后立即结束，不执行任何代码生成。
+- 若存在任何 `- [ ]`，继续执行后续实现步骤。
+
+## 待实现任务列表
+
+${TASKS_CONTENT}
 
 ## 开发 Agent 路由
 
@@ -9,7 +17,6 @@ ${TASK_DESC}
 - 涉及的文件**仅包含**服务端代码（API 路由、数据库操作、服务层逻辑、后台任务等） → **backend-developer**
 - 涉及的文件**仅包含**客户端代码（UI 组件、页面、客户端状态管理、样式等） → **frontend-developer**
 - 同时涉及服务端和客户端代码 → **fullstack-developer**
-
 
 ## 严禁事项
 - **禁止向用户提问或等待确认** — 全程自主运行，遇到歧义以 spec 和技术方案为准
