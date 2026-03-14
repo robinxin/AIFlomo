@@ -23,6 +23,8 @@ export function AuthFormInput({
   maxLength,
   editable = true,
   testID,
+  toggleTestID,
+  errorTestID,
 }) {
   const [focused, setFocused] = useState(false);
   const [showText, setShowText] = useState(false);
@@ -71,7 +73,7 @@ export function AuthFormInput({
         />
         {secureTextEntry && (
           <TouchableOpacity
-            testID="toggle-secure-entry"
+            testID={toggleTestID || 'toggle-secure-entry'}
             onPress={toggleSecureEntry}
             style={styles.eyeButton}
           >
@@ -80,7 +82,7 @@ export function AuthFormInput({
         )}
       </View>
       {hasError && (
-        <Text testID="input-error" style={styles.errorText}>{error}</Text>
+        <Text testID={errorTestID || 'input-error'} style={styles.errorText}>{error}</Text>
       )}
     </View>
   );
