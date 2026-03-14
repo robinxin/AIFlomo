@@ -6,7 +6,7 @@
 set -e
 
 if find apps/tests/ -name "*.spec.js" -print -quit 2>/dev/null | grep -q .; then
-  pnpm test
+  DEBUG=pw:api pnpm test
 else
   echo "ℹ️ No test files in apps/tests/ — skipping"
 fi
