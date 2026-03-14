@@ -1,0 +1,19 @@
+{
+  "name": "aiflomo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AIFlomo — 复刻 Flomo 体验的全栈 MVP",
+  "scripts": {
+    "dev": "pnpm --filter @aiflomo/server dev",
+    "build": "pnpm --filter @aiflomo/server build",
+    "lint": "pnpm --filter @aiflomo/server lint",
+    "prod": "pnpm --filter @aiflomo/server prod",
+    "test:unit": "pnpm --filter @aiflomo/server test:unit",
+    "db:generate": "pnpm --filter @aiflomo/server db:generate",
+    "db:migrate": "pnpm --filter @aiflomo/server db:migrate",
+    "db:reset": "pnpm --filter @aiflomo/server db:reset"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  }
+}
