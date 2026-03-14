@@ -525,3 +525,134 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "❌ Max autofix rounds (${MAX_FIX_ROUNDS}) reached. Manual intervention required."
           exit 1
+
+  # ─── verify/run-e2e Job 级别失败（如安装步骤崩溃）→ 调用 autofix.yml，最多 5 次 ──
+  # 注意：此 job 仅处理 job 级别失败（result='failure'），
+  #       verify_passed=false 的情况已由上方 auto-fix job 处理
+  auto-fix-setup-failure:
+    needs: [verify, run-e2e]
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      (
+        needs.verify.result == 'failure' ||
+        needs.run-e2e.result == 'failure'
+      )
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+      actions: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MAX_FIX_ROUNDS: '5'
+
+    steps:
+      - name: Check max fix attempts
+        id: check-attempts
+        run: |
+          FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
+          if [ "$FIX_ATTEMPT" -ge "$MAX_FIX_ROUNDS" ]; then
+            echo "⚠️ 已达最大修复次数（${FIX_ATTEMPT}/${MAX_FIX_ROUNDS}），停止自动修复，请人工介入。"
+            echo "should_fix=false" >> "$GITHUB_OUTPUT"
+          else
+            NEXT=$((FIX_ATTEMPT + 1))
+            echo "🔄 Job 级别故障 Autofix 第 ${NEXT}/${MAX_FIX_ROUNDS} 次，branch: ${{ github.ref_name }}"
+            echo "should_fix=true"      >> "$GITHUB_OUTPUT"
+            echo "next_attempt=${NEXT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 确定失败的 job 并组装错误上下文
+      - name: Build error context
+        id: build-context
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        run: |
+          VERIFY_RESULT="${{ needs.verify.result }}"
+          E2E_RESULT="${{ needs.run-e2e.result }}"
+
+          if [ "$VERIFY_RESULT" = "failure" ]; then
+            FAILED_JOB="verify"
+          else
+            FAILED_JOB="run-e2e"
+          fi
+          echo "failed_job=${FAILED_JOB}" >> "$GITHUB_OUTPUT"
+
+          DELIM="CTX_$(openssl rand -hex 8)"
+          {
+            echo "error_msg<<${DELIM}"
+            printf 'CI Job "%s" 在安装或初始化阶段失败（job-level failure）。\n' "$FAILED_JOB"
+            printf '可能原因：\n'
+            printf '1. package.json 中缺少或版本不兼容的依赖\n'
+            printf '2. scripts/ci/ 中的初始化脚本存在问题\n'
+            printf '3. 构建配置文件错误（vite.config.js、jest.config.js 等）\n'
+            printf '请分析代码并修复根本原因，使 install/build 步骤能正常通过。\n'
+            echo "${DELIM}"
+          } >> "$GITHUB_OUTPUT"
+
+      # 通过 gh workflow run 触发独立的 autofix.yml
+      - name: Dispatch autofix workflow
+        if: steps.check-attempts.outputs.should_fix == 'true'
+        env:
+          ERROR_MSG:   ${{ steps.build-context.outputs.error_msg }}
+          TEST_ERRORS: ${{ needs.run-e2e.outputs.test_errors }}
+        run: |
+          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
+          BRANCH="${{ github.ref_name }}"
+          FAILED_JOB="${{ steps.build-context.outputs.failed_job }}"
+
+          gh workflow run autofix.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$BRANCH" \
+            --field branch="$BRANCH" \
+            --field quality_errors="$ERROR_MSG" \
+            --field fix_attempt="$NEXT" \
+            --field extra_feedback="Job-level failure in '${FAILED_JOB}' — likely install or setup step crashed. Analyze and fix the root cause." \
+            --field test_errors="${TEST_ERRORS:-}"
+
+          echo "✅ Autofix workflow dispatched for '${FAILED_JOB}' job failure (attempt ${NEXT}/${MAX_FIX_ROUNDS})"
+
+      - name: Write step summary
+        if: always()
+        run: |
+          FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
+          SHOULD_FIX="${{ steps.check-attempts.outputs.should_fix }}"
+          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
+          {
+            echo "## 🔧 Job 级别失败 Autofix — 第 $((FIX_ATTEMPT + 1)) 次"
+            echo ""
+            echo "- **分支**: \`${{ github.ref_name }}\`"
+            echo "- **verify job**: \`${{ needs.verify.result }}\`"
+            echo "- **run-e2e job**: \`${{ needs.run-e2e.result }}\`"
+            if [ "$SHOULD_FIX" = "true" ]; then
+              echo "- **状态**: 🔄 已触发 autofix.yml（第 ${NEXT}/${MAX_FIX_ROUNDS} 次）"
+            else
+              echo "- **状态**: ❌ 已达最大修复次数（${FIX_ATTEMPT}/${MAX_FIX_ROUNDS}），请人工介入"
+            fi
+            echo ""
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 达到上限：issue comment + 报错退出
+      - name: Report failure — max attempts reached
+        if: steps.check-attempts.outputs.should_fix != 'true'
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          ISSUE_NUMBER=$(echo "$BRANCH" | sed 's|.*\/\([0-9]*\)-.*|\1|')
+          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$BRANCH" ]; then
+            gh issue comment "$ISSUE_NUMBER" \
+              --body "❌ **Job 级别故障自动修复已达到上限（${MAX_FIX_ROUNDS} 次），Quality Gate 仍未通过，请人工介入。**" \
+              --repo "${{ github.repository }}" || true
+          fi
+          {
+            echo "## ❌ Quality Gate — Job 级别故障已达最大修复次数"
+            echo ""
+            echo "已尝试 **${MAX_FIX_ROUNDS}** 次调用 autofix.yml 修复，仍未通过，请人工介入。"
+            echo ""
+            echo "- **分支**: \`${BRANCH}\`"
+            echo ""
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "❌ Max autofix rounds (${MAX_FIX_ROUNDS}) reached for job-level failure. Manual intervention required."
+          exit 1
