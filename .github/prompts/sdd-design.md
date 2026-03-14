@@ -6,7 +6,7 @@
   用途: 使用三个 subagent 分阶段生成技术设计文档
         architect 先运行（定义数据模型），
         backend-developer + frontend-developer 并行运行（分别设计 API 和前端），
-        Orchestrator 最终合并输出完整文档。
+        subagent 最终合并输出完整文档。
   调用方: claude-SDD.yml → job: sdd-plan
   环境要求: 无特殊要求（不依赖实验性功能）
 
@@ -14,7 +14,7 @@
     Phase 1（顺序）: architect subagent  → 读 spec + 已有设计文档 → 输出 §1 功能概述 + §2 数据模型
     Phase 2（并行）: backend-developer   → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §3 API 端点设计
                     frontend-developer  → 读 architect.md（§1 §2）+ spec + 已有设计文档 → 输出 §4 前端页面与组件
-    Orchestrator   : 合并 §5 改动文件清单 + §6 技术约束 + §7 不包含 → 写入 ${DESIGN_FILE}
+    subagent   : 合并 §5 改动文件清单 + §6 技术约束 + §7 不包含 → 写入 ${DESIGN_FILE}
     注：代码库无需任何 subagent 直接读取，已有设计文档（specs/completed/*-design.md）已完整记录现有功能边界
     注：spec 和已有设计文档三个 subagent 各自直接读取，了解项目现有结构，无需经过 architect 二次提炼
 
@@ -170,23 +170,22 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 
 ---
 
-## 第三步 — Phase 3：派生 subagent
+## 第三步 — Phase 3：派生 merger subagent
 
-使用 `Task` 工具派生 subagent，**等待其返回结果后再继续**。
-
-Task 返回后输出：`[SDD] Phase 3 开始 — subagent`
+使用 `Task` 工具派生 merger subagent，**等待其返回结果后再继续**。
 
 ⚠️ **严禁**：必须等Phase1、Phase2均完成后，才可以调用。
 
-### 传给 frontend-developer subagent 的 prompt：
+Task 返回后输出：`[SDD] Phase 3 开始 — merger subagent`
+
+### 传给 merger subagent 的 prompt：
 
 ```
-你是 SDD Design 流程的 subagent。
+你是 SDD Design 流程的 **merger（合并者）subagent**。
 
 ## 你的任务
-基于 architect 的数据模型，生成 §4 前端页面与组件设计，写入临时文件。
-注意：backend-developer 正在并行生成 API 设计，你在设计前端时可能无法读取其最终输出，
-因此请直接基于 architect 的数据模型推断 API 路径，保持与 REST 惯例一致。
+读取 architect、backend-developer、frontend-developer 三个 subagent 的产物，
+做一致性校验，生成 §5/§6/§7，合并写入最终设计文档 ${DESIGN_FILE}。
 
 ## 第一步 — 读取上下文（只读，不写代码）
 1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
