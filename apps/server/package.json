@@ -1,0 +1,38 @@
+{
+  "name": "@aiflomo/server",
+  "version": "1.0.0",
+  "description": "AIFlomo backend server — Fastify + Drizzle ORM + SQLite",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "build": "node --experimental-vm-modules src/index.js --build 2>/dev/null || echo 'No build step required for Node.js ESM'",
+    "lint": "eslint src/ tests/",
+    "prod": "pm2 start src/index.js --name aiflomo-server",
+    "db:generate": "drizzle-kit generate --config drizzle.config.cjs",
+    "db:migrate": "node src/db/migrate.js",
+    "db:reset": "node src/db/reset.js",
+    "test:unit": "NODE_OPTIONS='--experimental-vm-modules' jest",
+    "test:unit:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
+    "test:unit:cov": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/session": "^11.1.1",
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.9.1",
+    "connect-sqlite3": "^0.9.15",
+    "drizzle-orm": "^0.38.4",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^5.0.1"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.25.0",
+    "@eslint/js": "^10.0.1",
+    "@jest/globals": "^30.3.0",
+    "drizzle-kit": "^0.30.4",
+    "eslint": "^10.0.3",
+    "jest": "^30.0.0-alpha.0"
+  }
+}
