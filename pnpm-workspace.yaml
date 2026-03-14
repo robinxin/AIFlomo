@@ -2,7 +2,4 @@ packages:
   - 'apps/server'
   - 'apps/mobile'
 allowBuilds:
-  bcrypt: false
-  better-sqlite3: false
-  esbuild: false
-  sqlite3: false
+  better-sqlite3: true
