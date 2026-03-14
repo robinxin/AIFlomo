@@ -163,6 +163,9 @@ jobs:
           bash scripts/ci/db-migrate.sh 2>&1 | tee /tmp/db-migrate-output.txt
           exit ${PIPESTATUS[0]}
 
+      - name: Build frontend
+        run: bash scripts/ci/build-frontend.sh
+
       - name: Start services for testing
         run: |
           # 后端：dev server（node --watch，文件变更自动重载）
