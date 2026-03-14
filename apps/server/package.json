@@ -1,0 +1,33 @@
+{
+  "name": "@aiflomo/server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AIFlomo backend server",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "build": "echo 'No build step needed for JavaScript'",
+    "lint": "eslint src/ tests/",
+    "prod": "pm2 start src/index.js --name aiflomo-server",
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:unit:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:unit:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node src/db/migrate.js",
+    "db:reset": "rm -f aiflomo.db && pnpm db:migrate"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0",
+    "drizzle-orm": "^0.37.0",
+    "better-sqlite3": "^11.7.0",
+    "bcrypt": "^5.1.1",
+    "@fastify/session": "^11.0.1",
+    "@fastify/cookie": "^11.0.1",
+    "@fastify/cors": "^10.0.1"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.30.0",
+    "jest": "^30.0.0-alpha.0",
+    "@babel/preset-env": "^7.25.0",
+    "eslint": "^9.17.0"
+  }
+}

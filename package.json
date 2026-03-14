@@ -1,0 +1,19 @@
+{
+  "name": "aiflomo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @aiflomo/server dev",
+    "build": "pnpm --filter @aiflomo/server build",
+    "lint": "pnpm --filter @aiflomo/server lint",
+    "test:unit": "pnpm --filter @aiflomo/server test:unit",
+    "test": "pnpm test:e2e",
+    "test:e2e": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  }
+}
