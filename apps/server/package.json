@@ -14,7 +14,6 @@
     "test:unit:cov": "jest --coverage"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.0.2",
     "@fastify/session": "^11.1.1",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.0.0",
