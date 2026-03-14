@@ -18,9 +18,11 @@ on:
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SDD Pipeline                                                           ║
-# ║  Detect ─┬─ Plan → 🔒Design → Task → 🔒Task → Codegen                  ║
-# ║           └─ Testcase → 🔒Testcase → Testcase Code → 🔒Testcase Code    ║
-# ║  两条线完成后 → 触发 Quality Gate Pipeline                                ║
+# ║  Detect → Plan → 🔒Design ─┬─ Task → 🔒Task → Codegen ─┐              ║
+# ║                             └─ Testcase → 🔒Testcase ───┘              ║
+# ║                             Codegen + Testcase-gate 完成后              ║
+# ║                             → Testcase Code → 🔒Testcase Code           ║
+# ║                             → 触发 Quality Gate Pipeline                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 jobs:
@@ -568,7 +570,7 @@ jobs:
 
   # ─── Testcase 可执行代码 ────────────────────────────────────────
   testcase-code:
-    needs: [sdd-detect, testcase, testcase-gate]
+    needs: [sdd-detect, testcase, testcase-gate, sdd-codegen]
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
