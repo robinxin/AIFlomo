@@ -43,7 +43,11 @@ export default function LoginScreen() {
       router.replace('/');
     } catch (err) {
       const message = err?.message || '';
-      if (message.includes('Network') || message.includes('network') || message.includes('Failed to fetch')) {
+      if (
+        message.includes('Network') ||
+        message.includes('network') ||
+        message.includes('Failed to fetch')
+      ) {
         setFormError('网络连接失败，请稍后重试');
       } else if (message.includes('邮箱或密码错误')) {
         setFormError('邮箱或密码错误，请重试');
@@ -72,7 +76,7 @@ export default function LoginScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>登录</Text>
 
-      <AuthFormError message={formError} testID="form-error" />
+      <AuthFormError message={formError} testID="login-form-error" />
 
       <AuthFormInput
         label="邮箱"
@@ -80,7 +84,7 @@ export default function LoginScreen() {
         onChangeText={setEmail}
         keyboardType="email-address"
         editable={!loading}
-        testID="input-email"
+        testID="login-email"
       />
 
       <AuthFormInput
@@ -89,8 +93,8 @@ export default function LoginScreen() {
         onChangeText={setPassword}
         secureTextEntry
         editable={!loading}
-        testID="input-password"
-        toggleTestID="btn-toggle-password"
+        testID="login-password"
+        toggleTestID="login-toggle-password"
       />
 
       <AuthSubmitButton
@@ -98,13 +102,13 @@ export default function LoginScreen() {
         loadingLabel="登录中..."
         loading={loading}
         onPress={handleSubmit}
-        testID="btn-submit"
+        testID="login-submit"
       />
 
       <TouchableOpacity
         onPress={handleGoRegister}
         style={styles.linkButton}
-        testID="link-to-register"
+        testID="login-go-register"
       >
         <Text style={styles.linkText}>没有账号？立即注册</Text>
       </TouchableOpacity>

@@ -46,7 +46,6 @@ export default defineConfig({
         'tests/',
         '__mocks__/',
         'vitest.config.js',
-        'lib/api-client.js',
       ],
     },
   },

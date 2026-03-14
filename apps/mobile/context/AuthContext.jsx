@@ -139,16 +139,20 @@ export function AuthProvider({ children }) {
    * Throws an Error on network or server failure.
    */
   async function logout() {
-    const response = await fetch(`${BASE_URL}/api/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    if (!response.ok) {
-      const json = await response.json();
-      throw new Error(json.error || json.message || '登出失败');
+    try {
+      const response = await fetch(`${BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const json = await response.json();
+        throw new Error(json.error || json.message || '登出失败');
+      }
+      dispatch({ type: 'AUTH_LOGOUT' });
+    } catch (err) {
+      throw err;
     }
-    dispatch({ type: 'AUTH_LOGOUT' });
   }
 
   const value = {

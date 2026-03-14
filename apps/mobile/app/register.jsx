@@ -110,11 +110,15 @@ export default function RegisterScreen() {
     setFormError('');
 
     try {
-      await register(email, nickname.trim(), password, true);
+      await register(email, nickname, password, true);
       router.replace('/');
     } catch (err) {
       const message = err?.message || '';
-      if (message.includes('Network') || message.includes('network') || message.includes('Failed to fetch')) {
+      if (
+        message.includes('Network') ||
+        message.includes('network') ||
+        message.includes('Failed to fetch')
+      ) {
         setFormError('网络连接失败，请稍后重试');
       } else {
         setFormError(message || '注册失败，请稍后重试');
@@ -146,7 +150,7 @@ export default function RegisterScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>创建账号</Text>
 
-      <AuthFormError message={formError} testID="form-error" />
+      <AuthFormError message={formError} testID="register-form-error" />
 
       <AuthFormInput
         label="邮箱"
@@ -156,8 +160,8 @@ export default function RegisterScreen() {
         error={emailError}
         keyboardType="email-address"
         editable={!loading}
-        testID="input-email"
-        errorTestID="error-email"
+        testID="register-email"
+        errorTestID="register-email-error"
       />
 
       <AuthFormInput
@@ -168,8 +172,8 @@ export default function RegisterScreen() {
         error={nicknameError}
         maxLength={20}
         editable={!loading}
-        testID="input-nickname"
-        errorTestID="error-nickname"
+        testID="register-nickname"
+        errorTestID="register-nickname-error"
       />
 
       <AuthFormInput
@@ -181,17 +185,17 @@ export default function RegisterScreen() {
         secureTextEntry
         maxLength={20}
         editable={!loading}
-        testID="input-password"
-        toggleTestID="btn-toggle-password"
-        errorTestID="error-password"
+        testID="register-password"
+        toggleTestID="register-toggle-password"
+        errorTestID="register-password-error"
       />
 
       <PrivacyCheckbox
         checked={privacyChecked}
         onChange={setPrivacyChecked}
         error={privacyError}
-        testID="checkbox-privacy"
-        errorTestID="error-privacy"
+        testID="register-privacy-checkbox"
+        errorTestID="register-privacy-error"
       />
 
       <AuthSubmitButton
@@ -199,13 +203,13 @@ export default function RegisterScreen() {
         loadingLabel="注册中..."
         loading={loading}
         onPress={handleSubmit}
-        testID="btn-submit"
+        testID="register-submit"
       />
 
       <TouchableOpacity
         onPress={handleGoLogin}
         style={styles.linkButton}
-        testID="link-to-login"
+        testID="register-go-login"
       >
         <Text style={styles.linkText}>已有账号？返回登录</Text>
       </TouchableOpacity>
