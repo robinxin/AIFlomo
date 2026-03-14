@@ -695,6 +695,7 @@ jobs:
   # ─── 触发 Quality Gate（两条线全部完成后）─────────────────────
   trigger-quality-gate:
     needs: [sdd-codegen, testcase-code-gate]
+    if: needs.sdd-codegen.result == 'success' && needs.testcase-code-gate.result == 'success'
     runs-on: [self-hosted, ai-runner]
     permissions:
       actions: write
