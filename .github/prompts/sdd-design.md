@@ -170,31 +170,38 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 
 ---
 
-## 第三步 — Orchestrator 合并生成最终文档
+## 第三步 — Phase 3：派生 subagent
 
-输出：`[SDD] Phase 3 开始 — 读取临时文件并合并`
+使用 `Task` 工具派生 subagent，**等待其返回结果后再继续**。
 
-所有 subagent 均完成后，按以下步骤执行：
+Task 返回后输出：`[SDD] Phase 3 开始 — subagent`
 
-### 4.1 读取临时文件
+⚠️ **严禁**：必须等Phase1、Phase2均完成后，才可以调用。
 
-输出：`[SDD] 读取 architect.md / backend.md / frontend.md`
+### 传给 frontend-developer subagent 的 prompt：
 
-使用 Read 工具逐一读取三个临时文件的**完整内容**：
-- `${DESIGN_FILE}.architect.md`（含 §1 功能概述 + §2 数据模型）
-- `${DESIGN_FILE}.backend.md`（含 §3）
-- `${DESIGN_FILE}.frontend.md`（含 §4）
+```
+你是 SDD Design 流程的 subagent。
 
-### 4.2 一致性校验
+## 你的任务
+基于 architect 的数据模型，生成 §4 前端页面与组件设计，写入临时文件。
+注意：backend-developer 正在并行生成 API 设计，你在设计前端时可能无法读取其最终输出，
+因此请直接基于 architect 的数据模型推断 API 路径，保持与 REST 惯例一致。
 
-输出：`[SDD] 校验 backend 与 frontend 的 API 路径一致性`
+## 第一步 — 读取上下文（只读，不写代码）
+1. 读取 ${DESIGN_FILE}.architect.md — 含功能概述（§1）+ 数据模型（§2），禁止自行探索代码库
+2. 读取 ${DESIGN_FILE}.backend.md（含 §3）
+3. 读取 ${DESIGN_FILE}.frontend.md（含 §4）
+4. 读取每个 spec 文件：${SPEC_FILES}
+
+## 第二步 - 一致性校验
 
 比对 §3（backend）与 §4（frontend）中引用的 API 路径是否一致。
 若有出入，以 §3 为准，**记录差异列表**，将在写入时仅于 §4 对应位置追加一行备注（`⚠️ API 路径已更正，以 §3 为准：xxx`），不得修改 §3 或 §4 的任何其他内容。
 
-### 4.3 生成 §5/§6/§7
+## 第三步 - 生成 §5/§6/§7
 
-基于对四个章节的完整理解，Orchestrator 撰写以下三个章节：
+基于对四个章节的完整理解，撰写以下三个章节：
 
 **§5 改动文件清单**（综合 §3 API 文件路径 + §4 前端文件路径，必须与两章节完全一致）：
 ```
@@ -221,15 +228,9 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 **§7 不包含（范围边界）**：
 明确列出本次设计不涉及的功能（至少 3 条），防止实现阶段范围蔓延。
 
-### 4.4 写入最终文档
+## 第四步 - 写入最终文档
 
-输出：`[SDD] 写入最终文档 ${DESIGN_FILE}`
-
-使用 Write 工具将完整文档写入 `${DESIGN_FILE}`。
-
-**⚠️ 写入规则（严格执行）：**
-- **§1–§4 必须原样保留**：将 Read 工具读取到的 architect.md / backend.md / frontend.md 原始文本**逐字写入**，禁止改写、禁止总结、禁止省略任何字段、代码块或列表项
-- **§5/§6/§7 使用 4.3 中生成的内容**（这是唯一由 Orchestrator 创作的部分）
+将以下内容写入 ${DESIGN_FILE}（使用 Write 工具）：
 
 文档格式：
 
@@ -254,8 +255,6 @@ ls "${DESIGN_FILE}.architect.md" 2>/dev/null && echo "[SDD] Phase 1 OK: architec
 
 [§7 不包含]
 ```
-
-写入完成后，输出：`[SDD] ✅ 最终文档写入完成`
 
 ---
 
