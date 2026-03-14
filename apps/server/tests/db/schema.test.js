@@ -25,13 +25,10 @@ describe('Drizzle Schema - users table', () => {
   });
 
   describe('users table column definitions', () => {
-    let columns;
-
     beforeAll(() => {
       // Drizzle tables expose column definitions via the table object's columns
       // The internal structure uses Symbol keys but columns are also accessible
       // via the table's own enumerable properties or via getTableColumns helper
-      columns = users;
     });
 
     it('should have id column defined', () => {

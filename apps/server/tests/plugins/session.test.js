@@ -455,7 +455,6 @@ describe('sessionPlugin', () => {
 
       // inject sends HTTPS-like request with x-forwarded-proto if trustProxy is set
       // For this test we verify the plugin config uses secure=true when NODE_ENV=production
-      const store = app.sessionStore;
       // The plugin should configure secure based on NODE_ENV
       // We verify via the session options stored on the plugin
       expect(process.env.NODE_ENV).toBe('production');

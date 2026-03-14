@@ -17,18 +17,19 @@
     "test:unit:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
   },
   "dependencies": {
-    "drizzle-orm": "^0.38.0",
-    "better-sqlite3": "^11.0.0",
-    "fastify": "^5.0.0",
-    "fastify-plugin": "^5.0.0",
-    "bcrypt": "^5.1.1",
-    "@fastify/session": "^11.0.0",
     "@fastify/cookie": "^11.0.0",
-    "@fastify/cors": "^10.0.0"
+    "@fastify/cors": "^10.0.0",
+    "@fastify/session": "^11.0.0",
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.0.0",
+    "drizzle-orm": "^0.38.0",
+    "fastify": "^5.0.0",
+    "fastify-plugin": "^5.0.0"
   },
   "devDependencies": {
-    "jest": "^29.0.0",
     "@babel/preset-env": "^7.25.0",
-    "drizzle-kit": "^0.30.0"
+    "drizzle-kit": "^0.30.0",
+    "eslint": "^10.0.3",
+    "jest": "^29.0.0"
   }
 }
