@@ -5,12 +5,21 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
+/**
+ * 生成唯一邮箱，避免并发测试中的邮箱冲突（多浏览器并行 + 多次运行）
+ */
+function uniqueEmail(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@example.com`;
+}
+
 test.describe('用户登录功能 - API 正常场景', () => {
   test('有效邮箱和密码,用户登录成功', async ({ request }) => {
+    const email = uniqueEmail('loginapitest');
+
     // 前置条件：先注册一个用户
     await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'loginapitest@example.com',
+        email,
         nickname: '登录API测试',
         password: 'password123',
         agreedToPrivacy: true,
@@ -20,7 +29,7 @@ test.describe('用户登录功能 - API 正常场景', () => {
     // 登录
     const response = await request.post(`${BASE_URL}/api/auth/login`, {
       data: {
-        email: 'loginapitest@example.com',
+        email,
         password: 'password123',
       },
     });
@@ -29,7 +38,7 @@ test.describe('用户登录功能 - API 正常场景', () => {
 
     const body = await response.json();
     expect(body.data).toHaveProperty('id');
-    expect(body.data.email).toBe('loginapitest@example.com');
+    expect(body.data.email).toBe(email);
     expect(body.data.nickname).toBe('登录API测试');
     expect(body.data).toHaveProperty('createdAt');
     expect(body.message).toBe('登录成功');
@@ -89,10 +98,12 @@ test.describe('用户登录功能 - API 异常场景', () => {
   });
 
   test('密码错误,返回 401 且不泄露具体原因', async ({ request }) => {
+    const email = uniqueEmail('wrongpw');
+
     // 前置条件：先注册一个用户
     await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'wrongpw@example.com',
+        email,
         nickname: '错误密码',
         password: 'password123',
         agreedToPrivacy: true,
@@ -102,7 +113,7 @@ test.describe('用户登录功能 - API 异常场景', () => {
     // 使用错误密码登录
     const response = await request.post(`${BASE_URL}/api/auth/login`, {
       data: {
-        email: 'wrongpw@example.com',
+        email,
         password: 'wrongpassword',
       },
     });

@@ -11,11 +11,22 @@
  * acts as the test-environment sentinel.
  */
 import Fastify from 'fastify';
+import { mkdirSync } from 'fs';
+import { dirname } from 'path';
 import sessionPlugin from './plugins/session.js';
 import authRoutes from './routes/auth.js';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Ensure the database directory exists before any DB connection is attempted.
+// better-sqlite3 does not create missing parent directories automatically.
+const DB_PATH = process.env.DB_PATH || './data/aiflomo.db';
+try {
+  mkdirSync(dirname(DB_PATH), { recursive: true });
+} catch (_) {
+  // Ignore errors (e.g. directory already exists or permission issues caught at runtime)
+}
 
 /**
  * buildApp — constructs and configures the Fastify instance.

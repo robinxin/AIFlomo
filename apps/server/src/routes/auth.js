@@ -66,6 +66,53 @@ const loginBodySchema = {
 };
 
 // ---------------------------------------------------------------------------
+// Register validation error message mapper
+// Maps AJV error instancePath + keyword to user-friendly Chinese messages.
+// ---------------------------------------------------------------------------
+
+function getRegisterValidationError(validationErrors) {
+  if (!validationErrors || validationErrors.length === 0) {
+    return '请求参数格式错误';
+  }
+  for (const err of validationErrors) {
+    const path = err.instancePath || '';
+    const keyword = err.keyword;
+    const params = err.params || {};
+
+    // Missing required fields
+    if (keyword === 'required') {
+      return '请求参数格式错误';
+    }
+
+    // email field
+    if (path === '/email') {
+      return '请输入有效的邮箱地址';
+    }
+
+    // nickname field — minLength, maxLength, pattern
+    if (path === '/nickname') {
+      return '昵称长度为 2-20 字符';
+    }
+
+    // password field — minLength, maxLength
+    if (path === '/password') {
+      return '密码长度为 8-20 字符';
+    }
+
+    // agreedToPrivacy field — enum (must be true)
+    if (path === '/agreedToPrivacy') {
+      return '请阅读并同意隐私协议';
+    }
+
+    // additionalProperties
+    if (keyword === 'additionalProperties') {
+      return '请求参数格式错误';
+    }
+  }
+  return '请求参数格式错误';
+}
+
+// ---------------------------------------------------------------------------
 // requireAuth variant for /me — returns '获取用户信息失败' as message
 // ---------------------------------------------------------------------------
 
@@ -81,10 +128,35 @@ function requireAuthForMe(request, reply, done) {
 }
 
 // ---------------------------------------------------------------------------
+// requireAuth variant for /logout — returns '登出失败' as message
+// ---------------------------------------------------------------------------
+
+function requireAuthForLogout(request, reply, done) {
+  if (!request.session || !request.session.userId) {
+    return reply.code(401).send({
+      data: null,
+      error: '请先登录',
+      message: '登出失败',
+    });
+  }
+  done();
+}
+
+// ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
 async function registerHandler(request, reply) {
+  // Handle schema validation errors with field-specific messages
+  if (request.validationError) {
+    const errorMsg = getRegisterValidationError(request.validationError.validation);
+    return reply.code(400).send({
+      data: null,
+      error: errorMsg,
+      message: '注册失败',
+    });
+  }
+
   const { email, nickname, password } = request.body;
 
   try {
@@ -142,6 +214,15 @@ async function registerHandler(request, reply) {
 }
 
 async function loginHandler(request, reply) {
+  // Handle schema validation errors
+  if (request.validationError) {
+    return reply.code(400).send({
+      data: null,
+      error: '请求参数格式错误',
+      message: '登录失败',
+    });
+  }
+
   const { email, password } = request.body;
 
   try {
@@ -150,7 +231,7 @@ async function loginHandler(request, reply) {
     if (rows.length === 0) {
       return reply.code(401).send({
         data: null,
-        error: '登录信息有误，请重试',
+        error: '邮箱或密码错误，请重试',
         message: '登录失败',
       });
     }
@@ -162,7 +243,7 @@ async function loginHandler(request, reply) {
     if (!match) {
       return reply.code(401).send({
         data: null,
-        error: '登录信息有误，请重试',
+        error: '邮箱或密码错误，请重试',
         message: '登录失败',
       });
     }
@@ -197,6 +278,13 @@ async function logoutHandler(request, reply) {
         else resolve();
       });
     });
+
+    // Explicitly clear the session cookie so the browser removes it.
+    // @fastify/cookie's clearCookie sets Max-Age=0 and Expires to the past.
+    // Guard against test environments where @fastify/cookie is not registered.
+    if (typeof reply.clearCookie === 'function') {
+      reply.clearCookie('connect.sid', { path: '/' });
+    }
 
     return reply.code(200).send({
       data: null,
@@ -247,53 +335,20 @@ async function getMeHandler(request, reply) {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Allowed fields for each endpoint (for manual additionalProperties check)
 // ---------------------------------------------------------------------------
 
 const REGISTER_ALLOWED_FIELDS = new Set(['email', 'nickname', 'password', 'agreedToPrivacy']);
 const LOGIN_ALLOWED_FIELDS = new Set(['email', 'password']);
 
-async function authRoutes(fastify) {
-  // Custom validation error handler: convert Fastify's default format to
-  // project standard { data: null, error: string, message: string }
-  fastify.setErrorHandler((error, request, reply) => {
-    // Validation errors from AJV — set by Fastify on schema validation failure
-    // In Fastify 5, error.validation is an array of AJV error objects.
-    // additionalProperties violations also set this property.
-    const isValidationError = error.validation != null || error.validationContext != null;
-    if (isValidationError) {
-      return reply.code(400).send({
-        data: null,
-        error: error.message || '请求参数格式错误',
-        message: '请求参数格式错误',
-      });
-    }
-    // Client errors (4xx) — passed through with data: null wrapper
-    /* istanbul ignore next */
-    if (error.statusCode >= 400 && error.statusCode < 500) {
-      return reply.code(error.statusCode).send({
-        data: null,
-        error: error.message || '请求错误',
-        message: '请求错误',
-      });
-    }
-    // Server errors — defensive fallback for unhandled route errors
-    /* istanbul ignore next */
-    request.log.error(error);
-    /* istanbul ignore next */
-    reply.code(500).send({
-      data: null,
-      error: '服务器内部错误，请稍后重试',
-      message: '请求失败',
-    });
-  });
+// ---------------------------------------------------------------------------
+// Plugin
+// ---------------------------------------------------------------------------
 
+async function authRoutes(fastify) {
   fastify.post('/register', {
     schema: { body: registerBodySchema },
+    attachValidation: true,
     preValidation: async (request, reply) => {
       // Enforce additionalProperties: false manually since Fastify 5 defaults to removeAdditional: true
       if (request.body && typeof request.body === 'object') {
@@ -301,8 +356,8 @@ async function authRoutes(fastify) {
         if (extraFields.length > 0) {
           return reply.code(400).send({
             data: null,
-            error: `请求包含未允许的字段: ${extraFields.join(', ')}`,
-            message: '请求参数格式错误',
+            error: '请求参数格式错误',
+            message: '注册失败',
           });
         }
       }
@@ -312,6 +367,7 @@ async function authRoutes(fastify) {
 
   fastify.post('/login', {
     schema: { body: loginBodySchema },
+    attachValidation: true,
     preValidation: async (request, reply) => {
       // Enforce additionalProperties: false manually since Fastify 5 defaults to removeAdditional: true
       if (request.body && typeof request.body === 'object') {
@@ -319,8 +375,8 @@ async function authRoutes(fastify) {
         if (extraFields.length > 0) {
           return reply.code(400).send({
             data: null,
-            error: `请求包含未允许的字段: ${extraFields.join(', ')}`,
-            message: '请求参数格式错误',
+            error: '请求参数格式错误',
+            message: '登录失败',
           });
         }
       }
@@ -329,7 +385,7 @@ async function authRoutes(fastify) {
   });
 
   fastify.post('/logout', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuthForLogout],
     handler: logoutHandler,
   });
 

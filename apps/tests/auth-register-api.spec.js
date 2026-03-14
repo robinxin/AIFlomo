@@ -5,11 +5,19 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
+/**
+ * 生成唯一邮箱，避免并发测试中的邮箱冲突（多浏览器并行 + 多次运行）
+ */
+function uniqueEmail(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@example.com`;
+}
+
 test.describe('用户注册功能 - API 正常场景', () => {
   test('有效邮箱、昵称、密码和隐私协议同意,用户注册成功', async ({ request }) => {
+    const email = uniqueEmail('newuser');
     const response = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'newuser@example.com',
+        email,
         nickname: '小明',
         password: 'password123',
         agreedToPrivacy: true,
@@ -22,7 +30,7 @@ test.describe('用户注册功能 - API 正常场景', () => {
     // 验证响应体
     const body = await response.json();
     expect(body.data).toHaveProperty('id');
-    expect(body.data.email).toBe('newuser@example.com');
+    expect(body.data.email).toBe(email);
     expect(body.data.nickname).toBe('小明');
     expect(body.data).toHaveProperty('createdAt');
     expect(body.message).toBe('注册成功');
@@ -34,9 +42,10 @@ test.describe('用户注册功能 - API 正常场景', () => {
   });
 
   test('昵称包含前后空格时,后端 trim 后存储', async ({ request }) => {
+    const email = uniqueEmail('trimtest');
     const response = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'trimtest@example.com',
+        email,
         nickname: '  小红  ',
         password: 'password123',
         agreedToPrivacy: true,
@@ -50,9 +59,10 @@ test.describe('用户注册功能 - API 正常场景', () => {
   });
 
   test('昵称为 2 字符（边界值）,注册成功', async ({ request }) => {
+    const email = uniqueEmail('min');
     const response = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'min@example.com',
+        email,
         nickname: 'ab',
         password: 'password123',
         agreedToPrivacy: true,
@@ -66,9 +76,10 @@ test.describe('用户注册功能 - API 正常场景', () => {
   });
 
   test('昵称为 20 字符（边界值）,注册成功', async ({ request }) => {
+    const email = uniqueEmail('max');
     const response = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'max@example.com',
+        email,
         nickname: '12345678901234567890',
         password: 'password123',
         agreedToPrivacy: true,
@@ -82,9 +93,10 @@ test.describe('用户注册功能 - API 正常场景', () => {
   });
 
   test('密码为 8 字符（边界值）,注册成功', async ({ request }) => {
+    const email = uniqueEmail('minpw');
     const response = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'minpw@example.com',
+        email,
         nickname: '测试',
         password: 'abcd1234',
         agreedToPrivacy: true,
@@ -95,9 +107,10 @@ test.describe('用户注册功能 - API 正常场景', () => {
   });
 
   test('密码为 20 字符（边界值）,注册成功', async ({ request }) => {
+    const email = uniqueEmail('maxpw');
     const response = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'maxpw@example.com',
+        email,
         nickname: '测试',
         password: '12345678901234567890',
         agreedToPrivacy: true,
@@ -304,11 +317,11 @@ test.describe('用户注册功能 - API 异常场景', () => {
   });
 
   test('邮箱已被注册,返回 409', async ({ request }) => {
-    // 前置条件：数据库中已存在 existing@example.com 用户
-    // 第一次注册
+    // 使用唯一邮箱作为前置条件：第一次注册
+    const email = uniqueEmail('existing');
     await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'existing@example.com',
+        email,
         nickname: '已存在',
         password: 'password123',
         agreedToPrivacy: true,
@@ -318,7 +331,7 @@ test.describe('用户注册功能 - API 异常场景', () => {
     // 第二次注册（相同邮箱）
     const response = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'existing@example.com',
+        email,
         nickname: '小红',
         password: 'password456',
         agreedToPrivacy: true,

@@ -5,12 +5,21 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
+/**
+ * 生成唯一邮箱，避免并发测试中的邮箱冲突（多浏览器并行 + 多次运行）
+ */
+function uniqueEmail(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@example.com`;
+}
+
 test.describe('用户登出功能 - API 正常场景', () => {
   test('已登录用户调用登出接口,Session 销毁成功', async ({ request }) => {
+    const email = uniqueEmail('logouttest');
+
     // 前置条件：注册并登录
     await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'logouttest@example.com',
+        email,
         nickname: '登出测试',
         password: 'password123',
         agreedToPrivacy: true,
@@ -19,7 +28,7 @@ test.describe('用户登出功能 - API 正常场景', () => {
 
     const loginResponse = await request.post(`${BASE_URL}/api/auth/login`, {
       data: {
-        email: 'logouttest@example.com',
+        email,
         password: 'password123',
       },
     });

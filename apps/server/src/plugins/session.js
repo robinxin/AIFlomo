@@ -36,7 +36,7 @@ async function sessionPlugin(fastify) {
 
   const sessionOptions = {
     secret: process.env.SESSION_SECRET || 'aiflomo-dev-secret-change-in-production',
-    cookieName: 'sessionId',
+    cookieName: 'connect.sid',
     cookie: {
       httpOnly: true,
       sameSite: 'strict',

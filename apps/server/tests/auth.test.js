@@ -589,7 +589,7 @@ describe('POST /api/auth/login', () => {
     expect(response.statusCode).toBe(401);
     const body = JSON.parse(response.body);
     expect(body.data).toBeNull();
-    expect(body.error).toBe('登录信息有误，请重试');
+    expect(body.error).toBe('邮箱或密码错误，请重试');
     expect(body.message).toBe('登录失败');
     // 不应透露"用户不存在"
     expect(body.error).not.toContain('用户不存在');
@@ -611,9 +611,9 @@ describe('POST /api/auth/login', () => {
     expect(response.statusCode).toBe(401);
     const body = JSON.parse(response.body);
     expect(body.data).toBeNull();
-    expect(body.error).toBe('登录信息有误，请重试');
-    // 不应透露"密码错误"
-    expect(body.error).not.toContain('密码');
+    expect(body.error).toBe('邮箱或密码错误，请重试');
+    // 不应单独透露"密码"是错误原因（邮箱和密码使用相同提示）
+    expect(body.error).not.toBe('密码错误');
   });
 
   // -------------------------------------------------------------------------

@@ -7,10 +7,13 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 test.describe('边界场景与特殊情况 - API 正常场景', () => {
   test('注册成功后自动登录,无需二次输入密码', async ({ request }) => {
+    // 使用唯一邮箱避免并发测试中的邮箱冲突（多浏览器并行运行时）
+    const uniqueEmail = `autologin_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@example.com`;
+
     // 注册
     const registerResponse = await request.post(`${BASE_URL}/api/auth/register`, {
       data: {
-        email: 'autoLogintest@example.com',
+        email: uniqueEmail,
         nickname: '自动登录',
         password: 'password123',
         agreedToPrivacy: true,
@@ -33,7 +36,7 @@ test.describe('边界场景与特殊情况 - API 正常场景', () => {
     expect(meResponse.status()).toBe(200);
 
     const body = await meResponse.json();
-    expect(body.data.email).toBe('autoLogintest@example.com');
+    expect(body.data.email).toBe(uniqueEmail);
     expect(body.data.nickname).toBe('自动登录');
   });
 });
