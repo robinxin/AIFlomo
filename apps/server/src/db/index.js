@@ -30,5 +30,5 @@
  *     users: {},
  *   }));
  */
-export { db } from './client.js';
+export { db, getSqlite, closeDb } from './client.js';
 export { users } from './schema.js';

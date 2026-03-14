@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "dev": "node --watch src/index.js",
+    "dev": "node --env-file=../../.env --watch src/index.js",
     "build": "node --experimental-vm-modules src/index.js --build 2>/dev/null || echo 'No build step required for Node.js ESM'",
     "lint": "eslint src/ tests/",
     "prod": "pm2 start src/index.js --name aiflomo-server",
@@ -20,9 +20,8 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.0.0",
     "@fastify/session": "^11.1.1",
-    "bcrypt": "^5.1.1",
-    "better-sqlite3": "^11.9.1",
-    "connect-sqlite3": "^0.9.15",
+    "bcryptjs": "^2.4.3",
+    "sql.js": "^1.11.0",
     "drizzle-orm": "^0.38.4",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1"

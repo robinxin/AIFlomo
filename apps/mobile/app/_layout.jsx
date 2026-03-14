@@ -46,19 +46,6 @@ function RootLayoutInner() {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Guard 1: waiting for session check — show loader to prevent flash of content
-  if (loading) {
-    return (
-      <View style={STYLES.loadingContainer} testID="root-loading">
-        <ActivityIndicator
-          size="large"
-          color="#3B82F6"
-          testID="root-activity-indicator"
-        />
-      </View>
-    );
-  }
-
   // Guard 2: unauthenticated — redirect to login (side effect in useEffect)
   React.useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -73,12 +60,21 @@ function RootLayoutInner() {
     }
   }, [loading, isAuthenticated, pathname, router]);
 
-  // Render null while redirecting to prevent flash of protected content
-  if (!isAuthenticated || PUBLIC_ROUTES.includes(pathname)) {
-    return null;
+  // Guard 1: waiting for session check — show loader to prevent flash of content
+  if (loading) {
+    return (
+      <View style={STYLES.loadingContainer} testID="root-loading">
+        <ActivityIndicator
+          size="large"
+          color="#3B82F6"
+          testID="root-activity-indicator"
+        />
+      </View>
+    );
   }
 
-  // Authenticated and on a protected route — render the matched page
+  // Slot must always be rendered so the navigator is mounted and router.replace() works.
+  // The useEffect guards above handle redirects after mount.
   return <Slot />;
 }
 

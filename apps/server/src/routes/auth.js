@@ -11,15 +11,14 @@
  *   - 邮箱 UNIQUE 冲突返回 409
  *   - 登录失败统一返回 401，不区分邮箱/密码错误（防信息泄露，符合 FR-007）
  *   - 响应用户信息时不含 passwordHash 字段
- *   - 密码使用 bcrypt saltRounds=10 哈希存储
+ *   - 密码使用 bcryptjs saltRounds=10 哈希存储
  *   - Session 管理通过 @fastify/session 插件完成
  */
 
 import fp from 'fastify-plugin';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { eq } from 'drizzle-orm';
-import { db, users } from '../db/index.js';
+import { db } from '../db/index.js';
 import { requireAuth } from '../lib/auth.js';
 
 const BCRYPT_SALT_ROUNDS = 10;
@@ -140,7 +139,7 @@ async function registerHandler(request, reply) {
 
   try {
     // 1. 检查邮箱唯一性
-    const existing = await db.select().from(users).where(eq(users.email, email));
+    const existing = await db.selectByEmail(email);
     if (existing.length > 0) {
       return reply.code(409).send({
         data: null,
@@ -156,7 +155,7 @@ async function registerHandler(request, reply) {
     const now = Date.now();
 
     // 3. 插入用户记录
-    await db.insert(users).values({
+    await db.insertUser({
       id,
       email,
       nickname: trimmedNickname,
@@ -213,11 +212,11 @@ async function loginHandler(request, reply) {
 
   try {
     // 1. 查询用户
-    const rows = await db.select().from(users).where(eq(users.email, email));
+    const rows = await db.selectByEmail(email);
     if (rows.length === 0) {
       return reply.code(401).send({
         data: null,
-        error: '邮箱或密码错误，请重试',
+        error: '登录信息有误，请重试',
         message: '登录失败',
       });
     }
@@ -229,7 +228,7 @@ async function loginHandler(request, reply) {
     if (!isPasswordValid) {
       return reply.code(401).send({
         data: null,
-        error: '邮箱或密码错误，请重试',
+        error: '登录信息有误，请重试',
         message: '登录失败',
       });
     }
@@ -238,7 +237,7 @@ async function loginHandler(request, reply) {
     request.session.userId = user.id;
 
     // 4. 更新 updatedAt（记录最后活跃时间）
-    await db.update(users).set({ updatedAt: Date.now() }).where(eq(users.id, user.id));
+    await db.updateUserUpdatedAt(user.id, Date.now());
 
     // 5. 返回成功响应
     return reply.code(200).send({
@@ -298,7 +297,7 @@ async function getMeHandler(request, reply) {
   const { userId } = request.session;
 
   try {
-    const rows = await db.select().from(users).where(eq(users.id, userId));
+    const rows = await db.getUserById(userId);
     if (rows.length === 0) {
       // 异常情况：Session 有效但用户已被删除
       try {

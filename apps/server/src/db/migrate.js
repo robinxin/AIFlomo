@@ -1,23 +1,15 @@
 /**
- * migrate.js — 执行 Drizzle 数据库迁移
+ * migrate.js — 执行数据库迁移（sql.js：启动时 client 已执行 migrations 目录下 SQL）
  *
  * 用法：node src/db/migrate.js
- * 脚本读取 src/db/migrations/ 下的 SQL 迁移文件，按序执行到目标数据库。
+ * 本脚本仅触发 client 初始化（会执行 migrations），然后关闭连接并持久化。
  */
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { db, sqlite } from './client.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getSqlite, closeDb } from './client.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+console.log('Running migrations (via client init)...');
+console.log('Target database:', process.env.DB_PATH || 'data/aiflomo.db');
 
-const migrationsFolder = path.join(__dirname, 'migrations');
-
-console.log(`Running migrations from: ${migrationsFolder}`);
-console.log(`Target database: ${process.env.DB_PATH || 'data/aiflomo.db'}`);
-
-migrate(db, { migrationsFolder });
+await getSqlite();
+closeDb();
 
 console.log('Migration completed successfully.');
-
-sqlite.close();

@@ -2,9 +2,9 @@
   "name": "@aiflomo/mobile",
   "version": "1.0.0",
   "description": "AIFlomo frontend — Expo (React Native) cross-platform app",
-  "main": "app/_layout.jsx",
+  "main": "expo-router/entry",
   "scripts": {
-    "dev": "expo start",
+    "dev": "expo start --web --port 8082",
     "build": "expo export",
     "lint": "eslint app/ components/ context/ hooks/ lib/",
     "prod": "expo export && echo 'Deploy dist/ to Nginx static directory'",
@@ -14,10 +14,12 @@
     "test:unit:watch": "vitest --watch"
   },
   "dependencies": {
+    "@babel/runtime": "^7.26.0",
     "expo": "~52.0.0",
     "expo-router": "~4.0.0",
     "react": "18.3.1",
-    "react-native": "0.76.7"
+    "react-native": "0.76.7",
+    "react-native-web": "~0.19.13"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.0",
