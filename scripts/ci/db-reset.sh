@@ -24,4 +24,4 @@ fi
 export DB_PATH="${DB_PATH:-${REPO_ROOT}/apps/server/data/aiflomo.db}"
 mkdir -p "$(dirname "$DB_PATH")"
 
-pnpm db:reset -w apps/server
+pnpm --filter @aiflomo/server db:reset

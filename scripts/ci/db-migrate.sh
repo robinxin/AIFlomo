@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 执行数据库迁移（创建/更新表结构）。换栈时只改此文件。
-# Drizzle:        pnpm db:migrate -w apps/server
+# Drizzle:        pnpm --filter @aiflomo/server db:migrate
 # Prisma:         pnpm dlx prisma migrate deploy
 # Alembic:        alembic upgrade head
 # golang-migrate: migrate -path ./migrations -database $DATABASE_URL up
@@ -27,4 +27,4 @@ fi
 export DB_PATH="${DB_PATH:-${REPO_ROOT}/apps/server/data/aiflomo.db}"
 mkdir -p "$(dirname "$DB_PATH")"
 
-pnpm db:migrate -w apps/server
+pnpm --filter @aiflomo/server db:migrate

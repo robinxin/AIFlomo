@@ -19,4 +19,4 @@ if ! grep -q '"db:generate"' "${REPO_ROOT}/apps/server/package.json" 2>/dev/null
   exit 0
 fi
 
-pnpm db:generate -w apps/server 2>/dev/null || true
+pnpm --filter @aiflomo/server db:generate 2>/dev/null || true
