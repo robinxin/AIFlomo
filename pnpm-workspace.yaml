@@ -3,3 +3,5 @@ packages:
   - 'apps/mobile'
 allowBuilds:
   better-sqlite3: true
+  bcrypt: true
+  sqlite3: true

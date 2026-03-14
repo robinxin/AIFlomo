@@ -1,0 +1,36 @@
+{
+  "name": "@aiflomo/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "build": "expo export",
+    "lint": "eslint app components context lib tests",
+    "prod": "expo export && echo 'Deploy dist/ to server'",
+    "test:unit": "vitest",
+    "test:unit:ui": "vitest --ui",
+    "test:unit:cov": "vitest --coverage",
+    "test:unit:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "expo": "~53.0.0",
+    "expo-router": "~4.0.0",
+    "expo-status-bar": "~2.0.1",
+    "react": "18.3.1",
+    "react-native": "0.77.1",
+    "@expo/vector-icons": "^14.0.4"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/react-native": "^13.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "@vitest/ui": "^2.1.0",
+    "eslint": "^9.0.0",
+    "jsdom": "^25.0.0",
+    "vitest": "^2.1.0"
+  }
+}
