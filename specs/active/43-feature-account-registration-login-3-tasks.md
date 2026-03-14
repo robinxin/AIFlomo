@@ -40,9 +40,9 @@
 > 依赖 T008-T009，四个组件可并行
 
 - [x] T010 [P] 实现 `AuthFormInput` 组件，props：`label`、`value`、`onChangeText`、`onBlur`、`error`、`keyboardType`、`secureTextEntry`、`maxLength`、`editable`、`testID`；聚焦时蓝色边框、失焦触发 onBlur、`secureTextEntry=true` 时渲染 `testID=\"toggle-secure-entry\"` 的眼睛切换按钮、`error` 非空时输入框下方显示红色错误文字，已有测试文件 `apps/mobile/tests/components/AuthFormInput.test.js` 需全部通过 `apps/mobile/components/AuthFormInput.jsx`
-- [ ] T011 [P] 实现 `AuthFormError` 组件，props：`message`、`testID`；`message` 为 null/空字符串时返回 null 不渲染，非空时渲染红色背景卡片展示错误信息，已有测试文件 `apps/mobile/tests/components/AuthFormError.test.js` 需全部通过 `apps/mobile/components/AuthFormError.jsx`
-- [ ] T012 [P] 实现 `AuthSubmitButton` 组件，props：`label`、`loadingLabel`、`loading`、`onPress`、`disabled`、`testID`；`loading=true` 时显示 `loadingLabel` 且按钮禁用，`disabled=true` 时按钮禁用，两者独立叠加，已有测试文件 `apps/mobile/tests/components/AuthSubmitButton.test.js` 需全部通过 `apps/mobile/components/AuthSubmitButton.jsx`
-- [ ] T013 [P] 实现 `PrivacyCheckbox` 组件，props：`checked`、`onChange`、`error`、`testID`；点击切换 `checked` 状态并调用 `onChange(!checked)`，`checked=true` 时渲染 `testID=\"checkbox-checked-icon\"` 的勾选图标，`error=true` 时显示\"请阅读并同意隐私协议\"红色提示，已有测试文件 `apps/mobile/tests/components/PrivacyCheckbox.test.js` 需全部通过 `apps/mobile/components/PrivacyCheckbox.jsx`
+- [x] T011 [P] 实现 `AuthFormError` 组件，props：`message`、`testID`；`message` 为 null/空字符串时返回 null 不渲染，非空时渲染红色背景卡片展示错误信息，已有测试文件 `apps/mobile/tests/components/AuthFormError.test.js` 需全部通过 `apps/mobile/components/AuthFormError.jsx`
+- [x] T012 [P] 实现 `AuthSubmitButton` 组件，props：`label`、`loadingLabel`、`loading`、`onPress`、`disabled`、`testID`；`loading=true` 时显示 `loadingLabel` 且按钮禁用，`disabled=true` 时按钮禁用，两者独立叠加，已有测试文件 `apps/mobile/tests/components/AuthSubmitButton.test.js` 需全部通过 `apps/mobile/components/AuthSubmitButton.jsx`
+- [x] T013 [P] 实现 `PrivacyCheckbox` 组件，props：`checked`、`onChange`、`error`、`testID`；点击切换 `checked` 状态并调用 `onChange(!checked)`，`checked=true` 时渲染 `testID=\"checkbox-checked-icon\"` 的勾选图标，`error=true` 时显示\"请阅读并同意隐私协议\"红色提示，已有测试文件 `apps/mobile/tests/components/PrivacyCheckbox.test.js` 需全部通过 `apps/mobile/components/PrivacyCheckbox.jsx`
 
 ---
 
@@ -50,8 +50,8 @@
 
 > 依赖 T009-T013 全部完成
 
-- [ ] T014 [P] 实现注册页面：使用 `AuthFormInput`（邮箱/昵称/密码）、`PrivacyCheckbox`、`AuthFormError`、`AuthSubmitButton` 组合表单；失焦时触发字段级验证（邮箱正则、昵称 2-20 字符 trim、密码 8-20 字符）；提交时全量校验、加载状态下所有字段禁用；调用 `useAuth().register()`，成功后 `router.replace('/')`，失败时表单顶部展示服务端错误；点击\"返回登录\"清空表单并 `router.push('/login')` `apps/mobile/app/register.jsx`
-- [ ] T015 [P] 实现登录页面：使用 `AuthFormInput`（邮箱/密码，无失焦验证）、`AuthFormError`、`AuthSubmitButton` 组合表单；提交时进入加载状态；调用 `useAuth().login()`，成功后 `router.replace('/')`，失败时（401）表单顶部显示\"邮箱或密码错误，请重试\"且密码框清空、邮箱框保留；点击\"立即注册\"清空表单并 `router.push('/register')` `apps/mobile/app/login.jsx`
+- [x] T014 [P] 实现注册页面：使用 `AuthFormInput`（邮箱/昵称/密码）、`PrivacyCheckbox`、`AuthFormError`、`AuthSubmitButton` 组合表单；失焦时触发字段级验证（邮箱正则、昵称 2-20 字符 trim、密码 8-20 字符）；提交时全量校验、加载状态下所有字段禁用；调用 `useAuth().register()`，成功后 `router.replace('/')`，失败时表单顶部展示服务端错误；点击\"返回登录\"清空表单并 `router.push('/login')` `apps/mobile/app/register.jsx`
+- [x] T015 [P] 实现登录页面：使用 `AuthFormInput`（邮箱/密码，无失焦验证）、`AuthFormError`、`AuthSubmitButton` 组合表单；提交时进入加载状态；调用 `useAuth().login()`，成功后 `router.replace('/')`，失败时（401）表单顶部显示\"邮箱或密码错误，请重试\"且密码框清空、邮箱框保留；点击\"立即注册\"清空表单并 `router.push('/register')` `apps/mobile/app/login.jsx`
 
 ---
 
@@ -59,7 +59,7 @@
 
 > 依赖 T009、T014、T015 全部完成
 
-- [ ] T016 在根布局文件中挂载 `AuthProvider`（包裹所有子路由），实现路由守卫：`loading=true` 时渲染加载占位（防闪屏），`loading=false && !isAuthenticated` 时调用 `router.replace('/login')`，已登录用户访问 `/login` 或 `/register` 时调用 `router.replace('/')` `apps/mobile/app/_layout.jsx`
+- [x] T016 在根布局文件中挂载 `AuthProvider`（包裹所有子路由），实现路由守卫：`loading=true` 时渲染加载占位（防闪屏），`loading=false && !isAuthenticated` 时调用 `router.replace('/login')`，已登录用户访问 `/login` 或 `/register` 时调用 `router.replace('/')` `apps/mobile/app/_layout.jsx`
 
 ---
 
