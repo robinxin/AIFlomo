@@ -1,0 +1,24 @@
+{
+  "allowedTools": [
+    "Read",
+    "Write",
+    "Edit",
+    "Task",
+    "TaskCreate",
+    "TaskList",
+    "TaskUpdate",
+    "Bash(ls:*)",
+    "Bash(find:*)",
+    "Bash(cat:*)",
+    "Bash(grep:*)",
+    "Bash(mkdir:*)",
+    "Bash(pnpm:*)",
+    "Bash(npx:*)",
+    "Bash(python3:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(bash scripts/ci/lint.sh:*)",
+    "Bash(bash scripts/ci/build.sh:*)",
+    "Bash(bash scripts/ci/test.sh:*)"
+  ]
+}

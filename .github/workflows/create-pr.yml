@@ -256,6 +256,34 @@ jobs:
             echo "✅ Supplemented tests committed."
           fi
 
+      # ── merge 主干成功后归档 specs ──────────────────────────────────────────
+      - name: Archive specs after merge with main
+        if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
+        run: |
+          HEAD="${{ steps.branch.outputs.head }}"
+          mkdir -p specs/completed testcases
+          MOVED=false
+
+          for f in specs/active/*; do
+            [ -f "$f" ] || continue
+            [ "$(basename "$f")" = ".gitkeep" ] && continue
+            if [[ "$(basename "$f")" == *-testcases.md ]]; then
+              echo "📦 Moving testcase: $f → testcases/"
+              git mv "$f" testcases/
+            else
+              echo "📦 Archiving: $f → specs/completed/"
+              git mv "$f" specs/completed/
+            fi
+            MOVED=true
+          done
+
+          if [ "$MOVED" = true ]; then
+            git commit -m "chore: archive specs from ${HEAD}"
+            echo "✅ Specs archived — specs/completed/ & testcases/"
+          else
+            echo "ℹ️ No spec files in specs/active/ — nothing to archive."
+          fi
+
       - name: Push merge result and tests
         if: steps.merge.outputs.merge_status == 'merged' || steps.merge.outputs.merge_status == 'conflict'
         run: |

@@ -3,11 +3,6 @@ name: Quality Gate
 on:
   # SDD Pipeline 完成后通过 workflow_dispatch 主动触发（见 claude-SDD.yml trigger-quality-gate job）
   workflow_dispatch:
-    inputs:
-      fix_attempt:
-        description: 'Auto-fix 已执行次数（由流水线自动管理）'
-        default: '0'
-        required: false
   # PR 到 main 时触发
   pull_request:
     branches: [main]
@@ -107,17 +102,85 @@ jobs:
       - name: Write verify step summary
         if: always()
         run: |
-          FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
           PASSED="${{ steps.check.outputs.verify_passed }}"
           {
-            echo "## 🔍 Verify — 第 $((FIX_ATTEMPT + 1)) 次"
+            echo "## 🔍 Verify"
             echo ""
             echo "- **分支**: \`${{ github.ref_name }}\`"
             if [ "$PASSED" = "true" ]; then
-              echo "- **状态**: ✅ 通过，将执行 E2E 测试"
+              echo "- **状态**: ✅ 通过，将执行 Refactor Clean → E2E"
             else
-              echo "- **状态**: ❌ 失败，将触发 Autofix"
+              echo "- **状态**: ❌ 失败（verify-loop 已重试 5 次），等待人工确认"
             fi
+            echo ""
+            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── Step 1.5: verify 通过后执行 refactor-clean ─────────────────────────────
+  refactor-clean:
+    needs: verify
+    if: needs.verify.result == 'success' && needs.verify.outputs.verify_passed == 'true'
+    runs-on: [self-hosted, ai-runner]
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Start proxy (strip context_management)
+        run: bash scripts/ci/start-proxy.sh
+
+      - name: Install Claude Code
+        run: bash scripts/ci/install-claude.sh
+
+      - name: Install dependencies
+        run: bash scripts/ci/install.sh
+
+      - name: Run refactor-clean
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          PROMPT_TEXT=$(cat .claude/commands/refactor-clean.md)
+          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
+            --allowedTools "Task,Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(pnpm:*),Bash(npx:*),Bash(bash scripts/ci/lint.sh:*),Bash(bash scripts/ci/build.sh:*)" \
+            --model "$MODEL" \
+            "$PROMPT_TEXT"
+
+      - name: Commit refactor-clean changes
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git add -u
+          if git diff --cached --quiet; then
+            echo "No changes from refactor-clean"
+          else
+            git commit -m "refactor: clean dead code on ${BRANCH}"
+            git pull --rebase origin "${BRANCH}" || true
+            git push origin "HEAD:${BRANCH}"
+            echo "✅ Refactor-clean changes committed and pushed to ${BRANCH}"
+          fi
+
+      - name: Write refactor-clean step summary
+        if: always()
+        run: |
+          {
+            echo "## 🧹 Refactor Clean"
+            echo ""
+            echo "- **分支**: \`${{ github.ref_name }}\`"
+            echo "- **状态**: ✅ 已完成"
             echo ""
             printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
               "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
@@ -125,8 +188,8 @@ jobs:
 
   # ─── Step 2（通过路径）: 执行 E2E 测试（Claude e2e-loop 自动修复）──────────────
   run-e2e:
-    needs: verify
-    if: needs.verify.result == 'success' && needs.verify.outputs.verify_passed == 'true'
+    needs: [verify, refactor-clean]
+    if: needs.refactor-clean.result == 'success'
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -336,9 +399,19 @@ jobs:
               "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ─── E2E 失败 → 人工确认（e2e-loop 已穷尽自动修复）────────────────────────────
+  e2e-approval:
+    needs: [verify, refactor-clean, run-e2e]
+    if: always() && needs.run-e2e.result == 'failure'
+    runs-on: [self-hosted, ai-runner]
+    environment: e2e-gate
+    steps:
+      - name: Human review - E2E failed after e2e-loop
+        run: echo "⚠️ E2E 测试经 e2e-loop 自动修复后仍失败，请人工确认后手动处理并重新触发流水线。"
+
   # ─── E2E 通过 → 触发 Code Review ────────────────────────────────────────────
   trigger-code-review:
-    needs: [verify, run-e2e]
+    needs: [verify, refactor-clean, run-e2e]
     if: needs.run-e2e.result == 'success' && github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, ai-runner]
     permissions:
@@ -353,175 +426,18 @@ jobs:
             --ref "${{ github.ref_name }}"
           echo "✅ Code Review triggered on ${{ github.ref_name }}"
 
-  # ─── verify 失败 → 内联 autofix，最多 5 次，成功后重触发本 workflow ──────────
-  # 注意：E2E 失败不触发 autofix（e2e-loop 已内部重试，再跑 autofix 无法执行 E2E）
-  auto-fix:
-    needs: [verify, run-e2e]
+  # ─── verify-loop 内部已重试 5 次仍失败 → 人工确认 ────────────────────────────
+  verify-approval:
+    needs: verify
     if: |
       always() &&
       github.event_name == 'workflow_dispatch' &&
       needs.verify.result == 'success' &&
       needs.verify.outputs.verify_passed != 'true'
     runs-on: [self-hosted, ai-runner]
-    permissions:
-      contents: write
-      actions: write
-      issues: write
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MAX_FIX_ROUNDS: '5'
-
+    environment: verify-gate
     steps:
-      - name: Check max fix attempts
-        id: check-attempts
+      - name: Human review - verify-loop exhausted (5 retries)
         run: |
-          FIX_ATTEMPT="${{ github.event.inputs.fix_attempt || '0' }}"
-          if [ "$FIX_ATTEMPT" -ge "$MAX_FIX_ROUNDS" ]; then
-            echo "⚠️ 已达最大修复次数（${FIX_ATTEMPT}/${MAX_FIX_ROUNDS}），停止自动修复，请人工介入。"
-            echo "should_fix=false" >> "$GITHUB_OUTPUT"
-          else
-            NEXT=$((FIX_ATTEMPT + 1))
-            echo "🔄 Autofix 第 ${NEXT}/${MAX_FIX_ROUNDS} 次，branch: ${{ github.ref_name }}"
-            echo "should_fix=true"      >> "$GITHUB_OUTPUT"
-            echo "next_attempt=${NEXT}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/checkout@v4
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        with:
-          ref: ${{ github.ref_name }}
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        with:
-          node-version: '20'
-
-      - name: Start proxy (strip context_management)
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        run: bash scripts/ci/start-proxy.sh
-
-      - name: Install Claude Code
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}
-
-      - name: Load CLAUDE.md
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        run: |
-          {
-            echo "CLAUDE_MD<<CLAUDE_MD_EOF"
-            cat CLAUDE.md 2>/dev/null || echo "# No CLAUDE.md found"
-            echo "CLAUDE_MD_EOF"
-          } >> "$GITHUB_ENV"
-
-      - name: Install dependencies
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        run: bash scripts/ci/install.sh
-
-      # 合并 verify 错误 + 实时 lint/build 输出（实时结果优先）
-      - name: Collect errors for autofix context
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        env:
-          VERIFY_ERRORS: ${{ needs.verify.outputs.error_summary }}
-        run: |
-          bash scripts/ci/lint.sh  2>&1 | tee /tmp/fix-lint.txt  || LINT_FAILED=true
-          bash scripts/ci/build.sh 2>&1 | tee /tmp/fix-build.txt || BUILD_FAILED=true
-
-          > /tmp/live-errors.txt
-          [ "${LINT_FAILED:-}"  = "true" ] && cat /tmp/fix-lint.txt  >> /tmp/live-errors.txt
-          [ "${BUILD_FAILED:-}" = "true" ] && cat /tmp/fix-build.txt >> /tmp/live-errors.txt
-
-          LIVE=$(cat /tmp/live-errors.txt)
-          # 实时 lint/build 有错误则用实时结果；否则回退到 verify job 的输出
-          COMBINED="${LIVE:-$VERIFY_ERRORS}"
-
-          DELIM="FIX_ERR_$(openssl rand -hex 8)"
-          {
-            echo "quality_errors<<${DELIM}"
-            printf '%s\n' "$COMBINED"
-            echo "${DELIM}"
-          } >> "$GITHUB_ENV"
-
-      # 调用 autofix.md 对 lint/build 错误进行定点修复
-      - name: Run autofix
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          BRANCH:       ${{ github.ref_name }}
-          FIX_ATTEMPT:  ${{ steps.check-attempts.outputs.next_attempt }}
-          EXTRA_FEEDBACK: ''
-          CONSTITUTION: ''
-        run: |
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/autofix.md)
-          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
-            --allowedTools "Read,Write,Edit,Bash(ls:*),Bash(find:*),Bash(grep:*),Bash(cat:*),Bash(bash scripts/ci/lint.sh:*),Bash(bash scripts/ci/build.sh:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
-
-      - name: Commit autofix changes
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        run: |
-          BRANCH="${{ github.ref_name }}"
-          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git remote set-url origin \
-            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-          git add -u
-          if git diff --cached --quiet; then
-            echo "⚠️ No files modified by autofix — no commit needed."
-          else
-            git commit -m "fix: quality-gate autofix attempt #${NEXT} on ${BRANCH}"
-            git pull --rebase origin "${BRANCH}" || true
-            git push origin "HEAD:${BRANCH}"
-            echo "✅ Autofix #${NEXT} committed and pushed to ${BRANCH}"
-          fi
-
-      # 修复后重新触发 quality-gate（fix_attempt 递增），形成闭环
-      - name: Re-trigger quality-gate
-        if: steps.check-attempts.outputs.should_fix == 'true'
-        run: |
-          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
-          gh workflow run quality-gate.yml \
-            --repo "${{ github.repository }}" \
-            --ref "${{ github.ref_name }}" \
-            --field fix_attempt="$NEXT"
-          echo "✅ Quality Gate re-triggered (attempt ${NEXT}/${MAX_FIX_ROUNDS}) on ${{ github.ref_name }}"
-
-      - name: Write autofix step summary
-        if: steps.check-attempts.outputs.should_fix == 'true' && always()
-        run: |
-          NEXT="${{ steps.check-attempts.outputs.next_attempt }}"
-          {
-            echo "## 🔧 Autofix — 第 ${NEXT}/${MAX_FIX_ROUNDS} 次"
-            echo ""
-            echo "- **分支**: \`${{ github.ref_name }}\`"
-            echo "- Quality Gate 将在修复提交后自动重新运行"
-            echo ""
-            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
-              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # 达到上限，写 summary + issue comment + 报错退出
-      - name: Report failure — max attempts reached
-        if: steps.check-attempts.outputs.should_fix != 'true'
-        run: |
-          BRANCH="${{ github.ref_name }}"
-          ISSUE_NUMBER=$(echo "$BRANCH" | sed 's|.*\/\([0-9]*\)-.*|\1|')
-          if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "$BRANCH" ]; then
-            gh issue comment "$ISSUE_NUMBER" \
-              --body "❌ **Auto-fix 已达到上限（${MAX_FIX_ROUNDS} 次），Quality Gate 仍未通过，请人工介入修复后重新触发流水线。**" \
-              --repo "${{ github.repository }}" || true
-          fi
-          {
-            echo "## ❌ Quality Gate — 已达最大修复次数"
-            echo ""
-            echo "已尝试 **${MAX_FIX_ROUNDS}** 次自动修复，仍未通过，请人工介入。"
-            echo ""
-            echo "- **分支**: \`${BRANCH}\`"
-            echo ""
-            printf '\n---\n*[查看运行](%s/%s/actions/runs/%s)*\n' \
-              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "❌ Max autofix rounds (${MAX_FIX_ROUNDS}) reached. Manual intervention required."
-          exit 1
+          echo "⚠️ verify-loop 已对每项错误重试 5 次，lint/build 仍未通过。"
+          echo "请人工检查错误、手动修复后，重新触发 Quality Gate 流水线。"
