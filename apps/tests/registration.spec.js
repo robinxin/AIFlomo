@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 // 测试辅助常量
 // ---------------------------------------------------------------------------
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:8082';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:8081';
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
 // 用于生成唯一邮箱，避免测试间互相干扰

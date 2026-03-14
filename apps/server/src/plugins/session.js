@@ -11,6 +11,7 @@
  *   - maxAge: 7 days    — session expiry
  */
 import fp from 'fastify-plugin';
+import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
@@ -49,6 +50,8 @@ async function sessionPlugin(fastify) {
     sessionOptions.store = store;
   }
 
+  // @fastify/cookie must be registered before @fastify/session
+  await fastify.register(fastifyCookie);
   await fastify.register(fastifySession, sessionOptions);
 }
 

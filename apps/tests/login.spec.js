@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 // 测试辅助常量与工具函数
 // ---------------------------------------------------------------------------
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:8082';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:8081';
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
 // 测试专用的固定账号（每次 suite 运行前由 beforeAll 创建）

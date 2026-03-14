@@ -18,7 +18,7 @@ import { test, expect } from '@playwright/test';
 // 测试辅助常量与工具函数
 // ---------------------------------------------------------------------------
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:8082';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:8081';
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
 function uniqueEmail(prefix = 'auth') {
@@ -96,7 +96,7 @@ test.describe('用户登出 — UI 测试', () => {
     const body = await response.json();
     expect(body.data).toBeNull();
     expect(body.error).toBe('请先登录');
-    expect(body.message).toBe('登出失败');
+    expect(body.message).toBe('未授权访问');
   });
 });
 
@@ -144,7 +144,7 @@ test.describe('用户登出 — API 测试', () => {
     const body = await response.json();
     expect(body.data).toBeNull();
     expect(body.error).toBe('请先登录');
-    expect(body.message).toBe('登出失败');
+    expect(body.message).toBe('未授权访问');
   });
 
   test('TC-LOGOUT-API-003: Session 已过期调用登出接口，返回 401', async ({ request }) => {
@@ -160,7 +160,7 @@ test.describe('用户登出 — API 测试', () => {
     const body = await response.json();
     expect(body.data).toBeNull();
     expect(body.error).toBe('请先登录');
-    expect(body.message).toBe('登出失败');
+    expect(body.message).toBe('未授权访问');
   });
 });
 
