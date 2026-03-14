@@ -867,3 +867,66 @@ describe('GET /api/auth/me', () => {
     await app.close();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 分支覆盖补充测试
+// ---------------------------------------------------------------------------
+
+describe('POST /api/auth/logout — session.destroy 失败', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('session.destroy 抛出错误 — 返回 500', async () => {
+    const fastify = Fastify({ logger: false });
+    fastify.decorateRequest('session', null);
+    fastify.addHook('preHandler', (request, _reply, done) => {
+      request.session = {
+        userId: 'test-uuid-1234',
+        destroy: jest.fn((cb) => cb && cb(new Error('Session destroy failed'))),
+      };
+      done();
+    });
+    await fastify.register(authRoutes, { prefix: '/api/auth' });
+    await fastify.ready();
+
+    const response = await fastify.inject({ method: 'POST', url: '/api/auth/logout' });
+
+    expect(response.statusCode).toBe(500);
+    const body = JSON.parse(response.body);
+    expect(body.data).toBeNull();
+    expect(body.error).toBe('服务器内部错误，请稍后重试');
+
+    await fastify.close();
+  });
+});
+
+describe('POST /api/auth/login — 额外字段', () => {
+  let app;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    app = await buildApp();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  test('login 请求体包含额外字段 — 返回 400', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        email: 'test@example.com',
+        password: 'password123',
+        extraField: 'should not be allowed',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = JSON.parse(response.body);
+    expect(body.data).toBeNull();
+  });
+});
+

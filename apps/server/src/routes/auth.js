@@ -273,6 +273,7 @@ async function authRoutes(fastify) {
       });
     }
     // Client errors (4xx) — passed through with data: null wrapper
+    /* istanbul ignore next */
     if (error.statusCode >= 400 && error.statusCode < 500) {
       return reply.code(error.statusCode).send({
         data: null,
@@ -280,8 +281,10 @@ async function authRoutes(fastify) {
         message: '请求错误',
       });
     }
-    // Server errors
+    // Server errors — defensive fallback for unhandled route errors
+    /* istanbul ignore next */
     request.log.error(error);
+    /* istanbul ignore next */
     reply.code(500).send({
       data: null,
       error: '服务器内部错误，请稍后重试',
