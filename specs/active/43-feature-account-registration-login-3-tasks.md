@@ -9,8 +9,8 @@
 
 > 所有用户故事共同依赖的底层准备，必须在所有故事前完成。
 
-- [ ] T001 [P] 扩展 Drizzle Schema，新增 `users` 表定义，字段包括 `id(text/UUID/PK)`、`email(text/NOT NULL/UNIQUE)`、`nickname(text/NOT NULL)`、`password_hash(text/NOT NULL)`、`agreed_at(integer/NOT NULL)`、`created_at(integer/NOT NULL)`、`updated_at(integer/NOT NULL)` `apps/server/src/db/schema.js`
-- [ ] T002 [P] 实现 Fastify Session 插件配置，注册 `@fastify/session`，配置 SQLite 兼容 Session Store、Cookie 参数（`httpOnly: true`、`sameSite: 'strict'`、`secure` 生产环境、`maxAge: 7*24*60*60*1000`） `apps/server/src/plugins/session.js`
+- [x] T001 [P] 扩展 Drizzle Schema，新增 `users` 表定义，字段包括 `id(text/UUID/PK)`、`email(text/NOT NULL/UNIQUE)`、`nickname(text/NOT NULL)`、`password_hash(text/NOT NULL)`、`agreed_at(integer/NOT NULL)`、`created_at(integer/NOT NULL)`、`updated_at(integer/NOT NULL)` `apps/server/src/db/schema.js`
+- [x] T002 [P] 实现 Fastify Session 插件配置，注册 `@fastify/session`，配置 SQLite 兼容 Session Store、Cookie 参数（`httpOnly: true`、`sameSite: 'strict'`、`secure` 生产环境、`maxAge: 7*24*60*60*1000`） `apps/server/src/plugins/session.js`
 - [ ] T003 [P] 运行 `pnpm db:generate` 和 `pnpm db:migrate` 生成并执行 `users` 表迁移文件，确保迁移文件落在 `apps/server/src/db/migrations/` 目录，验证数据库中 `users` 表及 UNIQUE 索引均已创建 `apps/server/src/db/migrations/`
 
 ---
