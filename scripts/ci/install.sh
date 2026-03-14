@@ -13,3 +13,6 @@ if [ ! -d node_modules ] || [ pnpm-lock.yaml -nt node_modules ]; then
 else
   echo "⏭ node_modules up to date, skipping install"
 fi
+
+# 重建 better-sqlite3 原生绑定，确保在当前环境（尤其是 CI）下可用
+pnpm rebuild better-sqlite3
