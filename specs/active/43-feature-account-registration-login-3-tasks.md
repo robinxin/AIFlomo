@@ -9,9 +9,9 @@
 
 > 所有用户故事共同依赖的底层准备，必须在所有故事前完成。
 
-- [ ] T001 [P] 扩展 Drizzle Schema，新增 `users` 表定义，字段包括 `id(text/UUID/PK)`、`email(text/NOT NULL/UNIQUE)`、`nickname(text/NOT NULL)`、`password_hash(text/NOT NULL)`、`agreed_at(integer/NOT NULL)`、`created_at(integer/NOT NULL)`、`updated_at(integer/NOT NULL)` `apps/server/src/db/schema.js`
-- [ ] T002 [P] 实现 Fastify Session 插件配置，注册 `@fastify/session`，配置 SQLite 兼容 Session Store、Cookie 参数（`httpOnly: true`、`sameSite: 'strict'`、`secure` 生产环境、`maxAge: 7*24*60*60*1000`） `apps/server/src/plugins/session.js`
-- [ ] T003 [P] 运行 `pnpm db:generate` 和 `pnpm db:migrate` 生成并执行 `users` 表迁移文件，确保迁移文件落在 `apps/server/src/db/migrations/` 目录，验证数据库中 `users` 表及 UNIQUE 索引均已创建 `apps/server/src/db/migrations/`
+- [x] T001 [P] 扩展 Drizzle Schema，新增 `users` 表定义，字段包括 `id(text/UUID/PK)`、`email(text/NOT NULL/UNIQUE)`、`nickname(text/NOT NULL)`、`password_hash(text/NOT NULL)`、`agreed_at(integer/NOT NULL)`、`created_at(integer/NOT NULL)`、`updated_at(integer/NOT NULL)` `apps/server/src/db/schema.js`
+- [x] T002 [P] 实现 Fastify Session 插件配置，注册 `@fastify/session`，配置 SQLite 兼容 Session Store、Cookie 参数（`httpOnly: true`、`sameSite: 'strict'`、`secure` 生产环境、`maxAge: 7*24*60*60*1000`） `apps/server/src/plugins/session.js`
+- [x] T003 [P] 运行 `pnpm db:generate` 和 `pnpm db:migrate` 生成并执行 `users` 表迁移文件，确保迁移文件落在 `apps/server/src/db/migrations/` 目录，验证数据库中 `users` 表及 UNIQUE 索引均已创建 `apps/server/src/db/migrations/`
 
 ---
 
@@ -19,10 +19,10 @@
 
 > 依赖阶段一完成（T001-T003），T004-T006 可并行
 
-- [ ] T004 [P] 实现 `requireAuth` 鉴权中间件，检查 `request.session?.userId` 是否存在，不存在时返回 `{ data: null, error: '请先登录', message: '未授权访问' }`（HTTP 401），已有测试文件 `apps/server/tests/lib/auth.test.js` 需全部通过 `apps/server/src/lib/auth.js`
-- [ ] T005 [P] 实现 DB 访问层，创建 `db` 实例（Drizzle + better-sqlite3），暴露 `select`、`insert`、`update` 方法供路由层调用；如已存在则确认接口与测试 mock 约定一致（`jest.mock('../src/db/index.js')`） `apps/server/src/db/index.js`
-- [ ] T006 实现认证路由模块（Fastify Plugin），包含 4 个端点：`POST /register`（参数校验 JSON Schema、邮箱唯一性检查、bcrypt hash、插入 users、写 session.userId、返回 201）、`POST /login`（邮箱查询、bcrypt.compare、统一 401 错误提示、写 session.userId、返回 200）、`POST /logout`（`preHandler: [requireAuth]`、session.destroy、返回 200）、`GET /me`（`preHandler: [requireAuth]`、按 userId 查询、返回用户信息不含 passwordHash），已有测试文件 `apps/server/tests/auth.test.js` 需全部通过 `apps/server/src/routes/auth.js`
-- [ ] T007 在 Fastify 入口文件注册 Session 插件（`apps/server/src/plugins/session.js`）和认证路由（`fastify.register(authRoutes, { prefix: '/api/auth' })`），确保两者按依赖顺序注册（Session 插件先于路由） `apps/server/src/index.js`
+- [x] T004 [P] 实现 `requireAuth` 鉴权中间件，检查 `request.session?.userId` 是否存在，不存在时返回 `{ data: null, error: '请先登录', message: '未授权访问' }`（HTTP 401），已有测试文件 `apps/server/tests/lib/auth.test.js` 需全部通过 `apps/server/src/lib/auth.js`
+- [x] T005 [P] 实现 DB 访问层，创建 `db` 实例（Drizzle + better-sqlite3），暴露 `select`、`insert`、`update` 方法供路由层调用；如已存在则确认接口与测试 mock 约定一致（`jest.mock('../src/db/index.js')`） `apps/server/src/db/index.js`
+- [x] T006 实现认证路由模块（Fastify Plugin），包含 4 个端点：`POST /register`（参数校验 JSON Schema、邮箱唯一性检查、bcrypt hash、插入 users、写 session.userId、返回 201）、`POST /login`（邮箱查询、bcrypt.compare、统一 401 错误提示、写 session.userId、返回 200）、`POST /logout`（`preHandler: [requireAuth]`、session.destroy、返回 200）、`GET /me`（`preHandler: [requireAuth]`、按 userId 查询、返回用户信息不含 passwordHash），已有测试文件 `apps/server/tests/auth.test.js` 需全部通过 `apps/server/src/routes/auth.js`
+- [x] T007 在 Fastify 入口文件注册 Session 插件（`apps/server/src/plugins/session.js`）和认证路由（`fastify.register(authRoutes, { prefix: '/api/auth' })`），确保两者按依赖顺序注册（Session 插件先于路由） `apps/server/src/index.js`
 
 ---
 
@@ -30,8 +30,8 @@
 
 > 依赖阶段一完成，T008-T009 可并行
 
-- [ ] T008 [P] 实现统一 HTTP 请求封装，封装 `fetch`，默认携带 `credentials: 'include'`（Web Cookie 透传），统一处理 HTTP 401 响应（dispatch AUTH_INIT_FAILURE），暴露 `get(path)`、`post(path, body)`、`del(path)` 等方法 `apps/mobile/lib/api-client.js`
-- [ ] T009 实现 `AuthContext`，包含 `authReducer`（处理 `AUTH_INIT_SUCCESS`、`AUTH_INIT_FAILURE`、`AUTH_LOGIN_SUCCESS`、`AUTH_LOGOUT` 四个 Action）、`AuthProvider`（挂载时调用 `GET /api/auth/me` 初始化登录状态、`loading=true` 防闪屏）、`login` / `register` / `logout` 三个异步方法、`useAuth` Hook（在 Provider 外调用时抛出错误），已有测试文件 `apps/mobile/tests/context/AuthContext.test.js` 需全部通过 `apps/mobile/context/AuthContext.jsx`
+- [x] T008 [P] 实现统一 HTTP 请求封装，封装 `fetch`，默认携带 `credentials: 'include'`（Web Cookie 透传），统一处理 HTTP 401 响应（dispatch AUTH_INIT_FAILURE），暴露 `get(path)`、`post(path, body)`、`del(path)` 等方法 `apps/mobile/lib/api-client.js`
+- [x] T009 实现 `AuthContext`，包含 `authReducer`（处理 `AUTH_INIT_SUCCESS`、`AUTH_INIT_FAILURE`、`AUTH_LOGIN_SUCCESS`、`AUTH_LOGOUT` 四个 Action）、`AuthProvider`（挂载时调用 `GET /api/auth/me` 初始化登录状态、`loading=true` 防闪屏）、`login` / `register` / `logout` 三个异步方法、`useAuth` Hook（在 Provider 外调用时抛出错误），已有测试文件 `apps/mobile/tests/context/AuthContext.test.js` 需全部通过 `apps/mobile/context/AuthContext.jsx`
 
 ---
 
@@ -39,7 +39,7 @@
 
 > 依赖 T008-T009，四个组件可并行
 
-- [ ] T010 [P] 实现 `AuthFormInput` 组件，props：`label`、`value`、`onChangeText`、`onBlur`、`error`、`keyboardType`、`secureTextEntry`、`maxLength`、`editable`、`testID`；聚焦时蓝色边框、失焦触发 onBlur、`secureTextEntry=true` 时渲染 `testID=\"toggle-secure-entry\"` 的眼睛切换按钮、`error` 非空时输入框下方显示红色错误文字，已有测试文件 `apps/mobile/tests/components/AuthFormInput.test.js` 需全部通过 `apps/mobile/components/AuthFormInput.jsx`
+- [x] T010 [P] 实现 `AuthFormInput` 组件，props：`label`、`value`、`onChangeText`、`onBlur`、`error`、`keyboardType`、`secureTextEntry`、`maxLength`、`editable`、`testID`；聚焦时蓝色边框、失焦触发 onBlur、`secureTextEntry=true` 时渲染 `testID=\"toggle-secure-entry\"` 的眼睛切换按钮、`error` 非空时输入框下方显示红色错误文字，已有测试文件 `apps/mobile/tests/components/AuthFormInput.test.js` 需全部通过 `apps/mobile/components/AuthFormInput.jsx`
 - [ ] T011 [P] 实现 `AuthFormError` 组件，props：`message`、`testID`；`message` 为 null/空字符串时返回 null 不渲染，非空时渲染红色背景卡片展示错误信息，已有测试文件 `apps/mobile/tests/components/AuthFormError.test.js` 需全部通过 `apps/mobile/components/AuthFormError.jsx`
 - [ ] T012 [P] 实现 `AuthSubmitButton` 组件，props：`label`、`loadingLabel`、`loading`、`onPress`、`disabled`、`testID`；`loading=true` 时显示 `loadingLabel` 且按钮禁用，`disabled=true` 时按钮禁用，两者独立叠加，已有测试文件 `apps/mobile/tests/components/AuthSubmitButton.test.js` 需全部通过 `apps/mobile/components/AuthSubmitButton.jsx`
 - [ ] T013 [P] 实现 `PrivacyCheckbox` 组件，props：`checked`、`onChange`、`error`、`testID`；点击切换 `checked` 状态并调用 `onChange(!checked)`，`checked=true` 时渲染 `testID=\"checkbox-checked-icon\"` 的勾选图标，`error=true` 时显示\"请阅读并同意隐私协议\"红色提示，已有测试文件 `apps/mobile/tests/components/PrivacyCheckbox.test.js` 需全部通过 `apps/mobile/components/PrivacyCheckbox.jsx`

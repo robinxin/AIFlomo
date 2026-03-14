@@ -1,0 +1,35 @@
+{
+  "name": "@aiflomo/mobile",
+  "version": "1.0.0",
+  "description": "AIFlomo frontend - Expo (React Native) cross-platform app",
+  "main": "app/_layout.jsx",
+  "type": "module",
+  "scripts": {
+    "dev": "expo start",
+    "build": "expo export",
+    "lint": "eslint lib tests",
+    "prod": "expo export && echo 'Deploy dist/ to Nginx'",
+    "test:unit": "vitest run",
+    "test:unit:ui": "vitest --ui",
+    "test:unit:cov": "vitest run --coverage",
+    "test:unit:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "expo": "~52.0.0",
+    "expo-router": "~4.0.0",
+    "react": "18.3.1",
+    "react-native": "0.76.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/ui": "^2.1.0",
+    "eslint": "^10.0.3",
+    "globals": "^17.4.0",
+    "jsdom": "^25.0.0",
+    "vitest": "^2.1.0"
+  }
+}
