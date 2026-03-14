@@ -1,4 +1,4 @@
-/tdd 读取 Spec 文件（`${SPEC_FILES}`）、技术方案文档（`${DESIGN_FILE}`），按 TDD 流程依次实现以下所有任务。
+使用 tdd-guide agent 读取 Spec 文件（`${SPEC_FILES}`）、技术方案文档（`${DESIGN_FILE}`），按 TDD 流程依次实现以下所有任务。
 
 ## 前置检查（必须最先执行）
 
@@ -10,15 +10,19 @@
 
 ${TASKS_CONTENT}
 
-## 开发 Agent 路由
+## 生成代码时使用 agent 的规则
 
-实现代码时，根据**本次 Task 涉及的代码性质**判断调用哪个 agent（Task 工具）：
+- 服务端代码使用 **backend-developer** agent 生成代码
+- 前端代码使用 **frontend-developer** agent 生成代码
 
-- 涉及的文件**仅包含**服务端代码（API 路由、数据库操作、服务层逻辑、后台任务等） → **backend-developer**
-- 涉及的文件**仅包含**客户端代码（UI 组件、页面、客户端状态管理、样式等） → **frontend-developer**
-- 同时涉及服务端和客户端代码 → **fullstack-developer**
+## 参考 Skill
+
+涉及 CORS 配置（跨域请求、`@fastify/cors` 插件注册、preflight 处理、allowed origins 设置等）时，
+在生成代码前先调用 `/cors-configuration` skill（位于 `.claude/skills/cors-configuration/SKILL.md`）获取最佳实践，
+按其中 **Fastify Configuration** 章节的规范生成代码。
 
 ## 严禁事项
+
 - **禁止向用户提问或等待确认** — 全程自主运行，遇到歧义以 spec 和技术方案为准
-- 已完成任务写入的文件，严禁修改
-${ALREADY}
+- **一定使用 tdd-guide agent 做编排，不要自己编排**
+- 已完成任务写入的文件，严禁修改：`${ALREADY}`

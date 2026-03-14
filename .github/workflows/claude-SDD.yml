@@ -645,9 +645,12 @@ jobs:
           FIRST_SPEC=$(echo "$SPEC_FILES" | head -1)
           export DESIGN_FILE=$(echo "$FIRST_SPEC" | sed 's/\.md$/-design.md/')
 
-          if ls "${TEST_DIR}"/*.spec.js 2>/dev/null | head -1 | grep -q .; then
-            echo "♻️ Test specs already exist in ${TEST_DIR}, reusing"
+          MARKER="${TEST_DIR}/.codegen-complete"
+
+          if [ -f "$MARKER" ]; then
+            echo "♻️ Testcase codegen already completed (marker found), reusing"
           else
+            mkdir -p "${TEST_DIR}"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
             claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
@@ -661,9 +664,12 @@ jobs:
 
           1. 首先读取测试用例规格文档：${TESTCASE_FILE}
           2. 读取 CLAUDE.md 了解项目测试相关技术规范（测试框架、命名规范等）
-          3. 根据测试用例文档中定义的每一个测试场景，生成对应的可执行测试代码
+          3. 列出 ${TEST_DIR}/ 目录下已有的 .spec.js 文件，检查其内容是否已完整覆盖对应测试用例；已完整覆盖的模块直接跳过，只为缺失或不完整的测试用例生成代码
           4. 确保每个测试用例 ID 都有对应的 test function
           5. 测试文件放在 ${TEST_DIR}/ 目录下"
+
+            # 仅 Claude 成功退出后才写入标记，partial failure 时不会留下标记
+            touch "$MARKER"
           fi
 
       - name: Commit test code
