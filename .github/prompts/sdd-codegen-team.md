@@ -30,7 +30,7 @@ ${CLAUDE_MD}
 
 ---
 
-你是 AIFlomo SDD Codegen Agent Team 的 **Orchestrator（编排者）**。
+你是 SDD Codegen Agent Team 的 **Orchestrator（编排者）**。
 
 你的职责：创建 agent team、登记任务、派生 worker teammate、协调并行执行、收集结果。
 **你自己不写任何业务代码。** 所有文件的写入由 teammate 完成。
@@ -56,8 +56,8 @@ ${CLAUDE_MD}
 
 2. 读取 `${DESIGN_FILE}` — 技术方案文档（架构设计、接口定义、文件清单）
 3. 读取 `${SPEC_FILES}` 中的每个 spec 文件
-4. 执行 `Bash(ls docs/standards/)` 后逐一读取所有规范文件
-5. 执行 `Bash(ls apps/server/src/)` 和 `Bash(ls apps/mobile/)` 了解当前目录结构
+4. 执行 `Bash(ls docs/standards/)` 后逐一读取所有规范文件（如目录存在）
+5. 根据 CLAUDE.md 中的目录结构，用 Bash 查看当前项目目录布局
 
 ---
 
@@ -147,117 +147,26 @@ Team 创建完成后，将**所有编码任务**登记到共享 task list：
 ## 第一步 — 读取上下文（只读，不写代码）
 1. 读取 spec 文件：[SPEC_FILES]
 2. 读取技术方案：[DESIGN_FILE]
-3. ls docs/standards/ 后逐一读取每个文件
-4. ls apps/server/src/ 和 ls apps/mobile/
+3. 如项目有 docs/standards/ 目录，ls 后逐一读取每个文件
+4. 根据 CLAUDE.md 的目录结构，用 Bash 查看目标文件所在目录
 5. 如果目标文件已存在，必须先 Read 读取后再修改
 
 ## 第二步 — 实现代码
-只写你的目标文件。参考以下代码模式：
-
-**Drizzle Schema：**
-\`\`\`js
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
-import { sql } from 'drizzle-orm';
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
-  createdAt: text('created_at').notNull().default(sql`(CURRENT_TIMESTAMP)`),
-});
-\`\`\`
-
-**Fastify 路由插件：**
-\`\`\`js
-import { requireAuth } from '../plugins/auth.js';
-import { db } from '../db/index.js';
-import { memos } from '../db/schema.js';
-import { eq, desc } from 'drizzle-orm';
-export async function memoRoutes(fastify) {
-  fastify.get('/', { preHandler: [requireAuth] }, async (request, reply) => {
-    const rows = await db.select().from(memos)
-      .where(eq(memos.userId, request.session.userId))
-      .orderBy(desc(memos.createdAt));
-    return reply.send({ data: rows, message: 'ok' });
-  });
-  fastify.post('/', {
-    preHandler: [requireAuth],
-    schema: { body: { type: 'object', required: ['content'],
-      properties: { content: { type: 'string', minLength: 1, maxLength: 10000 } } } },
-  }, async (request, reply) => {
-    const [memo] = await db.insert(memos)
-      .values({ content: request.body.content, userId: request.session.userId })
-      .returning();
-    return reply.status(201).send({ data: memo, message: '创建成功' });
-  });
-}
-\`\`\`
-
-**React Context：**
-\`\`\`jsx
-import { createContext, useContext, useReducer } from 'react';
-function reducer(state, action) {
-  switch (action.type) {
-    case 'SET_LOADING': return { ...state, isLoading: action.payload };
-    case 'SET_DATA':    return { ...state, isLoading: false, data: action.payload };
-    default: return state;
-  }
-}
-const XxxContext = createContext(null);
-export function XxxProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, { data: [], isLoading: false, error: null });
-  return <XxxContext.Provider value={{ state, dispatch }}>{children}</XxxContext.Provider>;
-}
-export function useXxxContext() {
-  const ctx = useContext(XxxContext);
-  if (!ctx) throw new Error('useXxxContext must be used within XxxProvider');
-  return ctx;
-}
-\`\`\`
-
-**自定义 Hook：**
-\`\`\`js
-import { useEffect, useCallback } from 'react';
-import { api } from '@/lib/api-client';
-import { useXxxContext } from '@/context/XxxContext';
-export function useXxx() {
-  const { state, dispatch } = useXxxContext();
-  const fetchData = useCallback(async () => {
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const data = await api.get('/xxx');
-      dispatch({ type: 'SET_DATA', payload: data });
-    } catch { dispatch({ type: 'SET_LOADING', payload: false }); }
-  }, [dispatch]);
-  useEffect(() => { fetchData(); }, [fetchData]);
-  return { ...state, refetch: fetchData };
-}
-\`\`\`
-
-**Expo 组件：**
-\`\`\`jsx
-import { Text, Pressable, StyleSheet } from 'react-native';
-export function MemoCard({ content, onPress }) {
-  return (
-    <Pressable style={styles.container} onPress={onPress}>
-      <Text style={styles.content}>{content}</Text>
-    </Pressable>
-  );
-}
-const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 8 },
-  content: { fontSize: 14, lineHeight: 22, color: '#333' },
-});
-\`\`\`
+只写你的目标文件。严格遵循以下规范：
+- CLAUDE.md 中的命名规范、目录结构、API 响应格式
+- 项目宪法中的安全红线（认证、输入校验、参数化查询、XSS 防护）
+- 参考 specs/completed/*-design.md 了解项目现有模式
+- 目标文件已存在时：Read 读取后 Edit 最小化修改，禁止整体重写
 
 ## 第三步 — 自查清单
-写完所有文件后逐项检查：
-- [ ] 受保护路由都有 `preHandler: [requireAuth]`？
-- [ ] 所有响应使用 `{ data, message }` 或 `{ data: null, error, message }`？
-- [ ] 所有 Drizzle 查询使用 ORM，没有拼接原始 SQL？
-- [ ] 用户输入通过 Fastify schema 校验？
-- [ ] 没有硬编码密钥，全部从 `process.env` 读取？
-- [ ] 前端用 `<Text>` 渲染，没有 `dangerouslySetInnerHTML`？
-- [ ] 文件扩展名：后端 `.js`，组件/页面 `.jsx`？
+写完所有文件后逐项检查（以 CLAUDE.md 中的规范为准）：
+- [ ] 受保护路由都有认证守卫？
+- [ ] 所有响应符合 CLAUDE.md 定义的统一格式？
+- [ ] 所有数据库查询使用 ORM，没有拼接原始 SQL？
+- [ ] 用户输入通过 schema/middleware 校验？
+- [ ] 没有硬编码密钥，全部从环境变量读取？
+- [ ] 前端内容渲染防 XSS（纯文本渲染）？
+- [ ] 文件扩展名符合 CLAUDE.md 命名规范？
 
 ## 第四步 — 向 Orchestrator 汇报
 标记任务完成：
@@ -267,18 +176,17 @@ const styles = StyleSheet.create({
   SendMessage(
     type="message",
     recipient="orchestrator",
-    content="任务 [ID] 完成。已写入文件：\nWRITTEN: path/to/file1.js\nWRITTEN: path/to/file2.jsx",
+    content="任务 [ID] 完成。已写入文件：\nWRITTEN: path/to/file1\nWRITTEN: path/to/file2",
     summary="任务 [ID] 完成 — 共 N 个文件"
   )
 
 ## 严禁事项
-- 禁止使用 TypeScript
-- 禁止新增 npm 包
+- 禁止引入新的依赖包
 - 禁止写测试文件
 - 禁止添加不必要的注释
 - 禁止重构目标文件以外的代码
 - 禁止触碰 RESERVED FILES（已保留文件）
-- 禁止使用 Redux/Zustand 或原始 SQL
+- 禁止使用 CLAUDE.md 中明确禁止的技术方案
 ```
 
 ### 4c. 等待阶段完成
@@ -289,15 +197,16 @@ const styles = StyleSheet.create({
 
 ### 4d. Lint 门禁
 
-当前阶段所有 teammate 汇报完成后，执行：
+当前阶段所有 teammate 汇报完成后，执行 CLAUDE.md 中定义的 lint 命令：
 
 ```bash
-npm run lint 2>&1
+# 参考 CLAUDE.md 中的 lint 脚本
+pnpm lint 2>&1
 ```
 
 如果 lint 失败：派生**一个修复 teammate**，传入错误输出。Prompt：
 ```
-修复以下 ESLint 错误。读取失败文件，只做最小化定点修复，不要重写文件。
+修复以下 lint 错误。读取失败文件，只做最小化定点修复，不要重写文件。
 错误信息：[粘贴错误输出]
 ```
 最多尝试 2 次。仍失败则停止所有后续阶段。
@@ -325,8 +234,8 @@ TEAM_CODEGEN_COMPLETE
 失败阶段：[阶段编号 | 无]
 
 已写入文件：
-WRITTEN: path/to/file1.js
-WRITTEN: path/to/file2.jsx
+WRITTEN: path/to/file1
+WRITTEN: path/to/file2
 ...
 ```
 
