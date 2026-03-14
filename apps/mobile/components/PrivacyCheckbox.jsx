@@ -7,7 +7,7 @@
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 
-export function PrivacyCheckbox({ checked, onChange, error = false, testID }) {
+export function PrivacyCheckbox({ checked, onChange, error = false, testID, errorTestID }) {
   function handlePress() {
     onChange(!checked);
   }
@@ -31,7 +31,7 @@ export function PrivacyCheckbox({ checked, onChange, error = false, testID }) {
       </View>
       <Text style={styles.label}>我已阅读并同意隐私协议</Text>
       {error && (
-        <Text style={styles.errorText}>请阅读并同意隐私协议</Text>
+        <Text testID={errorTestID || 'error-privacy'} style={styles.errorText}>请阅读并同意隐私协议</Text>
       )}
     </TouchableOpacity>
   );

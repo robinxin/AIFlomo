@@ -72,7 +72,7 @@ export default function LoginScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>登录</Text>
 
-      <AuthFormError message={formError} testID="login-form-error" />
+      <AuthFormError message={formError} testID="form-error" />
 
       <AuthFormInput
         label="邮箱"
@@ -80,7 +80,7 @@ export default function LoginScreen() {
         onChangeText={setEmail}
         keyboardType="email-address"
         editable={!loading}
-        testID="login-email"
+        testID="input-email"
       />
 
       <AuthFormInput
@@ -89,7 +89,8 @@ export default function LoginScreen() {
         onChangeText={setPassword}
         secureTextEntry
         editable={!loading}
-        testID="login-password"
+        testID="input-password"
+        toggleTestID="btn-toggle-password"
       />
 
       <AuthSubmitButton
@@ -97,13 +98,13 @@ export default function LoginScreen() {
         loadingLabel="登录中..."
         loading={loading}
         onPress={handleSubmit}
-        testID="login-submit"
+        testID="btn-submit"
       />
 
       <TouchableOpacity
         onPress={handleGoRegister}
         style={styles.linkButton}
-        testID="login-go-register"
+        testID="link-to-register"
       >
         <Text style={styles.linkText}>没有账号？立即注册</Text>
       </TouchableOpacity>

@@ -146,7 +146,7 @@ export default function RegisterScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>创建账号</Text>
 
-      <AuthFormError message={formError} testID="register-form-error" />
+      <AuthFormError message={formError} testID="form-error" />
 
       <AuthFormInput
         label="邮箱"
@@ -156,7 +156,8 @@ export default function RegisterScreen() {
         error={emailError}
         keyboardType="email-address"
         editable={!loading}
-        testID="register-email"
+        testID="input-email"
+        errorTestID="error-email"
       />
 
       <AuthFormInput
@@ -167,7 +168,8 @@ export default function RegisterScreen() {
         error={nicknameError}
         maxLength={20}
         editable={!loading}
-        testID="register-nickname"
+        testID="input-nickname"
+        errorTestID="error-nickname"
       />
 
       <AuthFormInput
@@ -179,14 +181,17 @@ export default function RegisterScreen() {
         secureTextEntry
         maxLength={20}
         editable={!loading}
-        testID="register-password"
+        testID="input-password"
+        toggleTestID="btn-toggle-password"
+        errorTestID="error-password"
       />
 
       <PrivacyCheckbox
         checked={privacyChecked}
         onChange={setPrivacyChecked}
         error={privacyError}
-        testID="register-privacy-checkbox"
+        testID="checkbox-privacy"
+        errorTestID="error-privacy"
       />
 
       <AuthSubmitButton
@@ -194,13 +199,13 @@ export default function RegisterScreen() {
         loadingLabel="注册中..."
         loading={loading}
         onPress={handleSubmit}
-        testID="register-submit"
+        testID="btn-submit"
       />
 
       <TouchableOpacity
         onPress={handleGoLogin}
         style={styles.linkButton}
-        testID="register-go-login"
+        testID="link-to-login"
       >
         <Text style={styles.linkText}>已有账号？返回登录</Text>
       </TouchableOpacity>
