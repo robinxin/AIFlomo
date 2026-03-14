@@ -154,6 +154,24 @@ AIFlomo/
 { data: null, error: string, message: string }
 ```
 
+### 表单验证规范
+
+**实时验证要求**：
+- 所有表单输入必须同时支持 `onChange` 和 `onBlur` 事件
+- `onChange` 时清除错误提示（用户正在输入，不打断）
+- `onBlur` 时触发字段验证并显示错误（用户离开字段时立即反馈）
+- 提交时进行完整校验
+
+**TextInput 组件规范**：
+```jsx
+<TextInput
+  value={value}
+  onChangeText={handleChange}  // 清除错误
+  onBlur={handleBlur}           // 触发验证
+  error={errorMessage}
+/>
+```
+
 ---
 
 ## 🔒 安全红线
@@ -482,6 +500,7 @@ fix: 修复标签解析中的特殊字符问题
 2. **先制定计划** — 明确文件与实现顺序
 3. **增量实现** — 先后端（Drizzle schema → Fastify 路由）再前端（Expo 组件 → Context）
 4. **能跑就跑** — 尽量运行构建/检查命令
+5. **实现后必须自验证** — 见下方「实现后自验证步骤」
 
 ### 禁止行为
 - ❌ 不要引入 TypeScript（非必要场景）— 默认用 JavaScript
@@ -490,3 +509,119 @@ fix: 修复标签解析中的特殊字符问题
 - ❌ 不要使用 Next.js / Express — 后端统一用 **Fastify**
 - ❌ 新增/修改子包时不得缺少 `dev` / `build` / `lint` / `prod` 四条标准脚本
 - ❌ 不要使用 Redux / Zustand — 状态管理统一用 **React Context + useReducer**
+- ❌ `apps/mobile/package.json` 的 `main` 字段不能是 `"expo-router"`（会解析到库文件，页面空白）— 必须是 `"expo-router/entry"`
+- ❌ 不要在 React Native `<View>` 的直接子节点写字符串条件渲染 — `{str && <Text>}` 在 `str=''` 时渲染空字符串导致报错，必须用 `{!!str && <Text>}`
+
+---
+
+## 📱 Expo Monorepo 配置规范（AI 必读）
+
+> 违反以下任一条均会导致页面空白或新机器无法启动，**生成代码后必须逐条核对**。
+
+### 1. package.json 入口
+
+`apps/mobile/package.json` 必须使用：
+```json
+"main": "expo-router/entry"
+```
+`"expo-router"` 会经 Node 模块解析走到 `expo-router/build/index.js`（仅库导出，不含 `renderRootComponent`），导致页面永久空白。
+
+### 2. metro.config.js
+
+`apps/mobile/metro.config.js` 必须存在，且必须调用 `getDefaultConfig`：
+
+```js
+const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
+
+const config = getDefaultConfig(__dirname);
+config.watchFolders = [path.resolve(__dirname, '../..')];
+config.resolver.nodeModulesPaths = [
+  path.resolve(__dirname, 'node_modules'),
+  path.resolve(__dirname, '../../node_modules'),
+];
+
+module.exports = config;
+```
+
+原因：`getDefaultConfig` 启用 `require.context`（expo-router 路由发现的前提），并配置 monorepo 模块解析路径。缺少此文件会导致路由全部失效。
+
+### 3. babel-preset-expo 版本管理
+
+- `babel-preset-expo` 必须安装在**根 `package.json`** 的 `devDependencies`，版本锁定为 `~12.0.0`（Expo SDK 52 对应版本）
+- 同时在根 `package.json` 加 `overrides` 防止子包传递依赖引入高版本：
+  ```json
+  "overrides": { "babel-preset-expo": "~12.0.0" }
+  ```
+- `apps/mobile/package.json` 中**不要声明** `babel-preset-expo`，由根目录统一管控
+- `12.x` 将 `process.env.EXPO_PUBLIC_*` 直接内联；`55.x+` 生成 `require('expo/virtual/env')` 导致 Metro 报错
+
+验证：`npm ls babel-preset-expo` 输出应只有一个版本且为 `12.x`
+
+### 4. npm workspace 依赖提升
+
+npm workspace 的 hoisting 行为不一致：某些包被提升到根 `node_modules`，其 peer dependency 却留在子包中，导致运行时找不到模块。
+
+规则：
+- `@fastify/session` 的 peer dependency `@fastify/cookie` 必须安装在**根目录**
+- 凡是被提升到根 `node_modules` 的包，其 peer deps 也必须在根 `node_modules`
+- 安装方式：`npm install <pkg>` 在根目录执行（不加 `-w`）
+
+### 5. 并行启动脚本
+
+根目录 `dev` 脚本必须使用 `concurrently` 并行启动前后端：
+```json
+"dev": "concurrently \"npm run dev -w apps/server -- --clear\" \"npm run dev -w apps/mobile\""
+```
+`npm run dev --workspaces` 是串行执行，服务端 `node --watch` 为常驻进程会阻塞前端启动。
+
+### 6. 数据库目录自动创建
+
+`apps/server/src/db/index.js` 必须在打开数据库前自动创建目录，防止新机器首次启动报错：
+```js
+import { mkdirSync } from 'fs';
+import { dirname } from 'path';
+const dbPath = process.env.DB_PATH ?? './data/aiflomo.db';
+mkdirSync(dirname(dbPath), { recursive: true });
+```
+
+### 7. CI 环境 Expo 配置
+
+在 CI 环境（GitHub Actions、Jenkins 等）运行时，`apps/mobile/package.json` 的 `dev` 脚本**必须**设置 `EXPO_USE_METRO_WORKSPACE_ROOT=1` 环境变量：
+
+```json
+"dev": "EXPO_USE_METRO_WORKSPACE_ROOT=1 expo start --web --port 8082"
+```
+
+原因：
+- Monorepo 环境下，Metro 需要明确知道工作区根目录位置
+- 不设置此变量可能导致 Metro 无法正确解析模块路径
+- CI 环境下缺少交互式终端，必须明确指定平台（`--web`）和端口
+
+---
+
+## ✅ 实现后自验证步骤（必须执行）
+
+AI 完成代码生成后，**按顺序执行以下检查**，全部通过才算实现完成：
+
+```bash
+# 1. 静态检查
+npm run lint --workspaces --if-present
+
+# 2. 核心配置项核对（逐条）
+grep '"main"' apps/mobile/package.json          # 应输出 "expo-router/entry"
+ls apps/mobile/metro.config.js                  # 文件必须存在
+npm ls babel-preset-expo                        # 只有一个版本且为 12.x
+ls node_modules/@fastify/cookie                 # 目录必须存在
+grep '"dev"' package.json                       # 应包含 concurrently
+
+# 3. Bundle 内容验证（前端核心验证）
+cd apps/mobile && npx expo export -p web --output-dir /tmp/expo-dist
+grep -c 'renderRootComponent' /tmp/expo-dist/bundles/*.js   # 结果必须 > 0
+
+# 4. 后端健康检查
+curl http://localhost:3000/health               # 应返回 {"status":"ok"}
+
+# 5. 前端页面验证
+# 访问 http://localhost:8082/ 应重定向到 /login 并渲染登录表单（非空白页）
+```

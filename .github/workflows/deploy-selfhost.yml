@@ -161,7 +161,15 @@ jobs:
           # SSH 非交互式 shell 不加载 ~/.bashrc，手动 source nvm 确保 node/npm/pm2 可用
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-          export PATH="$PATH:$(npm prefix -g)/bin"
+          command -v npm >/dev/null 2>&1 && export PATH="$PATH:$(npm prefix -g)/bin"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "::error::npm not found — please install Node.js (nvm) on ECS first"
+            exit 1
+          fi
+
+          echo "── Ensure pm2 ────────────────────────────────────"
+          command -v pm2 >/dev/null 2>&1 || npm install -g pm2
+          echo "pm2 $(pm2 --version) OK"
 
           SERVER_DIR="$DEPLOY_PATH/apps/server"
 
@@ -189,18 +197,13 @@ jobs:
           echo "── Ensure data directory ─────────────────────────"
           mkdir -p "$SERVER_DIR/data"
 
-          echo "── Ensure .env file ──────────────────────────────"
-          ENV_FILE="$SERVER_DIR/.env"
-          if [ ! -f "$ENV_FILE" ]; then
-            SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
-            printf 'NODE_ENV=production\nPORT=%s\nSESSION_SECRET=%s\nDB_PATH=./data/aiflomo.db\nCORS_ORIGIN=http://%s:%s\n' \
-              "$BACKEND_PORT" "$SECRET" "$SSH_HOST" "$FRONTEND_PORT" > "$ENV_FILE"
-            echo "Created $ENV_FILE"
-          else
-            echo ".env already exists, updating PORT and CORS_ORIGIN"
-            sed -i "s/^PORT=.*/PORT=$BACKEND_PORT/" "$ENV_FILE"
-            sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=http://$SSH_HOST:$FRONTEND_PORT|" "$ENV_FILE"
-          fi
+          echo "── Prepare env vars (no .env file) ───────────────"
+          export APP_PORT="$BACKEND_PORT"
+          export APP_CORS_ORIGIN="http://$SSH_HOST:$FRONTEND_PORT"
+          export APP_SESSION_SECRET="${SESSION_SECRET:-$(openssl rand -hex 32)}"
+          export APP_DB_PATH="$SERVER_DIR/data/aiflomo.db"
+          export APP_NODE_ENV="production"
+          echo "PORT=$APP_PORT, CORS_ORIGIN=$APP_CORS_ORIGIN, DB_PATH=$APP_DB_PATH"
 
           echo "── Install dependencies ──────────────────────────"
           cd "$DEPLOY_PATH"
@@ -248,7 +251,7 @@ jobs:
           # 启动后验证进程是否 online，失败则打印日志并退出
           pm2_verify() {
             local NAME=$1
-            sleep 2
+            sleep 10
             if pm2 describe "$NAME" 2>/dev/null | grep -q "online"; then
               echo "✓ $NAME is online"
             else
@@ -261,6 +264,11 @@ jobs:
           free_port "$BACKEND_PORT"
           pm2 delete "$PM2_SERVER_NAME" 2>/dev/null || true
           pm2 delete aiflomo-server 2>/dev/null || true
+          PORT=$APP_PORT \
+          CORS_ORIGIN=$APP_CORS_ORIGIN \
+          SESSION_SECRET=$APP_SESSION_SECRET \
+          DB_PATH=$APP_DB_PATH \
+          NODE_ENV=$APP_NODE_ENV \
           pm2 start "$DEPLOY_PATH/apps/server/src/index.js" \
             --name "$PM2_SERVER_NAME" \
             --cwd "$DEPLOY_PATH/apps/server" \
@@ -296,6 +304,8 @@ jobs:
           echo "| Branch | \`${{ env.DEPLOY_BRANCH }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 前端地址 | http://${{ secrets.SSH_HOST }}:${{ env.FRONTEND_PORT }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 后端地址 | http://${{ secrets.SSH_HOST }}:${{ env.BACKEND_PORT }} |" >> $GITHUB_STEP_SUMMARY
 
   # ─── Deploy 成功 → 触发 Create Release PR ───────────────────────
   trigger-create-pr:

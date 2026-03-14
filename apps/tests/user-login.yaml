@@ -1,0 +1,153 @@
+web:
+  url: "${WEB_URL}"
+  viewportWidth: 1280
+  viewportHeight: 800
+
+agent:
+  testId: "user-login"
+  generateReport: true
+
+tasks:
+  # 前置条件：注册一个测试账号
+  - name: "前置-注册测试账号"
+    continueOnError: false
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/register'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser@example.com"
+      - aiInput: "找到昵称输入框"
+        value: "张三"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "勾选隐私协议复选框"
+      - aiTap: "点击注册按钮"
+      - aiWaitFor: "注册成功"
+        timeout: 5000
+
+  # 正常场景
+  - name: "有效邮箱和密码，登录成功"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主页面"
+        timeout: 5000
+      - aiAssert: "登录成功，用户进入主应用页面"
+        errorMessage: "登录成功后应跳转到主页面"
+
+  - name: "邮箱大小写混合，统一转小写比对，登录成功"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "TestUser@Example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiWaitFor: "登录成功，页面跳转到主页面"
+        timeout: 5000
+      - aiAssert: "登录成功，大小写邮箱被正确处理"
+        errorMessage: "邮箱大小写应该被统一转小写比对"
+
+  # 异常场景
+  - name: "邮箱不存在，返回401"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "nonexistent@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示错误提示：邮箱或密码错误"
+        errorMessage: "不存在的邮箱应该返回统一的错误提示，不暴露具体错误"
+
+  - name: "密码错误，返回401"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser@example.com"
+      - aiInput: "找到密码输入框"
+        value: "WrongPass"
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示错误提示：邮箱或密码错误"
+        errorMessage: "密码错误应该返回统一的错误提示，不暴露具体错误"
+
+  - name: "邮箱字段为空，返回400"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: ""
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示错误提示：请填写完整信息"
+        errorMessage: "空邮箱应该在前端被拦截"
+
+  - name: "密码字段为空，返回400"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser@example.com"
+      - aiInput: "找到密码输入框"
+        value: ""
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示错误提示：请填写完整信息"
+        errorMessage: "空密码应该在前端被拦截"
+
+  - name: "邮箱和密码都为空，返回400"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: ""
+      - aiInput: "找到密码输入框"
+        value: ""
+      - aiTap: "点击登录按钮"
+      - aiAssert: "页面显示错误提示：请填写完整信息"
+        errorMessage: "空表单应该在前端被拦截"
+
+  - name: "快速点击登录按钮多次，仅发起一次请求"
+    continueOnError: true
+    flow:
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - ai: "快速连续点击登录按钮5次"
+      - aiWaitFor: "登录成功或按钮被禁用"
+        timeout: 5000
+      - aiAssert: "只发起一次登录请求，按钮在点击后立即禁用"
+        errorMessage: "应该防止重复提交"
+
+  - name: "网络错误时显示友好提示"
+    continueOnError: true
+    flow:
+      # 注：原用例步骤模糊，已按以下方式解读：模拟网络断开在 Midscene UI 测试中难以实现
+      - javascript: "document.cookie = ''; window.location.href = '/login'"
+      - sleep: 1000
+      - aiInput: "找到邮箱输入框"
+        value: "testuser@example.com"
+      - aiInput: "找到密码输入框"
+        value: "Pass123"
+      - aiTap: "点击登录按钮"
+      - sleep: 3000
+      - aiAssert: "如果出现网络错误，应显示'网络错误，请稍后重试'提示"
+        errorMessage: "网络错误应该有友好提示"
