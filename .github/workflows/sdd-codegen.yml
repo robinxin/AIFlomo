@@ -157,7 +157,7 @@ jobs:
 
 
       # ── Mode: codegen ─────────────────────────────────────────────
-      - name: Generate code from spec (all tasks)
+      - name: Generate code (task by task)
         if: inputs.mode == 'codegen'
         id: codegen
         env:
@@ -168,36 +168,132 @@ jobs:
           export DESIGN_FILE="${{ inputs.design_file }}"
           TASKS_FILE="${{ inputs.tasks_file }}"
 
-          # ── Git 配置 ──
+          TASK_COUNT=$(TASKS_FILE="$TASKS_FILE" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          print(len(re.findall(r'^- \[.\] T\d+', content, re.MULTILINE)))
+          " 2>/dev/null || echo "1")
+
+          > /tmp/written-files.txt
+
+          # ── Git 配置（中间提交需要）──
           BRANCH="${{ inputs.branch }}"
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git remote set-url origin \
             "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
 
-          # 记录本次 run 的起点，用于追踪已写入文件
+          # 记录本次 run 的起点，用于跨中间提交追踪已写入文件
           RUN_START_SHA=$(git rev-parse HEAD)
 
           # ── Initialize Step Summary ──
           {
             echo "## 📦 Codegen Summary"
             echo ""
-            echo "Generating code for all tasks in: \`$TASKS_FILE\`"
+            echo "| # | Task | Status | Target Files |"
+            echo "|---|------|--------|--------------|"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # 读取完整 tasks 文件内容
-          export TASKS_CONTENT=$(cat "$TASKS_FILE")
+          update_task_status() {
+            local task_idx=$1 new_status=$2
+            TASKS_FILE="$TASKS_FILE" TASK_IDX="$task_idx" NEW_STATUS="$new_status" python3 -c "
+          import re, os
+          filepath = os.environ['TASKS_FILE']
+          idx = int(os.environ['TASK_IDX'])
+          status = os.environ['NEW_STATUS']
+          if status not in ('completed', 'failed'):
+              exit(0)
+          with open(filepath) as f:
+              content = f.read()
+          task_ids = re.findall(r'^- \[.\] (T\d+)', content, re.MULTILINE)
+          if idx < len(task_ids):
+              tid = re.escape(task_ids[idx])
+              new_mark = 'x' if status == 'completed' else '-'
+              content = re.sub(r'^(- )\[.\]( ' + tid + r')', r'\1[' + new_mark + r']\2', content, count=1, flags=re.MULTILINE)
+              with open(filepath, 'w') as f:
+                  f.write(content)
+          "
+          }
 
-          # 追踪本次 run 已提交文件
-          ALREADY=$(git diff --name-only "$RUN_START_SHA"...HEAD 2>/dev/null | tr '\n' ' ')
-          export ALREADY="${ALREADY:-none}"
+          for i in $(seq 1 "$TASK_COUNT"); do
+            IDX=$((i - 1))
 
-          PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
+            TASK_STATUS=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          marks = re.findall(r'^- \[(.)\] T\d+', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          print('completed' if idx < len(marks) and marks[idx] == 'x' else 'pending')
+          ")
+            TASK_NAME=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          bt = chr(96)
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] (.+)$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          if idx < len(lines):
+              name = re.sub(r'\s*' + bt + '[^' + bt + ']+' + bt, '', lines[idx]).strip()
+              print(name[:80])
+          else:
+              print('task')
+          ")
+            TASK_DESC=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] .+$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          print(lines[idx] if idx < len(lines) else '')
+          ")
+            TASK_FILES=$(TASKS_FILE="$TASKS_FILE" TASK_IDX="$IDX" python3 -c "
+          import re, os
+          bt = chr(96)
+          content = open(os.environ['TASKS_FILE']).read()
+          lines = re.findall(r'^- \[.\] .+$', content, re.MULTILINE)
+          idx = int(os.environ['TASK_IDX'])
+          if idx < len(lines):
+              files = re.findall(bt + '([^' + bt + ']+)' + bt, lines[idx])
+              print(' '.join(bt + f + bt for f in files))
+          ")
 
-          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
-            --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(pnpm:*)" \
-            --model "$MODEL" \
-            "$PROMPT_TEXT"
+            if [ "$TASK_STATUS" = "completed" ]; then
+              echo "Task $i/$TASK_COUNT: $TASK_NAME — already completed, skipping"
+              echo "| $i | $TASK_NAME | ⏭ skipped | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            echo "Task $i/$TASK_COUNT: $TASK_NAME"
+            update_task_status $IDX "in_progress"
+
+            # 追踪本次 run 所有已提交文件（跨中间提交有效）
+            ALREADY=$(git diff --name-only "$RUN_START_SHA"...HEAD 2>/dev/null | tr '\n' ' ')
+
+            export TASK_INDEX="$i"
+            export TASK_COUNT
+            export TASK_NAME
+            export TASK_DESC
+            export ALREADY="${ALREADY:-none}"
+            PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
+
+            claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
+              --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(pnpm:*)" \
+              --model "$MODEL" \
+              "$PROMPT_TEXT"
+
+            update_task_status $IDX "completed"
+            echo "| $i | $TASK_NAME | ✅ done | $TASK_FILES |" >> "$GITHUB_STEP_SUMMARY"
+
+            # ── 每 10 个任务提交一次（防超时丢失进度）──
+            if [ $((i % 10)) -eq 0 ] || [ "$i" -eq "$TASK_COUNT" ]; then
+              git add -A && git restore --staged .github/
+              if ! git diff --cached --quiet; then
+                BATCH_START=$(( (i / 10) * 10 - 9 ))
+                [ "$BATCH_START" -lt 1 ] && BATCH_START=1
+                git commit -m "sdd: tasks ${BATCH_START}-${i} / ${TASK_COUNT}"
+                git pull --rebase origin "$BRANCH" || true
+                git push origin "HEAD:$BRANCH"
+              fi
+            fi
+          done
 
           echo "has_failure=false" >> "$GITHUB_OUTPUT"
           echo "failed_task=" >> "$GITHUB_OUTPUT"
