@@ -38,6 +38,12 @@
 > | `pnpm build` | 生产构建 |
 > | `pnpm lint` | 语法与代码风格检测 |
 > | `pnpm prod` | 启动线上服务器（pm2 管理） |
+>
+> ⚠️ **`build` 脚本规范（严格遵守）**：
+> - `build` 必须执行完毕后自动退出（exit code 0 或非零），**不得**启动长期运行的进程
+> - ❌ 错误示例：`"build": "node src/index.js"` — 会启动服务器，永远不退出
+> - ✅ 正确示例（Node.js ESM 无编译步骤）：`"build": "node --check src/index.js && echo 'Build OK'"`
+> - CI 的 `build.sh` 会调用此脚本，若进程不退出将导致 CI 永久挂死
 
 ```bash
 # ── 根目录（Monorepo）──

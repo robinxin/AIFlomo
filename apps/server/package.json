@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "build": "node --experimental-vm-modules src/index.js --build 2>/dev/null || echo 'No build step required for Node.js ESM'",
+    "build": "node --check src/index.js && echo 'Build OK'",
     "lint": "eslint src/ tests/",
     "prod": "pm2 start src/index.js --name aiflomo-server",
     "db:generate": "drizzle-kit generate --config drizzle.config.cjs",
