@@ -276,7 +276,7 @@ jobs:
             export ALREADY="${ALREADY:-none}"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
 
-            claude --print --dangerously-skip-permissions \
+            claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -310,7 +310,7 @@ jobs:
 
           PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen-team.md)
 
-          claude --print --dangerously-skip-permissions \
+          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
             --allowedTools "Read,Write,Task,TeamCreate,SendMessage,TaskCreate,TaskList,TaskUpdate,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(npm run lint*),Bash(python3:*)" \
             --model "claude-sonnet-4-6" \
             "$PROMPT_TEXT"
@@ -351,7 +351,7 @@ jobs:
             exit 0
           fi
 
-          claude --print --dangerously-skip-permissions \
+          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
             --model "$MODEL" \
             "## PROJECT CONSTITUTION

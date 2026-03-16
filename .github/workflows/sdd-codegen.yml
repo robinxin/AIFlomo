@@ -274,7 +274,7 @@ jobs:
             export ALREADY="${ALREADY:-none}"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-codegen.md)
 
-            claude --print --dangerously-skip-permissions \
+            claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
               --allowedTools "Read,Write,Edit,Task,Bash(ls:*),Bash(find:*),Bash(mkdir:*),Bash(pnpm:*)" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -330,7 +330,7 @@ jobs:
             exit 0
           fi
 
-          claude --print --dangerously-skip-permissions \
+          claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
             --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
             --model "$MODEL" \
             "## PROJECT CONSTITUTION
@@ -472,7 +472,7 @@ jobs:
         if: >-
           always() &&
           steps.result.outputs.has_failure != 'true' &&
-          (inputs.mode == 'fix' || github.event_name == 'workflow_dispatch')
+          inputs.mode == 'fix'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

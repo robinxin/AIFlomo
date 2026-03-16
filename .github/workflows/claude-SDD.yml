@@ -18,9 +18,11 @@ on:
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SDD Pipeline                                                           ║
-# ║  Detect ─┬─ Plan → 🔒Design → Task → 🔒Task → Codegen                  ║
-# ║           └─ Testcase → 🔒Testcase → Testcase Code → 🔒Testcase Code    ║
-# ║  两条线完成后 → 触发 Quality Gate Pipeline                                ║
+# ║  Detect → Plan → 🔒Design ─┬─ Task → 🔒Task → Codegen ─┐              ║
+# ║                             └─ Testcase → 🔒Testcase ───┘              ║
+# ║                             Codegen + Testcase-gate 完成后              ║
+# ║                             → Testcase Code → 🔒Testcase Code           ║
+# ║                             → 触发 Quality Gate Pipeline                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 jobs:
@@ -184,7 +186,7 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-design.md)
 
-            claude --print --dangerously-skip-permissions \
+            claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(rm:*),Task" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -334,7 +336,7 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-task-breakdown.md)
 
-            claude --print --dangerously-skip-permissions \
+            claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
               --allowedTools "Read,Write,Bash(ls:*),Task" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -510,7 +512,7 @@ jobs:
             echo "reused=false" >> "$GITHUB_OUTPUT"
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase.md)
 
-            claude --print --dangerously-skip-permissions \
+            claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*)" \
               --model "$MODEL" \
               "$PROMPT_TEXT"
@@ -568,7 +570,7 @@ jobs:
 
   # ─── Testcase 可执行代码 ────────────────────────────────────────
   testcase-code:
-    needs: [sdd-detect, testcase, testcase-gate]
+    needs: [sdd-detect, testcase, testcase-gate, sdd-codegen]
     runs-on: [self-hosted, ai-runner]
     permissions:
       contents: write
@@ -648,7 +650,7 @@ jobs:
           else
             PROMPT_TEXT=$(python3 .github/scripts/envsubst.py < .github/prompts/sdd-testcase-codegen.md)
 
-            claude --print --dangerously-skip-permissions \
+            claude --print --dangerously-skip-permissions --verbose --output-format stream-json \
               --allowedTools "Read,Write,Bash(ls:*),Bash(find:*),Bash(mkdir:*)" \
               --model "$MODEL" \
               "${PROMPT_TEXT}
@@ -695,6 +697,7 @@ jobs:
   # ─── 触发 Quality Gate（两条线全部完成后）─────────────────────
   trigger-quality-gate:
     needs: [sdd-codegen, testcase-code-gate]
+    if: needs.sdd-codegen.result == 'success' && needs.testcase-code-gate.result == 'success'
     runs-on: [self-hosted, ai-runner]
     permissions:
       actions: write

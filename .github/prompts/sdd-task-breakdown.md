@@ -1,4 +1,4 @@
-/plan 读取 Spec 文件（`${SPEC_FILES}`）和技术方案文档（`${DESIGN_FILE}`），将功能拆分为有序的原子性实现任务，生成 Markdown 任务清单，使用 Write 工具写入 `${TASKS_FILE}`。
+/plan 读取 Spec 文件（`${SPEC_FILES}`）和技术方案文档（`${DESIGN_FILE}`），将功能拆分为有序的原子性实现任务，生成 Markdown 任务清单，输出结果保存在 `${TASKS_FILE}`下。
 ## 严禁事项
 - **禁止向用户提问或等待确认** — 全程自主运行，遇到歧义以 spec 为准
 - **禁止生成 GitHub Actions 和 CI-CD 配置相关任务**（如修改 .yml workflow 文件等）

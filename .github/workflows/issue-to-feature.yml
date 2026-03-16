@@ -91,9 +91,11 @@ jobs:
           ISSUE_NUMBER="${{ github.event.issue.number }}"
 
           # 用 Claude 将标题翻译为英文 slug
-          RAW_SLUG=$(claude --print --dangerously-skip-permissions --model "$MODEL" \
+          RAW_SLUG=$(claude --print --dangerously-skip-permissions --verbose --output-format stream-json --model "$MODEL" \
             "Translate the following title to a short English slug (lowercase, hyphens, no spaces, max 40 chars, no quotes, no explanation, just the slug): ${ISSUE_TITLE}" \
-            2>/dev/null || echo "")
+            2>/dev/null \
+            | jq -rRj 'try fromjson catch empty | select(.type == "content_block_delta" and .delta.type == "text_delta") | .delta.text' \
+            || echo "")
 
           # 清理 slug：只保留 a-z0-9 和连字符
           SLUG=$(printf '%s' "$RAW_SLUG" \
