@@ -1,27 +1,111 @@
-# Node
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+.eggs/
+lib/
+lib64/
+MANIFEST
 
-# Next.js
-.next/
+# Virtual environments
+.env/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution / packaging
+.Python
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyright / pytype
+.pyright/
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+.secrets
 
 # Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+*.log
+logs/
 
 # OS
 .DS_Store
+Thumbs.db
 
-# Prisma
-*.db
-*.db-journal
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# Build
-out/
-dist/
+# Docker
+.dockerignore
 
-# Coverage
-coverage/
+# Alembic (if used)
+# alembic/versions/
 
-# Secrets
-.secrets
+# Uploads / media
+uploads/
+media/
